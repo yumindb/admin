@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +11,6 @@ import {
 import { uploadSignatureAction } from "../../logs/[id]/photo-actions";
 
 export function ApprovalActions({ logId }: { logId: string }) {
-  const router = useRouter();
   const sigRef = useRef<SignatureCanvas>(null);
   const [mode, setMode] = useState<"approve" | "reject">("approve");
   const [comment, setComment] = useState("");

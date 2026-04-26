@@ -265,3 +265,57 @@ unsigned_items jsonb  [{name, unit?, qty?, headcount?, category?: 點工|變更�
 3. **通知協力廠商沒獨立欄位** — 合進 `notes`。
 4. **四級簽章圖** — 真實表底部要 工地主任 / 填表人員 / 審核人員 / 審定人員 / 核定人員 五個簽章區。POC 只有「核定」一關真的簽,其他 auto-pass 沒簽。Phase 2 正式版要做。
 5. **跨日誌查詢效能** — jsonb 展開查每個工項當月進度,目前 case detail 是讀全部日誌再 sum。資料量大(>500 日誌)會慢。Phase 3 加 materialized view 或 normalize 表。
+
+---
+
+## Phase 2.2 — 下一步引導 + guidance-reviewer subagent (2026-04-26)
+
+### 一、為什麼
+
+裕民第一次用內部系統,使用者按完按鈕常不知道「接下來會發生什麼」。設計原則:每個 CTA 上方/下方輕輕提示一句,不擋畫面、不搶焦點。
+
+### 二、共用元件 `<NextStepHint>`
+
+`components/next-step-hint.tsx`,4 種 tone:
+- `info`(預設米白 + 銅金 left border):一般引導
+- `success`(松綠):已完成 / 確認狀態
+- `warning`(琥珀):需注意/補做
+- `muted`(灰):純說明
+
+**新增 hint 一律用此元件**,不要直接寫 `<div>`。
+
+### 三、目前覆蓋範圍
+
+- `/cases/new` 表單底:建立並匯入 vs 只建立 的差別
+- `/cases/[id]` 工項已建+無日誌:提示工地主任去填
+- `/cases/[id]/import` Step 3:重複匯入合併規則
+- `/logs/new` 送出按鈕上方:草稿 vs 送出 差別
+- `/logs/[id]` 4 種狀態(draft / submitted / rejected / approved)各有對應 hint;`submitted` 依 owner / 非 owner 分支
+- `/approvals/[id]` 簽核 CTA 上方:簽完跳下一份 + 退回切分頁
+
+### 四、guidance-reviewer subagent
+
+`.claude/agents/guidance-reviewer.md` — 跟 office-staff-sim / owner-sim / site-supervisor-sim 同類獨立 reviewer。
+
+**為什麼選 subagent 不是 skill:**
+- skill 是使用者主動觸發、操作步驟導向
+- subagent 是獨立 audit 視角,跟現有 sim 同模式
+- 每次 UI 改動後 invoke 它檢查 hint 覆蓋率
+
+**用法:**任何頁面 / 狀態 / 流程改動後,以 general-purpose agent invoke,給它 reviewer.md 的 path 與改動範圍,它會列 ✓ / ❌ / ⚠ 三類回報。
+
+### 五、設計原則(寫在 reviewer.md)
+
+- 位置:在 CTA 上方/下方,目光自然會掃到處
+- 時機:當下狀態才出現,已完成不要再叫使用者做事
+- 長度:1-2 句、< 60 字
+- 語氣:對話感(「老闆會收到通知」優於「通知已送出」),不用「您」「請貴」
+- 不要擋畫面:inline banner / hint card,不要 modal / overlay
+- 不重複 CTA label
+
+### 六、本輪 audit 結果
+
+reviewer 跑了一輪 checklist,找到 1 個必補 + 1 個建議補 + 4 個 ⚠,都已修正:
+- ✅ `/cases/[id]/import` Step 3 改用 `<NextStepHint>`(原是純 `<p>`)
+- ✅ `/logs/[id]` submitted 依 role 分支(owner / 其他)
+- ✅ case-form / approval / submitted hint 都縮短到 < 50 字

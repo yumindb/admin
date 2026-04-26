@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NextStepHint } from "@/components/next-step-hint";
 
 export type CaseFormState =
   | { error?: string; fieldErrors?: Record<string, string[]> }
@@ -99,30 +100,35 @@ export function CaseForm({ action, defaults = {}, mode, cancelHref }: Props) {
       )}
 
       {mode === "create" ? (
-        <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
-          <Button asChild variant="ghost" type="button">
-            <Link href={cancelHref}>取消</Link>
-          </Button>
-          <Button
-            type="submit"
-            name="next"
-            value="detail"
-            disabled={pending}
-            variant="outline"
-            className="border-[#E0DCD6]"
-          >
-            {pending ? "建立中…" : "只建立案件"}
-          </Button>
-          <Button
-            type="submit"
-            name="next"
-            value="import"
-            disabled={pending}
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            {pending ? "建立中…" : "建立並匯入標單"}
-          </Button>
-        </div>
+        <>
+          <NextStepHint tone="info">
+            建議直接「建立並匯入標單」,工項才能用來填日誌;沒標單也可只建案件之後補。
+          </NextStepHint>
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+            <Button asChild variant="ghost" type="button">
+              <Link href={cancelHref}>取消</Link>
+            </Button>
+            <Button
+              type="submit"
+              name="next"
+              value="detail"
+              disabled={pending}
+              variant="outline"
+              className="border-[#E0DCD6]"
+            >
+              {pending ? "建立中…" : "只建立案件"}
+            </Button>
+            <Button
+              type="submit"
+              name="next"
+              value="import"
+              disabled={pending}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {pending ? "建立中…" : "建立並匯入標單"}
+            </Button>
+          </div>
+        </>
       ) : (
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button asChild variant="ghost" type="button">

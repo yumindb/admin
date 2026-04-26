@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { formatWeatherSummary } from "@/lib/daily-log";
 import type { DailyLog } from "@/lib/types";
 
 type LogRow = DailyLog & {
@@ -9,6 +11,16 @@ type LogRow = DailyLog & {
 
 export default async function ApprovalsPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user!.id)
+    .maybeSingle();
+  if (profile?.role !== "owner") redirect("/logs");
+
   const { data: pending } = await supabase
     .from("daily_logs")
     .select("*, cases(name, code), profiles!daily_logs_supervisor_id_fkey(full_name)")
@@ -59,7 +71,7 @@ export default async function ApprovalsPage() {
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
                 <span>{l.work_items?.length ?? 0} 個工項</span>
                 <span>{l.photos?.length ?? 0} 張照片</span>
-                {l.weather && <span>{l.weather}</span>}
+                {l.weather && <span>{formatWeatherSummary(l.weather)}</span>}
               </div>
             </Link>
           ))}

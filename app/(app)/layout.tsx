@@ -76,8 +76,8 @@ export default async function AppLayout({
                 <Link href="/" className="hover:text-white">
                   案件
                 </Link>
-                <Link href="/approvals" className="hover:text-white">
-                  簽核管理
+                <Link href="/logs" className="hover:text-white">
+                  施工日誌
                 </Link>
               </>
             )}

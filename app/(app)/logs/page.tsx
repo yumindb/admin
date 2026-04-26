@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
+import { formatWeatherSummary } from "@/lib/daily-log";
 import type { DailyLog } from "@/lib/types";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -24,6 +26,7 @@ export default async function LogsPage() {
     .select("role")
     .eq("id", user!.id)
     .maybeSingle();
+  if (profile?.role === "owner") redirect("/approvals");
 
   let query = supabase
     .from("daily_logs")
@@ -39,16 +42,17 @@ export default async function LogsPage() {
   const list = (logs ?? []) as LogRow[];
 
   const isSupervisor = profile?.role === "site_supervisor";
+  const isOfficeStaff = profile?.role === "office_staff";
 
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-primary md:text-3xl">
-            {isSupervisor ? "我的日誌" : "施工日誌"}
+            {isSupervisor ? "我的日誌" : isOfficeStaff ? "施工日誌審核總覽" : "施工日誌"}
           </h1>
           <p className="mt-1.5 text-base text-muted-foreground">
-            {isSupervisor ? "你建的施工日誌" : "全部施工日誌"}
+            {isSupervisor ? "你建的施工日誌" : isOfficeStaff ? "辦公室助理可查看全部日誌與簽核狀態" : "全部施工日誌"}
           </p>
         </div>
         {isSupervisor && (
@@ -84,7 +88,7 @@ export default async function LogsPage() {
                   <div className="text-base text-muted-foreground">
                     {new Date(l.log_date).toLocaleDateString("zh-TW")}
                     {l.weather && (
-                      <span className="ml-2 text-sm">· {l.weather}</span>
+                      <span className="ml-2 text-sm">· {formatWeatherSummary(l.weather)}</span>
                     )}
                   </div>
                   <span

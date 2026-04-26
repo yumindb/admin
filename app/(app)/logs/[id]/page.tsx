@@ -3,7 +3,14 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ExtraItemsTable } from "@/components/extra-items-table";
+import { NextStepHint } from "@/components/next-step-hint";
 import { deleteLogAction } from "../new/actions";
+import {
+  buildReportNumber,
+  formatWeatherSummary,
+  getRemainingDays,
+  getWeekdayLabel,
+} from "@/lib/daily-log";
 import type { DailyLog, LogApproval } from "@/lib/types";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -36,13 +43,19 @@ export default async function LogDetailPage({
 
   const { data: log } = await supabase
     .from("daily_logs")
-    .select("*, cases(id, name, code)")
+    .select("*, cases(id, name, code, company, expected_end)")
     .eq("id", id)
     .maybeSingle();
 
   if (!log) notFound();
   const l = log as DailyLog & {
-    cases: { id: string; name: string; code: string | null } | null;
+    cases: {
+      id: string;
+      name: string;
+      code: string | null;
+      company: string;
+      expected_end: string | null;
+    } | null;
   };
 
   const {
@@ -77,6 +90,7 @@ export default async function LogDetailPage({
   const apList = (approvals ?? []) as LogApproval[];
 
   const s = STATUS[l.status] ?? STATUS.draft;
+  const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -103,12 +117,14 @@ export default async function LogDetailPage({
             {l.cases?.name}
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
-            {l.weather && <span>天氣:{l.weather}</span>}
-            {l.manpower?.own !== undefined && (
-              <span>自有 {l.manpower.own} 人</span>
+            <span>表報編號:{buildReportNumber(l.id, l.log_date)}</span>
+            <span>{getWeekdayLabel(l.log_date)}</span>
+            <span>天氣:{formatWeatherSummary(l.weather)}</span>
+            {l.manpower?.today_total !== undefined && (
+              <span>本日出工 {l.manpower.today_total} 人</span>
             )}
-            {l.manpower?.contract !== undefined && (
-              <span>統包 {l.manpower.contract} 人</span>
+            {l.manpower?.accumulated_total !== undefined && (
+              <span>累計出工 {l.manpower.accumulated_total} 人</span>
             )}
           </div>
         </div>
@@ -144,8 +160,56 @@ export default async function LogDetailPage({
         </div>
       </div>
 
-      {/* 工項 */}
-      <Section title={`工項 (${l.work_items?.length ?? 0})`}>
+      {/* 下一步提示 — 依日誌狀態給不同訊息 */}
+      {l.status === "draft" && isOwnerOfLog && (
+        <div className="mb-6">
+          <NextStepHint tone="warning" title="尚未送出">
+            這份還是草稿,老闆不會收到。確認內容後請按右上「編輯」→ 表單底「送出核定」。
+          </NextStepHint>
+        </div>
+      )}
+      {l.status === "submitted" && profile?.role === "owner" && (
+        <div className="mb-6">
+          <NextStepHint tone="info" title="待你核定">
+            這份還沒簽核,點右上「前往簽核」進入簽名頁。
+          </NextStepHint>
+        </div>
+      )}
+      {l.status === "submitted" && profile?.role !== "owner" && (
+        <div className="mb-6">
+          <NextStepHint tone="info" title="已送出,等候核定">
+            老闆會在「待簽核」收到並簽名。
+          </NextStepHint>
+        </div>
+      )}
+      {l.status === "rejected" && isOwnerOfLog && (
+        <div className="mb-6">
+          <NextStepHint tone="warning" title="已被退回">
+            請查看下方「簽核歷程」的退回原因,點右上「編輯」修正後重新送出。
+          </NextStepHint>
+        </div>
+      )}
+      {l.status === "approved" && (
+        <div className="mb-6">
+          <NextStepHint tone="success" title="已核定">
+            這份已完成核定,簽名與時間記錄在下方「簽核歷程」。對應工項的「累計完成」也已更新。
+          </NextStepHint>
+        </div>
+      )}
+
+      <Section title="表頭摘要">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <InfoCard label="工程名稱" value={l.cases?.name ?? "—"} />
+          <InfoCard label="承攬廠商名稱" value={l.cases?.company ?? "—"} />
+          <InfoCard label="預定完工日期" value={l.cases?.expected_end ?? "—"} />
+          <InfoCard
+            label="剩餘工期"
+            value={remainingDays === null ? "—" : `${remainingDays} 天`}
+          />
+        </div>
+      </Section>
+
+      <Section title={`一、依施工計畫書執行按圖施工概況 (${l.work_items?.length ?? 0})`}>
         {!l.work_items?.length ? (
           <p className="text-sm text-muted-foreground">未填工項</p>
         ) : (
@@ -193,9 +257,35 @@ export default async function LogDetailPage({
         )}
       </Section>
 
-      {/* 合約外項目 */}
+      <Section title="二、外包人員及機具管理">
+        <div className="space-y-5">
+          <ExtraItemsTable
+            rows={l.manpower?.subcontractors ?? []}
+            cols={[
+              { key: "trade", label: "工別" },
+              { key: "today", label: "本日人數", align: "right" },
+              { key: "accumulated", label: "累計人數", align: "right" },
+            ]}
+          />
+          <ExtraItemsTable
+            rows={l.manpower?.machines ?? []}
+            cols={[
+              { key: "name", label: "機具名稱" },
+              { key: "today", label: "本日使用數量", align: "right" },
+              { key: "accumulated", label: "累計使用數量", align: "right" },
+            ]}
+          />
+        </div>
+      </Section>
+
+      {l.vendor_notices && (
+        <Section title="三、通知協力廠商辦理事項">
+          <p className="whitespace-pre-line text-sm">{l.vendor_notices}</p>
+        </Section>
+      )}
+
       {l.extra_items?.length > 0 && (
-        <Section title={`合約外項目 (${l.extra_items.length})`}>
+        <Section title={`四、非合約內施工項目 (${l.extra_items.length})`}>
           <ExtraItemsTable
             rows={l.extra_items}
             cols={[
@@ -211,9 +301,8 @@ export default async function LogDetailPage({
         </Section>
       )}
 
-      {/* 未簽約項目 */}
       {l.unsigned_items?.length > 0 && (
-        <Section title={`未簽約項目 (${l.unsigned_items.length})`}>
+        <Section title={`五、未簽約施工內容 (${l.unsigned_items.length})`}>
           <ExtraItemsTable
             rows={l.unsigned_items}
             cols={[
@@ -251,7 +340,7 @@ export default async function LogDetailPage({
 
       {/* 備註 */}
       {l.notes && (
-        <Section title="備註">
+        <Section title="六、重要事項紀錄">
           <p className="whitespace-pre-line text-sm">{l.notes}</p>
         </Section>
       )}
@@ -323,4 +412,13 @@ function formatLogQty(
     return unit ? `${pct}% (${unit})` : `${pct}%`;
   }
   return `${qty}${unit ? " " + unit : ""}`;
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-[#E0DCD6] bg-white px-4 py-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-medium text-primary">{value}</div>
+    </div>
+  );
 }

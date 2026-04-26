@@ -12,10 +12,21 @@ import {
   type PickerValue,
 } from "@/components/work-items-picker";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
+import { NextStepHint } from "@/components/next-step-hint";
 import { saveLogAction } from "./actions";
 import { uploadPhotoAction } from "../[id]/photo-actions";
+import {
+  buildReportNumber,
+  getRemainingDays,
+  getWeekdayLabel,
+  serializeWeather,
+  WEATHER_OPTIONS,
+} from "@/lib/daily-log";
 import type {
   DailyLogExtraItem,
+  DailyLogMachine,
+  DailyLogSubcontractor,
+  DailyWeather,
   DailyLogUnsignedItem,
 } from "@/lib/types";
 
@@ -23,27 +34,35 @@ export type CaseOption = {
   id: string;
   name: string;
   code: string | null;
+  company: string;
+  location: string | null;
+  expectedEnd: string | null;
   workItems: PickerItem[];
 };
 
 export function NewLogForm({
   cases,
   presetCaseId,
+  currentUserName,
   initial,
   logId,
 }: {
   cases: CaseOption[];
   presetCaseId?: string;
+  currentUserName: string;
   initial?: {
     caseId: string;
     logDate: string;
-    weather: string;
-    manpowerOwn: number;
-    manpowerContract: number;
+    weather: DailyWeather;
+    manpowerTodayTotal: number;
+    manpowerAccumulatedTotal: number;
+    subcontractors: DailyLogSubcontractor[];
+    machines: DailyLogMachine[];
     workItems: PickerValue[];
     extraItems: DailyLogExtraItem[];
     unsignedItems: DailyLogUnsignedItem[];
     photos: string[];
+    vendorNotices: string;
     notes: string;
   };
   logId?: string;
@@ -60,12 +79,20 @@ export function NewLogForm({
   const [logDate, setLogDate] = useState(
     draft?.logDate ?? initial?.logDate ?? new Date().toISOString().slice(0, 10)
   );
-  const [weather, setWeather] = useState(draft?.weather ?? initial?.weather ?? "");
-  const [own, setOwn] = useState<string>(
-    draft?.own ?? String(initial?.manpowerOwn ?? "")
+  const [weather, setWeather] = useState<DailyWeather>(
+    draft?.weather ?? initial?.weather ?? {}
   );
-  const [contract, setContract] = useState<string>(
-    draft?.contract ?? String(initial?.manpowerContract ?? "")
+  const [todayTotal, setTodayTotal] = useState<string>(
+    draft?.todayTotal ?? String(initial?.manpowerTodayTotal ?? "")
+  );
+  const [accumulatedTotal, setAccumulatedTotal] = useState<string>(
+    draft?.accumulatedTotal ?? String(initial?.manpowerAccumulatedTotal ?? "")
+  );
+  const [subcontractors, setSubcontractors] = useState<DailyLogSubcontractor[]>(
+    draft?.subcontractors ?? initial?.subcontractors ?? []
+  );
+  const [machines, setMachines] = useState<DailyLogMachine[]>(
+    draft?.machines ?? initial?.machines ?? []
   );
   const [picked, setPicked] = useState<PickerValue[]>(
     draft?.picked ?? initial?.workItems ?? []
@@ -78,6 +105,9 @@ export function NewLogForm({
   );
   const [photos, setPhotos] = useState<string[]>(
     draft?.photos ?? initial?.photos ?? []
+  );
+  const [vendorNotices, setVendorNotices] = useState(
+    draft?.vendorNotices ?? initial?.vendorNotices ?? ""
   );
   const [notes, setNotes] = useState(draft?.notes ?? initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -93,8 +123,9 @@ export function NewLogForm({
         localStorage.setItem(
           draftKey,
           JSON.stringify({
-            caseId, logDate, weather, own, contract, picked,
-            extras, unsigned, photos, notes,
+            caseId, logDate, weather, todayTotal, accumulatedTotal,
+            subcontractors, machines, picked, extras, unsigned,
+            photos, vendorNotices, notes,
           })
         );
         setAutosaved(true);
@@ -104,8 +135,9 @@ export function NewLogForm({
     }, 600);
     return () => clearTimeout(t);
   }, [
-    draftKey, caseId, logDate, weather, own, contract, picked,
-    extras, unsigned, photos, notes,
+    draftKey, caseId, logDate, weather, todayTotal, accumulatedTotal,
+    subcontractors, machines, picked, extras, unsigned, photos,
+    vendorNotices, notes,
   ]);
 
   const selectedCase = useMemo(
@@ -113,6 +145,9 @@ export function NewLogForm({
     [cases, caseId]
   );
   const items = selectedCase?.workItems ?? [];
+  const remainingDays = getRemainingDays(selectedCase?.expectedEnd, logDate);
+  const reportNumber = buildReportNumber(logId, logDate);
+  const weekdayLabel = getWeekdayLabel(logDate);
 
   // 切案件時重設工項勾選
   function changeCase(next: string) {
@@ -185,15 +220,18 @@ export function NewLogForm({
         logId,
         caseId,
         logDate,
-        weather,
+        weather: serializeWeather(weather) ?? "",
         manpower: {
-          own: own ? Number(own) : undefined,
-          contract: contract ? Number(contract) : undefined,
+          today_total: todayTotal ? Number(todayTotal) : undefined,
+          accumulated_total: accumulatedTotal ? Number(accumulatedTotal) : undefined,
+          subcontractors,
+          machines,
         },
         workItems: picked,
         extraItems: extras,
         unsignedItems: unsigned,
         photos,
+        vendorNotices,
         notes,
         intent,
       });
@@ -213,8 +251,27 @@ export function NewLogForm({
 
   return (
     <div className="space-y-6">
+      <Section title="表頭資料" hint="依照裕民現有施工日誌格式，自動帶入案件與填表資訊">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <InfoCard label="表報編號" value={reportNumber} />
+          <InfoCard label="日期" value={`${logDate} · ${weekdayLabel}`} />
+          <InfoCard label="工程名稱" value={selectedCase?.name ?? "先選案件"} />
+          <InfoCard label="承攬廠商名稱" value={selectedCase?.company ?? "—"} />
+          <InfoCard
+            label="預定完工日期"
+            value={selectedCase?.expectedEnd ?? "—"}
+          />
+          <InfoCard
+            label="剩餘工期"
+            value={remainingDays === null ? "—" : `${remainingDays} 天`}
+          />
+          <InfoCard label="人員姓名" value={currentUserName} />
+          <InfoCard label="施工地點" value={selectedCase?.location ?? "—"} />
+        </div>
+      </Section>
+
       {/* 案件選擇 */}
-      <Section title="1. 案件">
+      <Section title="案件選擇">
         {cases.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             目前沒有可用案件。請辦公室助理先開案。
@@ -255,7 +312,7 @@ export function NewLogForm({
       </Section>
 
       {/* 基本 */}
-      <Section title="2. 日期 / 天氣">
+      <Section title="日期 / 天氣">
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="log_date">日期</Label>
@@ -268,60 +325,53 @@ export function NewLogForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>天氣</Label>
-            <div className="flex flex-wrap gap-2">
-              {["晴", "多雲", "陰", "小雨", "大雨", "雨停"].map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => setWeather(weather === w ? "" : w)}
-                  className={`min-h-[44px] rounded-md border px-4 text-sm transition-colors ${
-                    weather === w
-                      ? "border-accent bg-accent text-white"
-                      : "border-[#E0DCD6] bg-white text-foreground hover:bg-[#FAF7F2]"
-                  }`}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
+            <Label>天氣（上午 / 下午）</Label>
+            <WeatherPicker
+              label="上午"
+              value={weather.am}
+              onChange={(value) => setWeather((prev) => ({ ...prev, am: value }))}
+            />
+            <WeatherPicker
+              label="下午"
+              value={weather.pm}
+              onChange={(value) => setWeather((prev) => ({ ...prev, pm: value }))}
+            />
           </div>
         </div>
       </Section>
 
-      {/* 人力 */}
-      <Section title="3. 人力(可選填)">
-        <div className="grid grid-cols-2 gap-4">
+      <Section title="出工人數">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="own">自有</Label>
+            <Label htmlFor="today_total">本日出工人數</Label>
             <Input
-              id="own"
+              id="today_total"
               type="number"
               inputMode="numeric"
               min={0}
-              value={own}
-              onChange={(e) => setOwn(e.target.value)}
+              value={todayTotal}
+              onChange={(e) => setTodayTotal(e.target.value)}
               placeholder="0"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="contract">統包</Label>
+            <Label htmlFor="accumulated_total">累計出工人數</Label>
             <Input
-              id="contract"
+              id="accumulated_total"
               type="number"
               inputMode="numeric"
               min={0}
-              value={contract}
-              onChange={(e) => setContract(e.target.value)}
+              value={accumulatedTotal}
+              onChange={(e) => setAccumulatedTotal(e.target.value)}
               placeholder="0"
             />
           </div>
         </div>
       </Section>
 
-      {/* 工項 */}
       <Section
-        title={`4. 工項${picked.length > 0 ? ` (已選 ${picked.length})` : ""}`}
+        title="一、依施工計畫書執行按圖施工概況"
+        hint="依照表單主體填寫施工項目、當日完成數量與累計進度"
       >
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾工項</p>
@@ -330,9 +380,43 @@ export function NewLogForm({
         )}
       </Section>
 
-      {/* 合約外項目 */}
       <Section
-        title={`5. 合約外項目${extras.length > 0 ? ` (${extras.length})` : ""}`}
+        title="二、外包人員及機具管理"
+        hint="對齊現有 Excel 的第二區塊，分開記錄工別與機具"
+      >
+        <div className="space-y-5">
+          <ExtraItemsEditor<DailyLogSubcontractor>
+            rows={subcontractors}
+            onChange={setSubcontractors}
+            empty={EMPTY_SUBCONTRACTOR}
+            columns={SUBCONTRACTOR_COLS}
+            addLabel="+ 新增工別"
+            emptyHint="今天沒有外包工別就先留空"
+          />
+          <ExtraItemsEditor<DailyLogMachine>
+            rows={machines}
+            onChange={setMachines}
+            empty={EMPTY_MACHINE}
+            columns={MACHINE_COLS}
+            addLabel="+ 新增機具"
+            emptyHint="今天沒有機具使用就先留空"
+          />
+        </div>
+      </Section>
+
+      <Section title="三、通知協力廠商辦理事項">
+        <textarea
+          rows={3}
+          value={vendorNotices}
+          onChange={(e) => setVendorNotices(e.target.value)}
+          placeholder="例：通知水電廠商明日上午進場、補齊材料…"
+          className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+        />
+      </Section>
+
+      {/* 工項 */}
+      <Section
+        title={`四、非合約內施工項目${extras.length > 0 ? ` (${extras.length})` : ""}`}
         hint="非合約內,但實際有施工的項目(甲方臨時交辦等)"
       >
         <ExtraItemsEditor<DailyLogExtraItem>
@@ -345,9 +429,8 @@ export function NewLogForm({
         />
       </Section>
 
-      {/* 未簽約項目 */}
       <Section
-        title={`6. 未簽約項目${unsigned.length > 0 ? ` (${unsigned.length})` : ""}`}
+        title={`五、未簽約施工內容${unsigned.length > 0 ? ` (${unsigned.length})` : ""}`}
         hint="尚未追加合約 / 未報價的施工內容(點工或變更追加)"
       >
         <ExtraItemsEditor<DailyLogUnsignedItem>
@@ -360,8 +443,7 @@ export function NewLogForm({
         />
       </Section>
 
-      {/* 照片 */}
-      <Section title={`7. 照片${photos.length > 0 ? ` (${photos.length})` : ""}`}>
+      <Section title={`照片區${photos.length > 0 ? ` (${photos.length})` : ""}`}>
         <input
           type="file"
           accept="image/*"
@@ -409,8 +491,7 @@ export function NewLogForm({
         )}
       </Section>
 
-      {/* 備註 */}
-      <Section title="8. 備註(重要事項紀錄)">
+      <Section title="六、重要事項紀錄">
         <textarea
           rows={3}
           value={notes}
@@ -431,6 +512,10 @@ export function NewLogForm({
           ✓ 已自動暫存到此瀏覽器,下次回來會還原
         </p>
       )}
+
+      <NextStepHint tone="info">
+        「儲存草稿」可以晚點再回來填,只有你看得到。「送出核定」會通知老闆,送出後若要改要等被退回或請主管退回。
+      </NextStepHint>
 
       {/* 動作 */}
       <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:mx-0 md:rounded-md md:border md:bg-card md:px-5">
@@ -486,13 +571,16 @@ const EMPTY_UNSIGNED: DailyLogUnsignedItem = { name: "" };
 type StoredDraft = {
   caseId?: string;
   logDate?: string;
-  weather?: string;
-  own?: string;
-  contract?: string;
+  weather?: DailyWeather;
+  todayTotal?: string;
+  accumulatedTotal?: string;
+  subcontractors?: DailyLogSubcontractor[];
+  machines?: DailyLogMachine[];
   picked?: PickerValue[];
   extras?: DailyLogExtraItem[];
   unsigned?: DailyLogUnsignedItem[];
   photos?: string[];
+  vendorNotices?: string;
   notes?: string;
 };
 
@@ -543,6 +631,47 @@ async function compressPhoto(file: File): Promise<File> {
   }
 }
 
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-[#E0DCD6] bg-white px-4 py-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-medium text-primary">{value}</div>
+    </div>
+  );
+}
+
+function WeatherPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: DailyWeather["am"] | undefined;
+  onChange: (value: DailyWeather["am"] | undefined) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex flex-wrap gap-2">
+        {WEATHER_OPTIONS.map((w) => (
+          <button
+            key={w}
+            type="button"
+            onClick={() => onChange(value === w ? undefined : w)}
+            className={`min-h-[44px] rounded-md border px-4 text-sm transition-colors ${
+              value === w
+                ? "border-accent bg-accent text-white"
+                : "border-[#E0DCD6] bg-white text-foreground hover:bg-[#FAF7F2]"
+            }`}
+          >
+            {w}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const EXTRA_COLS: ColumnDef<DailyLogExtraItem>[] = [
   { key: "name", label: "施工項目", required: true, placeholder: "例:浴室牆面打除" },
   { key: "unit", label: "單位", placeholder: "例:㎡ / 式" },
@@ -566,4 +695,19 @@ const UNSIGNED_COLS: ColumnDef<DailyLogUnsignedItem>[] = [
   },
   { key: "quote_amount", label: "報價金額(元)", type: "number" },
   { key: "reason", label: "尚未追加 / 報價事由", placeholder: "例:等業主決定材質" },
+];
+
+const EMPTY_SUBCONTRACTOR: DailyLogSubcontractor = { trade: "" };
+const EMPTY_MACHINE: DailyLogMachine = { name: "" };
+
+const SUBCONTRACTOR_COLS: ColumnDef<DailyLogSubcontractor>[] = [
+  { key: "trade", label: "工別", required: true, placeholder: "例:泥作" },
+  { key: "today", label: "本日人數", type: "number", inputMode: "numeric" },
+  { key: "accumulated", label: "累計人數", type: "number", inputMode: "numeric" },
+];
+
+const MACHINE_COLS: ColumnDef<DailyLogMachine>[] = [
+  { key: "name", label: "機具名稱", required: true, placeholder: "例:切割機" },
+  { key: "today", label: "本日使用數量", type: "number", inputMode: "numeric" },
+  { key: "accumulated", label: "累計使用數量", type: "number", inputMode: "numeric" },
 ];

@@ -13,6 +13,14 @@ export async function approveLogAction(payload: {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "未登入" };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.role !== "owner") {
+    return { ok: false as const, error: "只有老闆可以核定" };
+  }
 
   if (!payload.signatureUrl) return { ok: false as const, error: "請先簽名" };
 
@@ -43,6 +51,14 @@ export async function rejectLogAction(payload: {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "未登入" };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.role !== "owner") {
+    return { ok: false as const, error: "只有老闆可以退回" };
+  }
   if (!payload.comment.trim())
     return { ok: false as const, error: "退回需要填原因" };
 
@@ -66,6 +82,15 @@ export async function rejectLogAction(payload: {
 
 export async function nextPendingRedirect(currentLogId: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user!.id)
+    .maybeSingle();
+  if (profile?.role !== "owner") redirect("/logs");
   const { data } = await supabase
     .from("daily_logs")
     .select("id")

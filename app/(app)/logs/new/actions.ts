@@ -20,6 +20,7 @@ type SaveLogPayload = {
   extraItems: DailyLogExtraItem[];
   unsignedItems: DailyLogUnsignedItem[];
   photos: string[];      // storage paths
+  vendorNotices: string;
   notes: string;
   intent: "draft" | "submit";
 };
@@ -30,6 +31,14 @@ export async function saveLogAction(payload: SaveLogPayload) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "未登入" };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.role !== "site_supervisor") {
+    return { ok: false, error: "只有工地主任可以填寫日誌" };
+  }
 
   if (!payload.caseId) return { ok: false, error: "請選案件" };
   if (!payload.logDate) return { ok: false, error: "請選日期" };
@@ -62,6 +71,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
         extra_items: payload.extraItems,
         unsigned_items: payload.unsignedItems,
         photos: payload.photos,
+        vendor_notices: payload.vendorNotices || null,
         notes: payload.notes || null,
         status,
         submitted_at: submittedAt ?? undefined,
@@ -82,6 +92,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
         extra_items: payload.extraItems,
         unsigned_items: payload.unsignedItems,
         photos: payload.photos,
+        vendor_notices: payload.vendorNotices || null,
         notes: payload.notes || null,
         status,
         submitted_at: submittedAt,
@@ -127,6 +138,12 @@ export async function deleteLogAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.role !== "site_supervisor") return;
   // 只能刪自己的草稿
   await supabase
     .from("daily_logs")

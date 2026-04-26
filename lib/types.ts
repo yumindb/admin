@@ -5,6 +5,11 @@ export type TenderImportStatus = "parsed" | "imported" | "failed";
 export type LogStatus = "draft" | "submitted" | "approved" | "rejected";
 export type ApprovalStage = "review" | "audit" | "approve";
 export type ApprovalDecision = "approved" | "rejected";
+export type WeatherOption = "晴" | "多雲" | "陰" | "小雨" | "大雨" | "雨停";
+export type DailyWeather = {
+  am?: WeatherOption;
+  pm?: WeatherOption;
+};
 
 export type DailyLogWorkItem = {
   work_item_id: string;     // FK 到 case_work_items.id
@@ -13,9 +18,25 @@ export type DailyLogWorkItem = {
   note?: string;
 };
 
+export type DailyLogSubcontractor = {
+  trade: string;
+  today?: number;
+  accumulated?: number;
+};
+
+export type DailyLogMachine = {
+  name: string;
+  today?: number;
+  accumulated?: number;
+};
+
 export type DailyLogManpower = {
-  own?: number;             // 自有
-  contract?: number;        // 統包
+  own?: number;             // 舊資料相容
+  contract?: number;        // 舊資料相容
+  today_total?: number;
+  accumulated_total?: number;
+  subcontractors?: DailyLogSubcontractor[];
+  machines?: DailyLogMachine[];
 };
 
 export type DailyLogExtraItem = {
@@ -43,12 +64,13 @@ export type DailyLog = {
   case_id: string;
   supervisor_id: string | null;
   log_date: string;
-  weather: string | null;
+  weather: string | null;   // JSON string: { am, pm }
   manpower: DailyLogManpower;
   work_items: DailyLogWorkItem[];
   extra_items: DailyLogExtraItem[];      // 非合約內
   unsigned_items: DailyLogUnsignedItem[]; // 未簽約
   photos: string[];         // storage path 陣列
+  vendor_notices: string | null;
   notes: string | null;
   status: LogStatus;
   submitted_at: string | null;

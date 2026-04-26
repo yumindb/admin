@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption } from "./new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
@@ -10,10 +11,19 @@ export default async function NewLogPage({
 }) {
   const { case: presetCaseId } = await searchParams;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, role")
+    .eq("id", user!.id)
+    .maybeSingle();
+  if (profile?.role !== "site_supervisor") redirect("/logs");
 
   const { data: cases } = await supabase
     .from("cases")
-    .select("id, name, code")
+    .select("id, name, code, company, location, expected_end")
     .eq("status", "active")
     .order("created_at", { ascending: false });
 
@@ -49,6 +59,9 @@ export default async function NewLogPage({
     id: c.id as string,
     name: c.name as string,
     code: c.code as string | null,
+    company: c.company as string,
+    location: c.location as string | null,
+    expectedEnd: c.expected_end as string | null,
     workItems: grouped.get(c.id as string) ?? [],
   }));
 
@@ -63,7 +76,11 @@ export default async function NewLogPage({
       </nav>
       <h1 className="mb-7 text-2xl font-semibold text-primary md:text-3xl">新日誌</h1>
 
-      <NewLogForm cases={caseOptions} presetCaseId={presetCaseId} />
+      <NewLogForm
+        cases={caseOptions}
+        presetCaseId={presetCaseId}
+        currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
+      />
     </div>
   );
 }

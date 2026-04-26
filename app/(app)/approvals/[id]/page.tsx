@@ -3,6 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ApprovalActions } from "./approval-actions";
 import { ExtraItemsTable } from "@/components/extra-items-table";
+import { NextStepHint } from "@/components/next-step-hint";
+import {
+  buildReportNumber,
+  formatWeatherSummary,
+  getRemainingDays,
+  getWeekdayLabel,
+} from "@/lib/daily-log";
 import type { DailyLog } from "@/lib/types";
 
 type WorkItemRow = {
@@ -19,18 +26,33 @@ export default async function ApprovalDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: roleProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user!.id)
+    .maybeSingle();
+  if (roleProfile?.role !== "owner") redirect("/logs");
 
   const { data: log } = await supabase
     .from("daily_logs")
     .select(
-      "*, cases(id, name, code), profiles!daily_logs_supervisor_id_fkey(full_name)"
+      "*, cases(id, name, code, company, expected_end), profiles!daily_logs_supervisor_id_fkey(full_name)"
     )
     .eq("id", id)
     .maybeSingle();
 
   if (!log) notFound();
   const l = log as DailyLog & {
-    cases: { id: string; name: string; code: string | null } | null;
+    cases: {
+      id: string;
+      name: string;
+      code: string | null;
+      company: string;
+      expected_end: string | null;
+    } | null;
     profiles: { full_name: string } | null;
   };
 
@@ -46,6 +68,7 @@ export default async function ApprovalDetailPage({
     : { data: [] };
   const wiMap = new Map<string, WorkItemRow>();
   for (const w of workItems ?? []) wiMap.set(w.id as string, w as WorkItemRow);
+  const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -66,13 +89,26 @@ export default async function ApprovalDetailPage({
         </h1>
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
           <span>日期:{new Date(l.log_date).toLocaleDateString("zh-TW")}</span>
+          <span>{getWeekdayLabel(l.log_date)}</span>
+          <span>表報編號:{buildReportNumber(l.id, l.log_date)}</span>
           <span>工地主任:{l.profiles?.full_name ?? "—"}</span>
-          {l.weather && <span>天氣:{l.weather}</span>}
+          <span>天氣:{formatWeatherSummary(l.weather)}</span>
         </div>
       </div>
 
-      {/* 摘要 */}
-      <Section title={`工項 (${l.work_items?.length ?? 0})`}>
+      <Section title="表頭摘要">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <InfoCard label="工程名稱" value={l.cases?.name ?? "—"} />
+          <InfoCard label="承攬廠商名稱" value={l.cases?.company ?? "—"} />
+          <InfoCard label="預定完工日期" value={l.cases?.expected_end ?? "—"} />
+          <InfoCard
+            label="剩餘工期"
+            value={remainingDays === null ? "—" : `${remainingDays} 天`}
+          />
+        </div>
+      </Section>
+
+      <Section title={`一、依施工計畫書執行按圖施工概況 (${l.work_items?.length ?? 0})`}>
         {!l.work_items?.length ? (
           <p className="text-sm text-muted-foreground">無</p>
         ) : (
@@ -118,8 +154,35 @@ export default async function ApprovalDetailPage({
         )}
       </Section>
 
+      <Section title="二、外包人員及機具管理">
+        <div className="space-y-5">
+          <ExtraItemsTable
+            rows={l.manpower?.subcontractors ?? []}
+            cols={[
+              { key: "trade", label: "工別" },
+              { key: "today", label: "本日人數", align: "right" },
+              { key: "accumulated", label: "累計人數", align: "right" },
+            ]}
+          />
+          <ExtraItemsTable
+            rows={l.manpower?.machines ?? []}
+            cols={[
+              { key: "name", label: "機具名稱" },
+              { key: "today", label: "本日使用數量", align: "right" },
+              { key: "accumulated", label: "累計使用數量", align: "right" },
+            ]}
+          />
+        </div>
+      </Section>
+
+      {l.vendor_notices && (
+        <Section title="三、通知協力廠商辦理事項">
+          <p className="whitespace-pre-line text-sm">{l.vendor_notices}</p>
+        </Section>
+      )}
+
       {l.extra_items?.length > 0 && (
-        <Section title={`合約外項目 (${l.extra_items.length})`}>
+        <Section title={`四、非合約內施工項目 (${l.extra_items.length})`}>
           <ExtraItemsTable
             rows={l.extra_items}
             cols={[
@@ -136,7 +199,7 @@ export default async function ApprovalDetailPage({
       )}
 
       {l.unsigned_items?.length > 0 && (
-        <Section title={`未簽約項目 (${l.unsigned_items.length})`}>
+        <Section title={`五、未簽約施工內容 (${l.unsigned_items.length})`}>
           <ExtraItemsTable
             rows={l.unsigned_items}
             cols={[
@@ -172,12 +235,17 @@ export default async function ApprovalDetailPage({
       </Section>
 
       {l.notes && (
-        <Section title="備註">
+        <Section title="六、重要事項紀錄">
           <p className="whitespace-pre-line text-sm">{l.notes}</p>
         </Section>
       )}
 
       {/* 簽核 */}
+      <div className="mb-4">
+        <NextStepHint tone="info">
+          確認上方內容後,在下方簽名按「核定通過」,系統自動跳下一份。要退回切到「退回」分頁。
+        </NextStepHint>
+      </div>
       <ApprovalActions logId={id} />
     </div>
   );
@@ -189,5 +257,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="mb-3 text-base font-semibold text-primary md:text-lg">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-[#E0DCD6] bg-white px-4 py-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-medium text-primary">{value}</div>
+    </div>
   );
 }

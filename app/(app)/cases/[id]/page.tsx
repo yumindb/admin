@@ -9,6 +9,7 @@ import {
 } from "@/components/work-items-tree";
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
+import { NextStepHint } from "@/components/next-step-hint";
 import type {
   Case,
   CaseWorkItem,
@@ -186,6 +187,13 @@ export default async function CaseDetailPage({
             </button>
           </form>
         </div>
+      )}
+
+      {/* 下一步提示 — 看當前狀態給不同訊息 */}
+      {items.length > 0 && (logs ?? []).length === 0 && (
+        <NextStepHint tone="info" className="mb-5">
+          工項已建立。請工地主任登入後到「我的日誌」填日誌,送出核定後「累計完成」欄會自動累計。
+        </NextStepHint>
       )}
 
       <div className="mb-4 flex items-center justify-between">

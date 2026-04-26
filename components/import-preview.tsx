@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { NextStepHint } from "@/components/next-step-hint";
 import { WorkItemsTree, type TreeItem } from "@/components/work-items-tree";
 import {
   parseTenderArrayBuffer,
@@ -183,10 +184,12 @@ export function ImportPreview({ caseId }: { caseId: string }) {
 
           {/* Step 3: 確認 */}
           <div className="rounded-lg border border-[#E0DCD6] bg-card p-6 md:p-7">
-            <div className="mb-2 text-base font-semibold text-primary md:text-lg">3. 確認匯入</div>
-            <p className="mb-4 text-xs text-muted-foreground">
-              預覽無誤後點下方按鈕，工項會寫入此案件。重複匯入時：已存在的項目（依「項次 + 名稱」判斷）不會覆蓋你已修改的內容。
-            </p>
+            <div className="mb-3 text-base font-semibold text-primary md:text-lg">3. 確認匯入</div>
+            <div className="mb-4">
+              <NextStepHint tone="info">
+                重複匯入會合併,你在工項頁改過的內容不會被覆蓋。勾「略過」的列也不會寫入。
+              </NextStepHint>
+            </div>
             {submitMsg && (
               <p
                 className={`mb-3 rounded-md px-3 py-2 text-sm ${
