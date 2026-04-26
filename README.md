@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 裕民工務 內部工程管理系統
 
-## Getting Started
+> 工程日誌 × 簽核流程 × 標單匯入 × LINE 通知
 
-First, run the development server:
+POC + Phase 1-2 開發中。給 Phil 看的最初版 demo。
+
+## 開發
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 技術棧
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Next.js 15 + React 19 + TypeScript + Turbopack
+- Tailwind CSS v4 + shadcn/ui (Radix + Lucide)
+- Supabase (PostgreSQL + Auth + Storage)
+- xlsx (標單 parser)、react-signature-canvas (簽名)、react-hook-form + zod (表單)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 環境設定
 
-## Learn More
+複製 `.env.local.example` → `.env.local`，填入 Supabase 與 LINE 的 keys。
 
-To learn more about Next.js, take a look at the following resources:
+## 重要文件
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `CLAUDE.md` → `docs/PROJECT.md` — Claude Code 進入專案請先讀
+- `.claude/agents/` — 11 個 subagents（後端、前端、DB、LINE、QA、UI/UX 審查 + 3 個使用者模擬）
+- `標單範例/` — Phil 提供的真實標單樣本（用於 parser 開發）
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 部署
 
-## Deploy on Vercel
+Push 到 `main` → Vercel 自動 build。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 智財與授權
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+程式碼著作權歸 Still Lab（一亭工作室）；裕民工務獲得永久完整使用授權。
+所有雲端帳號（Supabase / Vercel / GitHub）以裕民名義註冊與持有。
+依《著作權法》第 12 條，受聘開發軟體著作權預設歸開發者，出資人擁有使用權。

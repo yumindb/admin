@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Sensitive / large local-only data
+.env.local
+.env*.local
+工地照片/
+# 標單範例/  # 暫時保留（給 parser dev 用）
