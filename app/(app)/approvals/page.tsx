@@ -21,6 +21,11 @@ const PAGE_COPY: Record<
   ApprovalStage,
   { title: string; subtitle: string; emptyHint: string }
 > = {
+  fill: {
+    title: "草稿",
+    subtitle: "尚未送出的日誌",
+    emptyHint: "目前沒有草稿",
+  },
   review: {
     title: "待複核",
     subtitle: "你送出的日誌等你自己複核確認",

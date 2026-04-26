@@ -29,6 +29,7 @@ const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
 };
 
 const NEXT_STAGE: Record<ApprovalStage, ApprovalStage | null> = {
+  fill: "review",          // submitted → enters review queue
   review: "audit",
   audit: "approve",
   approve: null,           // owner approves → done

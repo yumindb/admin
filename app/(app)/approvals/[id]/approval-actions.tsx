@@ -12,6 +12,7 @@ import { uploadSignatureAction } from "../../logs/[id]/photo-actions";
 import type { ApprovalStage } from "@/lib/types";
 
 const VERB: Record<ApprovalStage, string> = {
+  fill: "送出",
   review: "複核通過",
   audit: "審核通過",
   approve: "核定通過",

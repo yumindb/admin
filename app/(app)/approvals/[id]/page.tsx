@@ -26,6 +26,7 @@ const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
 };
 
 const STAGE_COPY: Record<ApprovalStage, { title: string; verb: string }> = {
+  fill: { title: "填寫", verb: "送出" },
   review: { title: "複核", verb: "複核通過" },
   audit: { title: "審核", verb: "審核通過" },
   approve: { title: "核定", verb: "核定通過" },
