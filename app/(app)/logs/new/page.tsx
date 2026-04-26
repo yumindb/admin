@@ -53,15 +53,15 @@ export default async function NewLogPage({
   }));
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <nav className="mb-3 text-xs text-muted-foreground">
+    <div className="mx-auto max-w-4xl">
+      <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/logs" className="hover:text-accent">
           我的日誌
         </Link>
         <span className="mx-1.5">／</span>
         <span>新日誌</span>
       </nav>
-      <h1 className="mb-6 text-xl font-semibold text-primary">新日誌</h1>
+      <h1 className="mb-7 text-2xl font-semibold text-primary md:text-3xl">新日誌</h1>
 
       <NewLogForm cases={caseOptions} presetCaseId={presetCaseId} />
     </div>

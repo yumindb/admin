@@ -33,15 +33,19 @@ export default async function CasesPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-7xl">
+      <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-primary">案件</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold text-primary md:text-3xl">案件</h1>
+          <p className="mt-1.5 text-base text-muted-foreground">
             裕民工務目前管理的案件清單
           </p>
         </div>
-        <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90">
+        <Button
+          asChild
+          size="lg"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+        >
           <Link href="/cases/new">+ 開新案</Link>
         </Button>
       </div>
@@ -55,32 +59,32 @@ export default async function CasesPage() {
       {!cases?.length ? (
         <EmptyState />
       ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
           {(cases as Case[]).map((c) => {
             const s = STATUS_LABEL[c.status] ?? STATUS_LABEL.active;
             return (
               <Link
                 key={c.id}
                 href={`/cases/${c.id}`}
-                className="group rounded-md border border-[#E0DCD6] bg-card p-5 transition-colors hover:border-accent"
+                className="group rounded-lg border border-[#E0DCD6] bg-card p-6 transition-colors hover:border-accent"
               >
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
                     {c.code ?? "未編號"}
                   </span>
                   <span
-                    className={`rounded-full border px-2 py-0.5 text-xs ${s.cls}`}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
                   >
                     {s.label}
                   </span>
                 </div>
-                <h3 className="text-base font-semibold text-primary group-hover:text-accent">
+                <h3 className="text-lg font-semibold text-primary group-hover:text-accent md:text-xl">
                   {c.name}
                 </h3>
-                <p className="mt-2 line-clamp-1 text-sm text-muted-foreground">
+                <p className="mt-2.5 line-clamp-1 text-base text-muted-foreground">
                   {c.location || "—"}
                 </p>
-                <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+                <div className="mt-5 flex items-center justify-between text-sm text-muted-foreground">
                   <span>{c.client || c.company}</span>
                   <span>
                     {c.started_at
@@ -99,13 +103,17 @@ export default async function CasesPage() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center">
-      <div className="mb-3 text-4xl text-[#E0DCD6]">＋</div>
-      <p className="mb-1 text-sm text-foreground">還沒有任何案件</p>
-      <p className="mb-5 text-xs text-muted-foreground">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
+      <div className="mb-3 text-5xl text-[#E0DCD6]">＋</div>
+      <p className="mb-1.5 text-base text-foreground">還沒有任何案件</p>
+      <p className="mb-6 text-sm text-muted-foreground">
         點下方按鈕開新案，接著上傳標單 .xlsx 自動建立工項
       </p>
-      <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90">
+      <Button
+        asChild
+        size="lg"
+        className="bg-primary text-primary-foreground hover:bg-primary/90"
+      >
         <Link href="/cases/new">開第一個案件</Link>
       </Button>
     </div>

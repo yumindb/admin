@@ -36,23 +36,23 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex h-14 items-center justify-between border-b border-[#E0DCD6] bg-primary px-6 text-primary-foreground">
-        <div className="flex items-center gap-6">
+      <header className="flex h-16 items-center justify-between border-b border-[#E0DCD6] bg-primary px-4 text-primary-foreground md:px-8">
+        <div className="flex items-center gap-8">
           <Link
             href="/"
-            className="flex items-center gap-2.5 text-base font-semibold tracking-wider"
+            className="flex items-center gap-3 text-lg font-semibold tracking-wider"
           >
             <Image
               src="/yumin-badge-white.svg"
               alt=""
-              width={22}
-              height={31}
+              width={24}
+              height={34}
               priority
-              className="h-7 w-auto"
+              className="h-8 w-auto"
             />
             裕民工務 管理系統
           </Link>
-          <nav className="hidden items-center gap-5 text-sm text-[#E8E4DE] md:flex">
+          <nav className="hidden items-center gap-6 text-base text-[#E8E4DE] md:flex">
             {profile?.role === "site_supervisor" ? (
               <>
                 <Link href="/logs" className="hover:text-white">
@@ -86,15 +86,15 @@ export default async function AppLayout({
 
         <div className="flex items-center gap-4 text-sm">
           <div className="hidden text-right md:block">
-            <div className="text-[#E8E4DE]">{fullName}</div>
-            <div className="text-xs text-[#A07850]">
+            <div className="text-base text-[#E8E4DE]">{fullName}</div>
+            <div className="text-sm text-[#A07850]">
               {company} · {roleLabel}
             </div>
           </div>
           <form action={logoutAction}>
             <button
               type="submit"
-              className="rounded-md border border-[#A07850]/40 px-3 py-1.5 text-xs text-[#E8E4DE] transition-colors hover:bg-white/5"
+              className="rounded-md border border-[#A07850]/40 px-3 py-2 text-sm text-[#E8E4DE] transition-colors hover:bg-white/5"
             >
               登出
             </button>
@@ -102,7 +102,9 @@ export default async function AppLayout({
         </div>
       </header>
 
-      <main className="flex-1 px-6 py-8 md:px-10">{children}</main>
+      <main className="flex-1 px-4 py-6 md:px-8 md:py-10 lg:px-12">
+        {children}
+      </main>
     </div>
   );
 }

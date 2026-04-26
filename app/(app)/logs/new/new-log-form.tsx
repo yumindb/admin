@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -50,57 +50,40 @@ export function NewLogForm({
 }) {
   const router = useRouter();
 
-  // localStorage 自動存草稿:只對新建(沒 logId)生效。每次 onChange debounce 寫入,
-  // 進頁面時還原。送出/儲存草稿成功後清掉。
+  // localStorage 自動存草稿:只對新建(沒 logId)生效。
   const draftKey = logId ? null : "yumin-newlog-draft-v1";
-  const restored = useRef(false);
+  const [draft] = useState<StoredDraft | null>(() => readStoredDraft(draftKey));
 
-  const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
+  const [caseId, setCaseId] = useState(
+    draft?.caseId ?? initial?.caseId ?? presetCaseId ?? ""
+  );
   const [logDate, setLogDate] = useState(
-    initial?.logDate ?? new Date().toISOString().slice(0, 10)
+    draft?.logDate ?? initial?.logDate ?? new Date().toISOString().slice(0, 10)
   );
-  const [weather, setWeather] = useState(initial?.weather ?? "");
-  const [own, setOwn] = useState<string>(String(initial?.manpowerOwn ?? ""));
+  const [weather, setWeather] = useState(draft?.weather ?? initial?.weather ?? "");
+  const [own, setOwn] = useState<string>(
+    draft?.own ?? String(initial?.manpowerOwn ?? "")
+  );
   const [contract, setContract] = useState<string>(
-    String(initial?.manpowerContract ?? "")
+    draft?.contract ?? String(initial?.manpowerContract ?? "")
   );
-  const [picked, setPicked] = useState<PickerValue[]>(initial?.workItems ?? []);
+  const [picked, setPicked] = useState<PickerValue[]>(
+    draft?.picked ?? initial?.workItems ?? []
+  );
   const [extras, setExtras] = useState<DailyLogExtraItem[]>(
-    initial?.extraItems ?? []
+    draft?.extras ?? initial?.extraItems ?? []
   );
   const [unsigned, setUnsigned] = useState<DailyLogUnsignedItem[]>(
-    initial?.unsignedItems ?? []
+    draft?.unsigned ?? initial?.unsignedItems ?? []
   );
-  const [photos, setPhotos] = useState<string[]>(initial?.photos ?? []);
-  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [photos, setPhotos] = useState<string[]>(
+    draft?.photos ?? initial?.photos ?? []
+  );
+  const [notes, setNotes] = useState(draft?.notes ?? initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [autosaved, setAutosaved] = useState(false);
+  const [autosaved, setAutosaved] = useState(Boolean(draft));
   const [isPending, startTransition] = useTransition();
-
-  // 進頁面還原草稿(只新建)
-  useEffect(() => {
-    if (!draftKey || restored.current) return;
-    restored.current = true;
-    try {
-      const raw = localStorage.getItem(draftKey);
-      if (!raw) return;
-      const d = JSON.parse(raw);
-      if (d.caseId) setCaseId(d.caseId);
-      if (d.logDate) setLogDate(d.logDate);
-      if (d.weather !== undefined) setWeather(d.weather);
-      if (d.own !== undefined) setOwn(d.own);
-      if (d.contract !== undefined) setContract(d.contract);
-      if (Array.isArray(d.picked)) setPicked(d.picked);
-      if (Array.isArray(d.extras)) setExtras(d.extras);
-      if (Array.isArray(d.unsigned)) setUnsigned(d.unsigned);
-      if (Array.isArray(d.photos)) setPhotos(d.photos);
-      if (d.notes !== undefined) setNotes(d.notes);
-      setAutosaved(true);
-    } catch {
-      // ignore corrupt draft
-    }
-  }, [draftKey]);
 
   // debounce 寫 localStorage
   useEffect(() => {
@@ -158,9 +141,11 @@ export function NewLogForm({
     setError(null);
     setUploadProgress({ done: 0, total: validFiles.length });
 
+    const preparedFiles = await Promise.all(validFiles.map((f) => compressPhoto(f)));
+
     // 並行上傳每張,完成一張就 +1
     const results = await Promise.all(
-      validFiles.map(async (f) => {
+      preparedFiles.map(async (f) => {
         const fd = new FormData();
         fd.set("file", f);
         const res = await uploadPhotoAction(fd);
@@ -235,11 +220,11 @@ export function NewLogForm({
             目前沒有可用案件。請辦公室助理先開案。
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {cases.map((c) => (
               <label
                 key={c.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-md border px-4 py-3 transition-colors ${
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border px-5 py-4 transition-colors ${
                   caseId === c.id
                     ? "border-accent bg-[#FAF7F2]"
                     : "border-[#E0DCD6] hover:border-[#A07850]/40"
@@ -250,14 +235,16 @@ export function NewLogForm({
                   name="case"
                   checked={caseId === c.id}
                   onChange={() => changeCase(c.id)}
-                  className="mt-1 size-4 shrink-0 cursor-pointer accent-[#A07850]"
+                  className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850]"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-sm text-muted-foreground">
                     {c.code ?? "未編號"}
                   </div>
-                  <div className="text-sm font-medium text-primary">{c.name}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
+                  <div className="text-base font-semibold text-primary md:text-lg">
+                    {c.name}
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
                     {c.workItems.length} 個工項可填
                   </div>
                 </div>
@@ -384,6 +371,9 @@ export function NewLogForm({
           disabled={uploading}
           className="block w-full rounded-md border border-[#E0DCD6] bg-white p-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
         />
+        <p className="mt-2 text-xs text-muted-foreground">
+          手機照片會先在瀏覽器自動壓縮，再上傳到系統，減少現場等待時間。
+        </p>
         {uploading && uploadProgress.total > 0 && (
           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <span>
@@ -481,10 +471,10 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-md border border-[#E0DCD6] bg-card p-5">
-      <h2 className="mb-1 text-sm font-medium text-primary">{title}</h2>
-      {hint && <p className="mb-3 text-xs text-muted-foreground">{hint}</p>}
-      {!hint && <div className="mb-3" />}
+    <section className="rounded-lg border border-[#E0DCD6] bg-card p-5 md:p-6">
+      <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">{title}</h2>
+      {hint && <p className="mb-4 text-sm text-muted-foreground">{hint}</p>}
+      {!hint && <div className="mb-4" />}
       {children}
     </section>
   );
@@ -492,6 +482,66 @@ function Section({
 
 const EMPTY_EXTRA: DailyLogExtraItem = { name: "" };
 const EMPTY_UNSIGNED: DailyLogUnsignedItem = { name: "" };
+
+type StoredDraft = {
+  caseId?: string;
+  logDate?: string;
+  weather?: string;
+  own?: string;
+  contract?: string;
+  picked?: PickerValue[];
+  extras?: DailyLogExtraItem[];
+  unsigned?: DailyLogUnsignedItem[];
+  photos?: string[];
+  notes?: string;
+};
+
+function readStoredDraft(draftKey: string | null): StoredDraft | null {
+  if (!draftKey || typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(draftKey);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredDraft;
+  } catch {
+    return null;
+  }
+}
+
+async function compressPhoto(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  if (file.size <= 1.2 * 1024 * 1024) return file;
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 1600;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.82);
+    });
+    if (!blob || blob.size >= file.size) return file;
+
+    const nextName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], nextName, {
+      type: "image/jpeg",
+      lastModified: file.lastModified,
+    });
+  } catch {
+    return file;
+  }
+}
 
 const EXTRA_COLS: ColumnDef<DailyLogExtraItem>[] = [
   { key: "name", label: "施工項目", required: true, placeholder: "例:浴室牆面打除" },

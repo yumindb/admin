@@ -17,17 +17,17 @@ export function ExtraItemsTable<T extends Record<string, unknown>>({
   cols: ExtraTableCol<T>[];
 }) {
   if (!rows.length) {
-    return <p className="text-sm text-muted-foreground">無</p>;
+    return <p className="text-base text-muted-foreground">無</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-md border border-[#E0DCD6] bg-card">
-      <table className="min-w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
+      <table className="min-w-full text-base">
         <thead>
           <tr className="bg-primary text-primary-foreground">
             {cols.map((c) => (
               <th
                 key={c.key}
-                className={`h-11 px-3 text-xs font-medium tracking-wider ${
+                className={`h-12 px-4 text-sm font-medium tracking-wider ${
                   c.align === "right" ? "text-right" : "text-left"
                 }`}
               >
@@ -44,7 +44,7 @@ export function ExtraItemsTable<T extends Record<string, unknown>>({
                 return (
                   <td
                     key={c.key}
-                    className={`h-12 px-3 align-top ${
+                    className={`h-14 px-4 align-top ${
                       c.align === "right"
                         ? "text-right tabular-nums"
                         : ""

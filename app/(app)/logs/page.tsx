@@ -41,19 +41,20 @@ export default async function LogsPage() {
   const isSupervisor = profile?.role === "site_supervisor";
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl">
+      <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-primary">
+          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
             {isSupervisor ? "我的日誌" : "施工日誌"}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1.5 text-base text-muted-foreground">
             {isSupervisor ? "你建的施工日誌" : "全部施工日誌"}
           </p>
         </div>
         {isSupervisor && (
           <Button
             asChild
+            size="lg"
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Link href="/logs/new">+ 新日誌</Link>
@@ -70,32 +71,32 @@ export default async function LogsPage() {
       {!list.length ? (
         <Empty isSupervisor={isSupervisor} />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {list.map((l) => {
             const s = STATUS[l.status] ?? STATUS.draft;
             return (
               <Link
                 key={l.id}
                 href={`/logs/${l.id}`}
-                className="block rounded-md border border-[#E0DCD6] bg-card p-4 transition-colors hover:border-accent"
+                className="block rounded-lg border border-[#E0DCD6] bg-card p-5 transition-colors hover:border-accent md:p-6"
               >
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <div className="text-sm text-muted-foreground">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <div className="text-base text-muted-foreground">
                     {new Date(l.log_date).toLocaleDateString("zh-TW")}
                     {l.weather && (
-                      <span className="ml-2 text-xs">· {l.weather}</span>
+                      <span className="ml-2 text-sm">· {l.weather}</span>
                     )}
                   </div>
                   <span
-                    className={`rounded-full border px-2 py-0.5 text-xs ${s.cls}`}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
                   >
                     {s.label}
                   </span>
                 </div>
-                <h3 className="text-base font-semibold text-primary">
+                <h3 className="text-lg font-semibold text-primary md:text-xl">
                   {l.cases?.name ?? "(已刪除案件)"}
                 </h3>
-                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
                   <span>{l.work_items?.length ?? 0} 個工項</span>
                   <span>{l.photos?.length ?? 0} 張照片</span>
                   {l.notes && <span className="line-clamp-1">📝 {l.notes}</span>}
@@ -111,12 +112,12 @@ export default async function LogsPage() {
 
 function Empty({ isSupervisor }: { isSupervisor: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center">
-      <div className="mb-3 text-4xl text-[#E0DCD6]">📋</div>
-      <p className="mb-1 text-sm text-foreground">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
+      <div className="mb-3 text-5xl text-[#E0DCD6]">📋</div>
+      <p className="mb-1.5 text-base text-foreground">
         {isSupervisor ? "你還沒建任何日誌" : "目前還沒有任何日誌"}
       </p>
-      <p className="mb-5 text-xs text-muted-foreground">
+      <p className="mb-6 text-sm text-muted-foreground">
         {isSupervisor
           ? "選一個案件開新日誌,填工項數量、加照片、送出給老闆核定"
           : "工地主任送出日誌後會出現在這裡"}
@@ -124,6 +125,7 @@ function Empty({ isSupervisor }: { isSupervisor: boolean }) {
       {isSupervisor && (
         <Button
           asChild
+          size="lg"
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Link href="/logs/new">建第一份日誌</Link>

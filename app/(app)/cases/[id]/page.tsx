@@ -93,8 +93,8 @@ export default async function CaseDetailPage({
   }));
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <nav className="mb-3 text-xs text-muted-foreground">
+    <div className="mx-auto max-w-7xl">
+      <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/" className="hover:text-accent">
           案件
         </Link>
@@ -102,11 +102,11 @@ export default async function CaseDetailPage({
         <span>{c.name}</span>
       </nav>
 
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <div className="text-xs text-muted-foreground">{c.code ?? "未編號"}</div>
-          <h1 className="mt-1 text-xl font-semibold text-primary">{c.name}</h1>
-          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground">{c.code ?? "未編號"}</div>
+          <h1 className="mt-1.5 text-2xl font-semibold text-primary md:text-3xl">{c.name}</h1>
+          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 text-base text-muted-foreground">
             <span>地點：{c.location || "—"}</span>
             <span>業主：{c.client || "—"}</span>
             <span>
@@ -120,6 +120,7 @@ export default async function CaseDetailPage({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             asChild
+            size="lg"
             variant="outline"
             className="border-[#E0DCD6]"
           >
@@ -132,6 +133,7 @@ export default async function CaseDetailPage({
           />
           <Button
             asChild
+            size="lg"
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Link href={`/cases/${id}/import`}>上傳標單</Link>
@@ -140,7 +142,7 @@ export default async function CaseDetailPage({
       </div>
 
       {/* 匯入資訊 */}
-      <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">
         <Stat
           label="工項總數"
           value={items.length}
@@ -162,14 +164,14 @@ export default async function CaseDetailPage({
       </div>
 
       {lastImport && (
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-4 py-3 text-sm text-muted-foreground">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#E0DCD6] bg-[#FAF7F2] px-5 py-4 text-base text-muted-foreground">
           <div>
             最後匯入：
             <span className="ml-1 text-foreground">{lastImport.file_name}</span>
-            <span className="ml-3 text-xs">
+            <span className="ml-3 text-sm">
               {new Date(lastImport.created_at).toLocaleString("zh-TW")}
             </span>
-            <span className="ml-3 text-xs">
+            <span className="ml-3 text-sm">
               （新增 {lastImport.imported_count} 項，略過 {lastImport.skipped_count} 項）
             </span>
           </div>
@@ -178,7 +180,7 @@ export default async function CaseDetailPage({
             <input type="hidden" name="importId" value={lastImport.id} />
             <button
               type="submit"
-              className="text-xs text-[#B91C1C] underline-offset-2 hover:underline"
+              className="text-sm text-[#B91C1C] underline-offset-2 hover:underline"
             >
               撤銷此次匯入
             </button>
@@ -186,18 +188,19 @@ export default async function CaseDetailPage({
         </div>
       )}
 
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-primary">工項清單</h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">工項清單</h2>
       </div>
 
       {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center">
-          <p className="mb-1 text-sm text-foreground">尚未匯入標單</p>
-          <p className="mb-5 text-xs text-muted-foreground">
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
+          <p className="mb-1.5 text-base text-foreground">尚未匯入標單</p>
+          <p className="mb-6 text-sm text-muted-foreground">
             上傳 .xlsx 標單後，工項會自動建立並依項次階層排列
           </p>
           <Button
             asChild
+            size="lg"
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Link href={`/cases/${id}/import`}>上傳標單</Link>
@@ -208,8 +211,8 @@ export default async function CaseDetailPage({
       )}
 
       {c.notes && (
-        <div className="mt-8 rounded-md border border-[#E0DCD6] bg-card p-5">
-          <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+        <div className="mt-8 rounded-lg border border-[#E0DCD6] bg-card p-6">
+          <div className="mb-2 text-sm uppercase tracking-wider text-muted-foreground">
             備註
           </div>
           <p className="whitespace-pre-line text-sm">{c.notes}</p>
@@ -229,10 +232,10 @@ function Stat({
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-md border border-[#E0DCD6] bg-card p-5">
-      <div className="text-xs text-muted-foreground">{label}</div>
+    <div className="rounded-lg border border-[#E0DCD6] bg-card p-5 md:p-6">
+      <div className="text-sm text-muted-foreground">{label}</div>
       <div
-        className={`mt-1 text-2xl font-semibold tabular-nums ${
+        className={`mt-1.5 text-3xl font-semibold tabular-nums md:text-4xl ${
           accent ? "stat-number" : "text-primary"
         }`}
       >

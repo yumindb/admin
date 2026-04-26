@@ -84,7 +84,7 @@ export function WorkItemsTree({
 
   if (!items.length) {
     return (
-      <div className="rounded-md border border-dashed border-[#E0DCD6] bg-card px-6 py-12 text-center text-sm text-muted-foreground">
+      <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center text-base text-muted-foreground">
         尚無工項
       </div>
     );
@@ -93,8 +93,8 @@ export function WorkItemsTree({
   const showProgress = !!progress;
 
   return (
-    <div className="overflow-x-auto rounded-md border border-[#E0DCD6] bg-card">
-      <table className="min-w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
+      <table className="min-w-full text-base">
         <thead>
           <tr className="bg-primary text-primary-foreground">
             <Th className="w-[18%]">項次</Th>
@@ -132,7 +132,7 @@ export function WorkItemsTree({
 
 function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={cn("h-11 px-3 text-left text-xs font-medium tracking-wider", className)}>
+    <th className={cn("h-12 px-3 text-left text-sm font-medium tracking-wider md:px-4", className)}>
       {children}
     </th>
   );
@@ -171,7 +171,7 @@ function Row({
           isSection && "bg-[#FAF7F2] font-medium"
         )}
       >
-        <td className="h-12 px-3 align-top">
+        <td className="h-14 px-3 align-top md:px-4">
           <div
             className="flex items-start gap-1"
             style={{ paddingLeft: `${node.depth * 14}px` }}
@@ -199,26 +199,26 @@ function Row({
           </div>
         </td>
 
-        <td className="h-12 px-3 py-2 align-top">
+        <td className="h-14 px-3 py-2 align-top md:px-4">
           <div
             className={cn(
-              "whitespace-pre-line",
-              isSection && "text-primary",
-              isSpec && "text-[13px]"
+              "whitespace-pre-line text-base",
+              isSection && "text-primary font-medium",
+              isSpec && "text-sm"
             )}
           >
             {node.name}
           </div>
           {node.brandNote && (
-            <div className="mt-1 text-xs text-[#A07850]">廠牌：{node.brandNote}</div>
+            <div className="mt-1 text-sm text-[#A07850]">廠牌：{node.brandNote}</div>
           )}
           {node.warningMsg && (
-            <div className="mt-1 text-xs text-[#B91C1C]">⚠ {node.warningMsg}</div>
+            <div className="mt-1 text-sm text-[#B91C1C]">⚠ {node.warningMsg}</div>
           )}
         </td>
 
-        <td className="h-12 px-3 align-top text-muted-foreground">{node.unit ?? "—"}</td>
-        <td className="h-12 px-3 align-top text-right tabular-nums">
+        <td className="h-14 px-3 align-top md:px-4 text-muted-foreground">{node.unit ?? "—"}</td>
+        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums">
           {node.quantity ?? "—"}
         </td>
         {progress && (
@@ -229,13 +229,13 @@ function Row({
             isSection={isSection}
           />
         )}
-        <td className="h-12 px-3 align-top text-right tabular-nums">
+        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums">
           {node.unitPrice ?? "—"}
         </td>
-        <td className="h-12 px-3 align-top text-right tabular-nums">
+        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums">
           {node.totalPrice ?? "—"}
         </td>
-        <td className="h-12 px-3 align-top text-center">
+        <td className="h-14 px-3 align-top md:px-4 text-center">
           {showSkippedToggle && onToggleSkipped ? (
             <input
               type="checkbox"

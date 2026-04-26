@@ -21,8 +21,8 @@ export default async function ImportPage({
   const c = caseRow as Pick<Case, "id" | "name" | "code">;
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <nav className="mb-3 text-xs text-muted-foreground">
+    <div className="mx-auto max-w-7xl">
+      <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/" className="hover:text-accent">
           案件
         </Link>
@@ -34,8 +34,8 @@ export default async function ImportPage({
         <span>匯入標單</span>
       </nav>
 
-      <h1 className="mb-1 text-xl font-semibold text-primary">匯入標單</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
+      <h1 className="mb-1.5 text-2xl font-semibold text-primary md:text-3xl">匯入標單</h1>
+      <p className="mb-7 text-base text-muted-foreground">
         {c.code ? `${c.code} · ` : ""}
         {c.name}
       </p>

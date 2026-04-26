@@ -48,8 +48,8 @@ export default async function ApprovalDetailPage({
   for (const w of workItems ?? []) wiMap.set(w.id as string, w as WorkItemRow);
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <nav className="mb-3 text-xs text-muted-foreground">
+    <div className="mx-auto max-w-5xl">
+      <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/approvals" className="hover:text-accent">
           待簽核
         </Link>
@@ -59,12 +59,12 @@ export default async function ApprovalDetailPage({
         </span>
       </nav>
 
-      <div className="mb-5">
-        <div className="text-xs text-muted-foreground">{l.cases?.code ?? "未編號"}</div>
-        <h1 className="mt-1 text-xl font-semibold text-primary">
+      <div className="mb-7">
+        <div className="text-sm text-muted-foreground">{l.cases?.code ?? "未編號"}</div>
+        <h1 className="mt-1.5 text-2xl font-semibold text-primary md:text-3xl">
           {l.cases?.name}
         </h1>
-        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
           <span>日期:{new Date(l.log_date).toLocaleDateString("zh-TW")}</span>
           <span>工地主任:{l.profiles?.full_name ?? "—"}</span>
           {l.weather && <span>天氣:{l.weather}</span>}
@@ -76,17 +76,17 @@ export default async function ApprovalDetailPage({
         {!l.work_items?.length ? (
           <p className="text-sm text-muted-foreground">無</p>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-[#E0DCD6] bg-card">
-            <table className="min-w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
+            <table className="min-w-full text-base">
               <thead>
                 <tr className="bg-primary text-primary-foreground">
-                  <th className="h-11 px-3 text-left text-xs font-medium tracking-wider">
+                  <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">
                     項次
                   </th>
-                  <th className="h-11 px-3 text-left text-xs font-medium tracking-wider">
+                  <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">
                     工項
                   </th>
-                  <th className="h-11 px-3 text-right text-xs font-medium tracking-wider">
+                  <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">
                     完成
                   </th>
                 </tr>
@@ -102,11 +102,11 @@ export default async function ApprovalDetailPage({
                       : `${w.qty}${wi?.unit ? " " + wi.unit : ""}`;
                   return (
                     <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
-                      <td className="h-12 px-3 align-top font-mono text-xs text-muted-foreground">
+                      <td className="h-14 px-4 align-top font-mono text-sm text-muted-foreground">
                         {wi?.tender_code ?? "—"}
                       </td>
-                      <td className="h-12 px-3 align-top">{wi?.name ?? "—"}</td>
-                      <td className="h-12 px-3 align-top text-right tabular-nums">
+                      <td className="h-14 px-4 align-top">{wi?.name ?? "—"}</td>
+                      <td className="h-14 px-4 align-top text-right tabular-nums">
                         {display}
                       </td>
                     </tr>
@@ -185,8 +185,8 @@ export default async function ApprovalDetailPage({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mb-5">
-      <h2 className="mb-2 text-sm font-medium text-primary">{title}</h2>
+    <section className="mb-7">
+      <h2 className="mb-3 text-base font-semibold text-primary md:text-lg">{title}</h2>
       {children}
     </section>
   );

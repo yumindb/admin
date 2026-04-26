@@ -75,7 +75,7 @@ export function ApprovalActions({ logId }: { logId: string }) {
   }
 
   return (
-    <div className="rounded-md border border-[#E0DCD6] bg-card p-5">
+    <div className="rounded-lg border border-[#E0DCD6] bg-card p-5 md:p-6">
       <div className="mb-4 inline-flex rounded-md border border-[#E0DCD6] p-1">
         <button
           type="button"

@@ -24,8 +24,8 @@ export default async function EditCasePage({
   >;
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <nav className="mb-3 text-xs text-muted-foreground">
+    <div className="mx-auto max-w-3xl">
+      <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/" className="hover:text-accent">
           案件
         </Link>
@@ -36,9 +36,9 @@ export default async function EditCasePage({
         <span className="mx-1.5">／</span>
         <span>編輯</span>
       </nav>
-      <h1 className="mb-6 text-xl font-semibold text-primary">編輯案件</h1>
+      <h1 className="mb-7 text-2xl font-semibold text-primary md:text-3xl">編輯案件</h1>
 
-      <div className="rounded-md border border-[#E0DCD6] bg-card p-6">
+      <div className="rounded-lg border border-[#E0DCD6] bg-card p-6 md:p-8">
         <EditCaseForm
           caseId={c.id}
           defaults={{

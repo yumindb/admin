@@ -79,8 +79,8 @@ export default async function LogDetailPage({
   const s = STATUS[l.status] ?? STATUS.draft;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <nav className="mb-3 text-xs text-muted-foreground">
+    <div className="mx-auto max-w-5xl">
+      <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/logs" className="hover:text-accent">
           日誌
         </Link>
@@ -91,18 +91,18 @@ export default async function LogDetailPage({
         </span>
       </nav>
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
         <div>
           <span
-            className={`inline-block rounded-full border px-2 py-0.5 text-xs ${s.cls}`}
+            className={`inline-block rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
           >
             {s.label}
           </span>
-          <h1 className="mt-2 text-xl font-semibold text-primary">
+          <h1 className="mt-2 text-2xl font-semibold text-primary md:text-3xl">
             {new Date(l.log_date).toLocaleDateString("zh-TW")} ·{" "}
             {l.cases?.name}
           </h1>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
             {l.weather && <span>天氣:{l.weather}</span>}
             {l.manpower?.own !== undefined && (
               <span>自有 {l.manpower.own} 人</span>
@@ -149,20 +149,20 @@ export default async function LogDetailPage({
         {!l.work_items?.length ? (
           <p className="text-sm text-muted-foreground">未填工項</p>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-[#E0DCD6] bg-card">
-            <table className="min-w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
+            <table className="min-w-full text-base">
               <thead>
                 <tr className="bg-primary text-primary-foreground">
-                  <th className="h-11 px-3 text-left text-xs font-medium tracking-wider">
+                  <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">
                     項次
                   </th>
-                  <th className="h-11 px-3 text-left text-xs font-medium tracking-wider">
+                  <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">
                     工項
                   </th>
-                  <th className="h-11 px-3 text-right text-xs font-medium tracking-wider">
+                  <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">
                     當日完成
                   </th>
-                  <th className="h-11 px-3 text-left text-xs font-medium tracking-wider">
+                  <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">
                     備註
                   </th>
                 </tr>
@@ -172,16 +172,16 @@ export default async function LogDetailPage({
                   const wi = wiMap.get(w.work_item_id);
                   return (
                     <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
-                      <td className="h-12 px-3 align-top font-mono text-xs text-muted-foreground">
+                      <td className="h-14 px-4 align-top font-mono text-sm text-muted-foreground">
                         {wi?.tender_code ?? "—"}
                       </td>
-                      <td className="h-12 px-3 align-top">
+                      <td className="h-14 px-4 align-top">
                         {wi?.name ?? "(已刪除工項)"}
                       </td>
-                      <td className="h-12 px-3 align-top text-right tabular-nums">
+                      <td className="h-14 px-4 align-top text-right tabular-nums">
                         {formatLogQty(w.qty, w.qty_mode, wi?.unit ?? null)}
                       </td>
-                      <td className="h-12 px-3 align-top text-xs text-muted-foreground">
+                      <td className="h-14 px-4 align-top text-sm text-muted-foreground">
                         {w.note ?? ""}
                       </td>
                     </tr>
@@ -306,8 +306,8 @@ export default async function LogDetailPage({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mb-5">
-      <h2 className="mb-2 text-sm font-medium text-primary">{title}</h2>
+    <section className="mb-7">
+      <h2 className="mb-3 text-base font-semibold text-primary md:text-lg">{title}</h2>
       {children}
     </section>
   );

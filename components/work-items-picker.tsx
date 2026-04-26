@@ -49,6 +49,7 @@ type Props = {
 };
 
 export function WorkItemsPicker({ items, value, onChange }: Props) {
+  const [query, setQuery] = useState("");
   const byParent = useMemo(() => {
     const m = new Map<string | null, PickerItem[]>();
     for (const it of items) {
@@ -64,6 +65,40 @@ export function WorkItemsPicker({ items, value, onChange }: Props) {
     for (const v of value) m.set(v.work_item_id, v);
     return m;
   }, [value]);
+
+  const visibleIds = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+
+    const itemMap = new Map(items.map((it) => [it.id, it]));
+    const visible = new Set<string>();
+
+    function addAncestors(id: string) {
+      let cur = itemMap.get(id);
+      while (cur?.parentId) {
+        visible.add(cur.parentId);
+        cur = itemMap.get(cur.parentId);
+      }
+    }
+
+    function addDescendants(id: string) {
+      const children = byParent.get(id) ?? [];
+      for (const child of children) {
+        visible.add(child.id);
+        addDescendants(child.id);
+      }
+    }
+
+    for (const item of items) {
+      const haystack = `${item.tenderCode ?? ""} ${item.name} ${item.unit ?? ""}`.toLowerCase();
+      if (!haystack.includes(q)) continue;
+      visible.add(item.id);
+      addAncestors(item.id);
+      addDescendants(item.id);
+    }
+
+    return visible;
+  }, [byParent, items, query]);
 
   function patchValue(id: string, patch: Partial<PickerValue>) {
     const idx = value.findIndex((v) => v.work_item_id === id);
@@ -124,24 +159,42 @@ export function WorkItemsPicker({ items, value, onChange }: Props) {
     });
 
   const roots = byParent.get(null) ?? [];
+  const visibleRoots = visibleIds
+    ? roots.filter((r) => visibleIds.has(r.id))
+    : roots;
 
   if (!items.length) {
     return (
-      <div className="rounded-md border border-dashed border-[#E0DCD6] bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+      <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-4 py-10 text-center text-base text-muted-foreground">
         此案件還沒匯入標單,請先請辦公室助理上傳標單
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border border-[#E0DCD6] bg-card">
+    <div className="rounded-lg border border-[#E0DCD6] bg-card">
+      <div className="border-b border-[#E0DCD6] px-3 py-3">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜尋項次、工項名稱或單位"
+          className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 md:h-12"
+        />
+      </div>
       <div className="divide-y divide-[#E0DCD6]">
-        {roots.map((r) => (
+        {visibleRoots.length === 0 ? (
+          <div className="px-4 py-8 text-center text-base text-muted-foreground">
+            找不到符合「{query}」的工項
+          </div>
+        ) : visibleRoots.map((r) => (
           <PickerRow
             key={r.id}
             node={r}
             byParent={byParent}
             expanded={expanded}
+            visibleIds={visibleIds}
+            forceExpand={query.trim().length > 0}
             onToggleExpand={toggleExpand}
             valueMap={valueMap}
             onToggle={toggle}
@@ -158,6 +211,8 @@ function PickerRow({
   node,
   byParent,
   expanded,
+  visibleIds,
+  forceExpand,
   onToggleExpand,
   valueMap,
   onToggle,
@@ -167,15 +222,19 @@ function PickerRow({
   node: PickerItem;
   byParent: Map<string | null, PickerItem[]>;
   expanded: Set<string>;
+  visibleIds: Set<string> | null;
+  forceExpand: boolean;
   onToggleExpand: (id: string) => void;
   valueMap: Map<string, PickerValue>;
   onToggle: (id: string, checked: boolean) => void;
   onSetQty: (id: string, qty: number | null) => void;
   onToggleMode: (id: string) => void;
 }) {
-  const children = byParent.get(node.id) ?? [];
+  const children = (byParent.get(node.id) ?? []).filter(
+    (child) => !visibleIds || visibleIds.has(child.id)
+  );
   const hasChildren = children.length > 0;
-  const isOpen = expanded.has(node.id);
+  const isOpen = forceExpand || expanded.has(node.id);
   const isSection = node.itemType === "section";
 
   const v = valueMap.get(node.id);
@@ -241,20 +300,20 @@ function PickerRow({
         {/* 名稱 + 編碼 */}
         <div className="min-w-0 flex-1">
           {node.tenderCode && (
-            <div className="font-mono text-xs text-muted-foreground">
+            <div className="font-mono text-sm text-muted-foreground">
               {node.tenderCode}
             </div>
           )}
           <div
             className={cn(
-              "text-sm",
-              isSection ? "font-semibold text-primary" : "text-foreground"
+              "text-base",
+              isSection ? "font-semibold text-primary text-lg" : "text-foreground"
             )}
           >
             {node.name}
           </div>
           {node.totalQuantity !== null && !isSection && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-sm text-muted-foreground">
               標單總量 {node.totalQuantity}
               {node.unit ? ` ${node.unit}` : ""}
             </div>
@@ -271,7 +330,7 @@ function PickerRow({
             <button
               type="button"
               onClick={() => onToggleMode(node.id)}
-              className="rounded-full border border-[#E0DCD6] bg-white px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-[#FAF7F2]"
+              className="rounded-full border border-[#E0DCD6] bg-white px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-[#FAF7F2]"
               title={
                 v.qty_mode === "percent"
                   ? "切換為輸入實際數量"
@@ -347,6 +406,8 @@ function PickerRow({
               node={c}
               byParent={byParent}
               expanded={expanded}
+              visibleIds={visibleIds}
+              forceExpand={forceExpand}
               onToggleExpand={onToggleExpand}
               valueMap={valueMap}
               onToggle={onToggle}

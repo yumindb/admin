@@ -130,8 +130,8 @@ export function ImportPreview({ caseId }: { caseId: string }) {
   return (
     <div className="space-y-6">
       {/* Step 1: 上傳檔案 */}
-      <div className="rounded-md border border-[#E0DCD6] bg-card p-6">
-        <div className="mb-2 text-sm font-medium text-primary">1. 選擇標單檔</div>
+      <div className="rounded-lg border border-[#E0DCD6] bg-card p-6 md:p-7">
+        <div className="mb-2 text-base font-semibold text-primary md:text-lg">1. 選擇標單檔</div>
         <p className="mb-4 text-xs text-muted-foreground">
           支援 .xlsx 格式（裕民工務 7 欄標單模板）。檔案不會上傳到伺服器，瀏覽器先解析、確認後才寫入資料庫。
         </p>
@@ -151,7 +151,7 @@ export function ImportPreview({ caseId }: { caseId: string }) {
       {parsed && (
         <>
           {/* Step 2: 預覽 */}
-          <div className="rounded-md border border-[#E0DCD6] bg-card p-6">
+          <div className="rounded-lg border border-[#E0DCD6] bg-card p-6 md:p-7">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium text-primary">2. 預覽工項</div>
@@ -182,8 +182,8 @@ export function ImportPreview({ caseId }: { caseId: string }) {
           </div>
 
           {/* Step 3: 確認 */}
-          <div className="rounded-md border border-[#E0DCD6] bg-card p-6">
-            <div className="mb-2 text-sm font-medium text-primary">3. 確認匯入</div>
+          <div className="rounded-lg border border-[#E0DCD6] bg-card p-6 md:p-7">
+            <div className="mb-2 text-base font-semibold text-primary md:text-lg">3. 確認匯入</div>
             <p className="mb-4 text-xs text-muted-foreground">
               預覽無誤後點下方按鈕，工項會寫入此案件。重複匯入時：已存在的項目（依「項次 + 名稱」判斷）不會覆蓋你已修改的內容。
             </p>
