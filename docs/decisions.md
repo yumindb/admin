@@ -385,6 +385,18 @@ draft →[submit]→ submitted+review
 - approval-actions.tsx 用 `requireSignature = stage === "approve"` 切換 UI
 - review/audit 階段顯示「這關不需簽名圖」+ 選填備註 textarea + 一顆通過按鈕
 - approve 階段保留原本 260px 簽名板 + touch-action: none
+- ⚠ 已被 2.5.1 取代:四關都收簽名
+
+**2.5.1 四關都收手寫簽名(填表人 / 複核 / 審核 / 核定)**
+- 業主回饋:既然有手寫板,每關都該留底,不只老闆。
+- migration-2.5.sql 把 `approval_stage` enum 加 `'fill'`(在 review 之前)
+- 填表人簽名:`new-log-form.tsx` 在送出時必填(草稿可省),簽完後 `saveLogAction`
+  寫一筆 `log_approvals` (stage='fill', decision='approved')
+- approval-actions.tsx 拿掉 `requireSignature` 切換,所有關卡都顯示簽名板 +
+  選填備註 textarea
+- approveStageAction 對所有 stage 都檢查 `signatureUrl`
+- PDF 簽核紀錄區塊 STAGE_LABEL 加 `fill: "填表(工地主任)"`,
+  四個簽名圖會依時序排列
 
 ### 六、guidance-reviewer 抓到的 5 個 issue 已修
 

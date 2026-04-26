@@ -43,7 +43,7 @@ exception when duplicate_object then null; end $$;
 
 do $$ begin
   -- POC 只用 'approve' 一關（老闆核定）；正式版會擴增 review / audit / approve 三關
-  create type approval_stage as enum ('review', 'audit', 'approve');
+  create type approval_stage as enum ('fill', 'review', 'audit', 'approve');
 exception when duplicate_object then null; end $$;
 
 do $$ begin

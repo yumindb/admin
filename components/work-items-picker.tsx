@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { WorkItemAggregate } from "@/lib/work-item-aggregates";
 
 /**
  * 行動裝置友善的工項勾選器 — 給工地主任填日誌用。
@@ -46,9 +47,11 @@ type Props = {
   items: PickerItem[];
   value: PickerValue[];
   onChange: (next: PickerValue[]) => void;
+  /** workItemId → 歷史累計與鎖定模式;若該工項從未被填過則無條目,UI 自由切換模式 */
+  aggregates?: Record<string, WorkItemAggregate>;
 };
 
-export function WorkItemsPicker({ items, value, onChange }: Props) {
+export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
   const [query, setQuery] = useState("");
   const byParent = useMemo(() => {
     const m = new Map<string | null, PickerItem[]>();
@@ -124,9 +127,23 @@ export function WorkItemsPicker({ items, value, onChange }: Props) {
   function toggle(id: string, checked: boolean) {
     if (checked) {
       const item = items.find((it) => it.id === id);
-      const mode = defaultModeForUnit(item?.unit ?? null);
+      // 已被歷史日誌鎖定的工項,只能用同一 mode;否則依 unit 推斷
+      const lockedMode = aggregates?.[id]?.mode;
+      const mode = lockedMode ?? defaultModeForUnit(item?.unit ?? null);
       // percent mode default 是 50% (0.5),absolute mode default 是 1
-      const qty = mode === "percent" ? 0.5 : 1;
+      let qty = mode === "percent" ? 0.5 : 1;
+      // 不能讓初始值就超過剩餘可填空間(總計 ≤ 100%)
+      const priorTotal =
+        aggregates?.[id] && aggregates[id].mode === mode
+          ? aggregates[id].total
+          : 0;
+      const cap =
+        mode === "percent"
+          ? Math.max(0, 1 - priorTotal)
+          : item?.totalQuantity != null
+            ? Math.max(0, item.totalQuantity - priorTotal)
+            : null;
+      if (cap != null && qty > cap) qty = cap;
       onChange([...value, { work_item_id: id, qty, qty_mode: mode }]);
     } else {
       onChange(value.filter((v) => v.work_item_id !== id));
@@ -136,6 +153,8 @@ export function WorkItemsPicker({ items, value, onChange }: Props) {
   function toggleMode(id: string) {
     const v = value.find((x) => x.work_item_id === id);
     if (!v) return;
+    // 已鎖定就不能切;此 fn 在 UI 層也不會被呼叫到,留 guard 防呆
+    if (aggregates?.[id]) return;
     const nextMode = v.qty_mode === "percent" ? "absolute" : "percent";
     // 模式切換時 qty 重置成該 mode 的 default,避免使用者誤把 30(米)當成 30(%)
     const nextQty = nextMode === "percent" ? 0.5 : 1;
@@ -200,6 +219,7 @@ export function WorkItemsPicker({ items, value, onChange }: Props) {
             onToggle={toggle}
             onSetQty={setQty}
             onToggleMode={toggleMode}
+            aggregates={aggregates}
           />
         ))}
       </div>
@@ -218,6 +238,7 @@ function PickerRow({
   onToggle,
   onSetQty,
   onToggleMode,
+  aggregates,
 }: {
   node: PickerItem;
   byParent: Map<string | null, PickerItem[]>;
@@ -229,6 +250,7 @@ function PickerRow({
   onToggle: (id: string, checked: boolean) => void;
   onSetQty: (id: string, qty: number | null) => void;
   onToggleMode: (id: string) => void;
+  aggregates?: Record<string, WorkItemAggregate>;
 }) {
   const children = (byParent.get(node.id) ?? []).filter(
     (child) => !visibleIds || visibleIds.has(child.id)
@@ -239,6 +261,8 @@ function PickerRow({
 
   const v = valueMap.get(node.id);
   const checked = !!v;
+  const aggregate = aggregates?.[node.id];
+  const modeLocked = !!aggregate;
 
   // section 整列可點摺疊;非 section 整列可點切換勾選(觸控目標 ≥ 48px 高)
   const handleRowClick = () => {
@@ -262,7 +286,7 @@ function PickerRow({
           }
         }}
         className={cn(
-          "flex min-h-[56px] cursor-pointer items-center gap-3 px-3 py-3 active:bg-[#F5F1EC]",
+          "flex min-h-[56px] cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 active:bg-[#F5F1EC] md:flex-nowrap",
           isSection && "bg-[#FAF7F2]"
         )}
         style={{ paddingLeft: `${12 + node.depth * 14}px` }}
@@ -306,8 +330,8 @@ function PickerRow({
           )}
           <div
             className={cn(
-              "text-base",
-              isSection ? "font-semibold text-primary text-lg" : "text-foreground"
+              "text-lg leading-snug",
+              isSection ? "font-semibold text-primary" : "font-medium text-foreground"
             )}
           >
             {node.name}
@@ -318,44 +342,86 @@ function PickerRow({
               {node.unit ? ` ${node.unit}` : ""}
             </div>
           )}
+          {!isSection && aggregate && (
+            <div className="text-xs text-muted-foreground">
+              目前累計{" "}
+              <span className="font-medium tabular-nums text-foreground">
+                {formatAggregate(aggregate, node.unit, node.totalQuantity)}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* 數量輸入(checked 才出現) — 加 stepper 方便戴手套 */}
         {checked && !isSection && (
           <div
-            className="flex shrink-0 flex-col items-end gap-1"
+            className="flex w-full shrink-0 flex-col items-end gap-1 md:ml-auto md:w-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* mode 切換:% / 量 */}
+            {/* mode 切換:% / 量(歷史已填則鎖定,只能用同一模式) */}
             <button
               type="button"
-              onClick={() => onToggleMode(node.id)}
-              className="rounded-full border border-[#E0DCD6] bg-white px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-[#FAF7F2]"
+              onClick={() => {
+                if (modeLocked) return;
+                onToggleMode(node.id);
+              }}
+              disabled={modeLocked}
+              aria-disabled={modeLocked}
+              className={cn(
+                "rounded-full border border-[#E0DCD6] bg-white px-2.5 py-0.5 text-xs text-muted-foreground transition-colors",
+                modeLocked
+                  ? "cursor-not-allowed opacity-70"
+                  : "hover:bg-[#FAF7F2]"
+              )}
               title={
-                v.qty_mode === "percent"
-                  ? "切換為輸入實際數量"
-                  : "切換為輸入百分比"
+                modeLocked
+                  ? `已鎖定為${v.qty_mode === "percent" ? "百分比" : "實際數量"}模式(此工項先前填寫已使用此模式)`
+                  : v.qty_mode === "percent"
+                    ? "切換為輸入實際數量"
+                    : "切換為輸入百分比"
               }
             >
               {v.qty_mode === "percent" ? "% 模式" : "量 模式"}
+              {modeLocked ? " · 已鎖定" : ""}
             </button>
 
             <div className="flex items-center gap-1">
               {(() => {
                 const isPct = v.qty_mode === "percent";
+                // 同 mode 才能加入歷史累計;否則本次當第一筆
+                const priorTotal =
+                  aggregate && aggregate.mode === v.qty_mode
+                    ? aggregate.total
+                    : 0;
+                // 本次填寫上限:absolute=標單總量-priorTotal;percent=1-priorTotal
+                // 不限總量(totalQuantity 為 null 的 absolute 工項)就不設上限
+                const fillCap = isPct
+                  ? Math.max(0, 1 - priorTotal)
+                  : node.totalQuantity != null
+                    ? Math.max(0, node.totalQuantity - priorTotal)
+                    : null;
+                const clampStored = (n: number) => {
+                  if (n < 0) return 0;
+                  if (fillCap != null && n > fillCap) return fillCap;
+                  return n;
+                };
                 // percent mode:畫面 0-100,儲存 0-1
                 const display = isPct ? Math.round((v.qty ?? 0) * 100) : v.qty;
                 const step = isPct ? 10 : 1;
                 const onMinus = () => {
                   const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
                   const next = Math.max(0, cur - step);
-                  onSetQty(node.id, isPct ? next / 100 : next);
+                  onSetQty(node.id, clampStored(isPct ? next / 100 : next));
                 };
                 const onPlus = () => {
                   const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
-                  const next = isPct ? Math.min(100, cur + step) : cur + step;
-                  onSetQty(node.id, isPct ? next / 100 : next);
+                  const next = cur + step;
+                  onSetQty(node.id, clampStored(isPct ? next / 100 : next));
                 };
+                // input max 給原生瀏覽器提示;真實限制在 onChange clamp
+                const inputMax = isPct
+                  ? Math.round(Math.max(0, 1 - priorTotal) * 100)
+                  : fillCap ?? undefined;
                 return (
                   <>
                     <button
@@ -369,14 +435,14 @@ function PickerRow({
                     <input
                       type="number"
                       min={0}
-                      max={isPct ? 100 : undefined}
+                      max={inputMax}
                       step="any"
                       inputMode="decimal"
                       value={display}
                       onChange={(e) => {
                         const n = Number(e.target.value);
                         if (!Number.isFinite(n)) return;
-                        onSetQty(node.id, isPct ? n / 100 : n);
+                        onSetQty(node.id, clampStored(isPct ? n / 100 : n));
                       }}
                       className="h-10 w-20 rounded-md border border-[#E0DCD6] bg-white px-2 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                     />
@@ -394,6 +460,19 @@ function PickerRow({
                   </>
                 );
               })()}
+            </div>
+
+            {/* 填寫後累計即時試算 */}
+            <div className="text-xs text-muted-foreground">
+              填寫後{" "}
+              <span className="font-medium tabular-nums text-foreground">
+                {formatAfterFill(
+                  v,
+                  aggregate,
+                  node.unit,
+                  node.totalQuantity,
+                )}
+              </span>
             </div>
           </div>
         )}
@@ -413,9 +492,54 @@ function PickerRow({
               onToggle={onToggle}
               onSetQty={onSetQty}
               onToggleMode={onToggleMode}
+              aggregates={aggregates}
             />
           ))
         : null}
     </>
   );
+}
+
+function formatNumber(n: number): string {
+  // 去除多餘小數,但保留最多 2 位
+  return Number.isInteger(n) ? String(n) : Number(n.toFixed(2)).toString();
+}
+
+function formatAggregate(
+  agg: WorkItemAggregate,
+  unit: string | null,
+  totalQuantity: number | null,
+): string {
+  if (agg.mode === "percent") {
+    return `${formatNumber(agg.total * 100)}%`;
+  }
+  const base = `${formatNumber(agg.total)}${unit ? ` ${unit}` : ""}`;
+  if (totalQuantity && totalQuantity > 0) {
+    const pct = formatNumber((agg.total / totalQuantity) * 100);
+    return `${base}（${pct}%）`;
+  }
+  return base;
+}
+
+function formatAfterFill(
+  v: PickerValue,
+  agg: WorkItemAggregate | undefined,
+  unit: string | null,
+  totalQuantity: number | null,
+): string {
+  const fillQty = Number.isFinite(v.qty) ? v.qty : 0;
+  const mode = v.qty_mode ?? "absolute";
+  // 鎖定模式 + 同 mode 才能加;否則只顯示本次填寫值(極少數 legacy 模式衝突情境)
+  const priorTotal =
+    agg && agg.mode === mode ? agg.total : 0;
+  const next = priorTotal + fillQty;
+  if (mode === "percent") {
+    return `${formatNumber(next * 100)}%`;
+  }
+  const base = `${formatNumber(next)}${unit ? ` ${unit}` : ""}`;
+  if (totalQuantity && totalQuantity > 0) {
+    const pct = formatNumber((next / totalQuantity) * 100);
+    return `${base}（${pct}%）`;
+  }
+  return base;
 }

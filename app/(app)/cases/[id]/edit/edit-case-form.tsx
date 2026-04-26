@@ -21,7 +21,6 @@ export function EditCaseForm({
     <CaseForm
       action={wrapped}
       defaults={defaults}
-      mode="edit"
       cancelHref={`/cases/${caseId}`}
     />
   );

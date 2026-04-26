@@ -96,8 +96,8 @@ export default async function CaseDetailPage({
   return (
     <div className="mx-auto max-w-7xl">
       <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/" className="hover:text-accent">
-          案件
+        <Link href="/cases" className="hover:text-accent">
+          案件總覽
         </Link>
         <span className="mx-1.5">／</span>
         <span>{c.name}</span>

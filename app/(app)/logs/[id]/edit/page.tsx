@@ -3,8 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption } from "../../new/new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
-import type { DailyLog } from "@/lib/types";
+import type { DailyLog, DailyLogWorkItem } from "@/lib/types";
 import { parseWeather } from "@/lib/daily-log";
+import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 
 export default async function EditLogPage({
   params,
@@ -78,6 +79,32 @@ export default async function EditLogPage({
     workItems: grouped.get(c.id as string) ?? [],
   }));
 
+  // 計算這份日誌在當案當日是第幾份(編輯時序號不變)
+  const { count: dayCount } = await supabase
+    .from("daily_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("case_id", l.case_id)
+    .eq("log_date", l.log_date)
+    .lte("created_at", l.created_at);
+  const currentDaySeq = dayCount ?? 1;
+
+  // 撈所有 submitted/approved 日誌的 work_items 算各工項已累計與模式鎖定;
+  // 排除「自己」(編輯中的這份)避免重複計算
+  const { data: priorRows } = caseIds.length
+    ? await supabase
+        .from("daily_logs")
+        .select("id, case_id, created_at, work_items, status")
+        .in("case_id", caseIds)
+        .in("status", ["submitted", "approved"])
+    : { data: [] };
+  const priorLogs = (priorRows ?? []).map((r) => ({
+    id: r.id as string,
+    case_id: r.case_id as string,
+    created_at: r.created_at as string,
+    work_items: (r.work_items as DailyLogWorkItem[] | null) ?? [],
+  }));
+  const aggregates = computeWorkItemAggregates(priorLogs, id);
+
   return (
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -97,6 +124,8 @@ export default async function EditLogPage({
         cases={caseOptions}
         currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
         logId={id}
+        currentDaySeq={currentDaySeq}
+        priorAggregates={aggregates}
         initial={{
           caseId: l.case_id,
           logDate: l.log_date,

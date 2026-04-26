@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,10 +12,11 @@ import {
   type PickerItem,
   type PickerValue,
 } from "@/components/work-items-picker";
+import type { WorkItemAggregateMap } from "@/lib/work-item-aggregates";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
 import { NextStepHint } from "@/components/next-step-hint";
 import { saveLogAction } from "./actions";
-import { uploadPhotoAction } from "../[id]/photo-actions";
+import { uploadPhotoAction, uploadSignatureAction } from "../[id]/photo-actions";
 import {
   buildReportNumber,
   getRemainingDays,
@@ -46,10 +48,19 @@ export function NewLogForm({
   currentUserName,
   initial,
   logId,
+  dayLogCounts,
+  currentDaySeq,
+  priorAggregates,
 }: {
   cases: CaseOption[];
   presetCaseId?: string;
   currentUserName: string;
+  /** 開新日誌用：每案件每日的既有日誌筆數,用來算「當日第 NN 份」 */
+  dayLogCounts?: Record<string, Record<string, number>>;
+  /** 編輯既有日誌用：直接傳該日誌在當日的 seq(1-based) */
+  currentDaySeq?: number;
+  /** 各案件各工項的歷史累計與鎖定模式(由 server 撈 submitted/approved 日誌算出) */
+  priorAggregates?: WorkItemAggregateMap;
   initial?: {
     caseId: string;
     logDate: string;
@@ -107,6 +118,12 @@ export function NewLogForm({
   const [autosaved, setAutosaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const sigRef = useRef<SignatureCanvas>(null);
+
+  function clearSig() {
+    sigRef.current?.clear();
+    setError(null);
+  }
 
   // mount 後:還原 localStorage 草稿 + 補 logDate 預設(今天)
   useEffect(() => {
@@ -165,8 +182,22 @@ export function NewLogForm({
   );
   const items = selectedCase?.workItems ?? [];
   const remainingDays = getRemainingDays(selectedCase?.expectedEnd, logDate);
-  const reportNumber = buildReportNumber(logId, logDate);
-  const weekdayLabel = getWeekdayLabel(logDate);
+
+  // 表報編號需要 案件 + 日期 + 當日序號(NN)
+  // 編輯模式直接用後端算好的 currentDaySeq;新建模式用 dayLogCounts 算 +1
+  const daySeq = currentDaySeq
+    ?? (selectedCase && logDate
+      ? (dayLogCounts?.[selectedCase.id]?.[logDate] ?? 0) + 1
+      : 1);
+  const reportNumber =
+    selectedCase && logDate
+      ? buildReportNumber({
+          caseCode: selectedCase.code,
+          logDate,
+          daySeq,
+        })
+      : "—（請先選案件）";
+  const weekdayLabel = logDate ? getWeekdayLabel(logDate) : "";
 
   // 切案件時重設工項勾選
   function changeCase(next: string) {
@@ -234,7 +265,35 @@ export function NewLogForm({
       setError("送出前至少要選 1 個工項");
       return;
     }
+
+    let signaturePromise: Promise<string | undefined> = Promise.resolve(undefined);
+    if (intent === "submit") {
+      if (sigRef.current?.isEmpty()) {
+        setError("送出前請在下方簽名");
+        return;
+      }
+      const dataUrl = sigRef.current?.toDataURL("image/png");
+      if (!dataUrl) {
+        setError("簽名讀取失敗,請重試");
+        return;
+      }
+      signaturePromise = (async () => {
+        const fd = new FormData();
+        fd.set("dataUrl", dataUrl);
+        const upload = await uploadSignatureAction(fd);
+        if (!upload.ok) throw new Error(upload.error);
+        return upload.path;
+      })();
+    }
+
     startTransition(async () => {
+      let signatureUrl: string | undefined;
+      try {
+        signatureUrl = await signaturePromise;
+      } catch (e) {
+        setError((e as Error).message);
+        return;
+      }
       const res = await saveLogAction({
         logId,
         caseId,
@@ -253,6 +312,7 @@ export function NewLogForm({
         vendorNotices,
         notes,
         intent,
+        fillSignatureUrl: signatureUrl,
       });
       if (!res.ok) {
         setError(res.error ?? "儲存失敗");
@@ -395,7 +455,12 @@ export function NewLogForm({
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾工項</p>
         ) : (
-          <WorkItemsPicker items={items} value={picked} onChange={setPicked} />
+          <WorkItemsPicker
+            items={items}
+            value={picked}
+            onChange={setPicked}
+            aggregates={priorAggregates?.[caseId]}
+          />
         )}
       </Section>
 
@@ -518,6 +583,31 @@ export function NewLogForm({
           placeholder="例:下午下大雨停工 / 客戶要求改…"
           className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
+      </Section>
+
+      <Section title="填表人簽名" hint={`填表人:${currentUserName}。送出核定前請在下方手寫簽名;只儲存草稿可不簽。`}>
+        <div
+          className="rounded-md border border-[#E0DCD6] bg-white"
+          style={{ touchAction: "none" }}
+        >
+          <SignatureCanvas
+            ref={sigRef}
+            penColor="#003153"
+            canvasProps={{
+              className: "w-full",
+              style: { width: "100%", height: "220px", touchAction: "none" },
+            }}
+          />
+        </div>
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={clearSig}
+            className="text-xs text-muted-foreground hover:text-accent"
+          >
+            清除重簽
+          </button>
+        </div>
       </Section>
 
       {error && (

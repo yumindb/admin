@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ExtraItemsTable } from "@/components/extra-items-table";
 import { NextStepHint } from "@/components/next-step-hint";
+import { PdfDownloadButton } from "@/components/pdf-download-button";
 import { deleteLogAction } from "../new/actions";
 import {
   buildReportNumber,
@@ -11,7 +12,12 @@ import {
   getRemainingDays,
   getWeekdayLabel,
 } from "@/lib/daily-log";
-import type { DailyLog, LogApproval } from "@/lib/types";
+import type { DailyLog, DailyLogWorkItem, LogApproval } from "@/lib/types";
+import {
+  fetchWorkItemAncestry,
+  groupWorkItemsByAncestor,
+  type WorkItemGroup,
+} from "@/lib/work-item-grouping";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: "草稿", cls: "bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]" },
@@ -21,6 +27,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 const STAGE_LABEL: Record<string, string> = {
+  fill: "填表(工地主任)",
   review: "複核(工地主任)",
   audit: "審核(辦公室助理)",
   approve: "核定(老闆)",
@@ -70,17 +77,26 @@ export default async function LogDetailPage({
   const canEdit =
     isOwnerOfLog && (l.status === "draft" || l.status === "rejected");
 
+  // 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
+  const { count: dayCount } = await supabase
+    .from("daily_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("case_id", l.case_id)
+    .eq("log_date", l.log_date)
+    .lte("created_at", l.created_at);
+  const daySeq = dayCount ?? 1;
+
   const workItemIds = (l.work_items ?? []).map((w) => w.work_item_id);
-  const { data: workItems } = workItemIds.length
-    ? await supabase
-        .from("case_work_items")
-        .select("id, name, unit, tender_code")
-        .in("id", workItemIds)
-    : { data: [] };
+  const ancestry = await fetchWorkItemAncestry(supabase, workItemIds);
   const wiMap = new Map<string, WorkItemRow>();
-  for (const w of workItems ?? []) {
-    wiMap.set(w.id as string, w as WorkItemRow);
+  for (const [id, n] of ancestry) {
+    wiMap.set(id, { id, name: n.name, unit: n.unit, tender_code: n.tender_code });
   }
+  const workItemGroups = groupWorkItemsByAncestor(
+    l.work_items ?? [],
+    (w) => w.work_item_id,
+    ancestry
+  );
 
   const { data: approvals } = await supabase
     .from("log_approvals")
@@ -117,7 +133,14 @@ export default async function LogDetailPage({
             {l.cases?.name}
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
-            <span>表報編號:{buildReportNumber(l.id, l.log_date)}</span>
+            <span>
+              表報編號:
+              {buildReportNumber({
+                caseCode: l.cases?.code ?? null,
+                logDate: l.log_date,
+                daySeq,
+              })}
+            </span>
             <span>{getWeekdayLabel(l.log_date)}</span>
             <span>天氣:{formatWeatherSummary(l.weather)}</span>
             {l.manpower?.today_total !== undefined && (
@@ -167,6 +190,9 @@ export default async function LogDetailPage({
                   : "核定"}
               </Link>
             </Button>
+          )}
+          {l.status === "approved" && (
+            <PdfDownloadButton logId={id} hasPdf={!!l.pdf_path} />
           )}
         </div>
       </div>
@@ -269,25 +295,14 @@ export default async function LogDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {l.work_items.map((w) => {
-                  const wi = wiMap.get(w.work_item_id);
-                  return (
-                    <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
-                      <td className="h-14 px-4 align-top font-mono text-sm text-muted-foreground">
-                        {wi?.tender_code ?? "—"}
-                      </td>
-                      <td className="h-14 px-4 align-top">
-                        {wi?.name ?? "(已刪除工項)"}
-                      </td>
-                      <td className="h-14 px-4 align-top text-right tabular-nums">
-                        {formatLogQty(w.qty, w.qty_mode, wi?.unit ?? null)}
-                      </td>
-                      <td className="h-14 px-4 align-top text-sm text-muted-foreground">
-                        {w.note ?? ""}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {workItemGroups.map((g, gi) => (
+                  <GroupRows
+                    key={g.groupId ?? `orphan-${gi}`}
+                    group={g}
+                    wiMap={wiMap}
+                    cols={4}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -436,6 +451,59 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="mb-3 text-base font-semibold text-primary md:text-lg">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function GroupRows({
+  group,
+  wiMap,
+  cols,
+}: {
+  group: WorkItemGroup<DailyLogWorkItem>;
+  wiMap: Map<string, WorkItemRow>;
+  cols: number;
+}) {
+  const showHeader = !group.selfOnly && group.groupName;
+  return (
+    <>
+      {showHeader && (
+        <tr className="border-b border-[#E0DCD6] bg-[#F5F1EC]">
+          <td
+            colSpan={cols}
+            className="px-4 py-2 text-sm font-semibold text-primary"
+          >
+            <span className="mr-2 text-xs font-normal text-muted-foreground">
+              大項
+            </span>
+            {group.groupTenderCode && (
+              <span className="mr-2 font-mono text-xs text-muted-foreground">
+                {group.groupTenderCode}
+              </span>
+            )}
+            {group.groupName}
+          </td>
+        </tr>
+      )}
+      {group.items.map((w) => {
+        const wi = wiMap.get(w.work_item_id);
+        return (
+          <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
+            <td className="h-14 px-4 align-top font-mono text-sm text-muted-foreground">
+              {wi?.tender_code ?? "—"}
+            </td>
+            <td className="h-14 px-4 align-top">
+              {wi?.name ?? "(已刪除工項)"}
+            </td>
+            <td className="h-14 px-4 align-top text-right tabular-nums">
+              {formatLogQty(w.qty, w.qty_mode, wi?.unit ?? null)}
+            </td>
+            <td className="h-14 px-4 align-top text-sm text-muted-foreground">
+              {w.note ?? ""}
+            </td>
+          </tr>
+        );
+      })}
+    </>
   );
 }
 

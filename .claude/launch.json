@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "yumin-admin",
-      "runtimeExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["D:\\Evelyn\\yumin\\yumin-admin\\node_modules\\next\\dist\\bin\\next", "dev", "D:\\Evelyn\\yumin\\yumin-admin"],
       "port": 3000
     }
   ]

@@ -26,8 +26,8 @@ export default async function EditCasePage({
   return (
     <div className="mx-auto max-w-3xl">
       <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/" className="hover:text-accent">
-          案件
+        <Link href="/cases" className="hover:text-accent">
+          案件總覽
         </Link>
         <span className="mx-1.5">／</span>
         <Link href={`/cases/${id}`} className="hover:text-accent">

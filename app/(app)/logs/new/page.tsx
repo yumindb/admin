@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption } from "./new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
+import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
+import type { DailyLogWorkItem } from "@/lib/types";
 
 export default async function NewLogPage({
   searchParams,
@@ -65,6 +67,34 @@ export default async function NewLogPage({
     workItems: grouped.get(c.id as string) ?? [],
   }));
 
+  // 撈這些案件的所有 daily_logs:
+  // 1. case_id + log_date → 算「該案件當天第幾份」(所有狀態都算,避免序號跳號)
+  // 2. submitted/approved 的 work_items → 算各工項「已累計」+ 鎖定 qty_mode
+  const { data: existingLogs } = caseIds.length
+    ? await supabase
+        .from("daily_logs")
+        .select("id, case_id, log_date, created_at, work_items, status")
+        .in("case_id", caseIds)
+    : { data: [] };
+
+  const dayLogCounts: Record<string, Record<string, number>> = {};
+  for (const l of existingLogs ?? []) {
+    const cid = l.case_id as string;
+    const ld = l.log_date as string;
+    dayLogCounts[cid] ??= {};
+    dayLogCounts[cid][ld] = (dayLogCounts[cid][ld] ?? 0) + 1;
+  }
+
+  const priorLogs = (existingLogs ?? [])
+    .filter((l) => l.status === "submitted" || l.status === "approved")
+    .map((l) => ({
+      id: l.id as string,
+      case_id: l.case_id as string,
+      created_at: l.created_at as string,
+      work_items: (l.work_items as DailyLogWorkItem[] | null) ?? [],
+    }));
+  const aggregates = computeWorkItemAggregates(priorLogs);
+
   return (
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -80,6 +110,8 @@ export default async function NewLogPage({
         cases={caseOptions}
         presetCaseId={presetCaseId}
         currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
+        dayLogCounts={dayLogCounts}
+        priorAggregates={aggregates}
       />
     </div>
   );

@@ -1,9 +1,24 @@
-export type UserRole = "office_staff" | "site_supervisor" | "owner";
+export type UserRole =
+  | "office_staff"
+  | "site_supervisor"
+  | "owner"
+  | "field_assistant";
+
+export type Profile = {
+  id: string;
+  full_name: string;
+  role: UserRole;
+  company: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
 export type CaseStatus = "active" | "paused" | "closed";
 export type WorkItemType = "section" | "item" | "spec" | "manual";
 export type TenderImportStatus = "parsed" | "imported" | "failed";
 export type LogStatus = "draft" | "submitted" | "approved" | "rejected";
-export type ApprovalStage = "review" | "audit" | "approve";
+export type ApprovalStage = "fill" | "review" | "audit" | "approve";
 export type ApprovalDecision = "approved" | "rejected";
 export type WeatherOption = "晴" | "多雲" | "陰" | "小雨" | "大雨" | "雨停";
 export type DailyWeather = {
@@ -75,6 +90,7 @@ export type DailyLog = {
   status: LogStatus;
   current_stage: ApprovalStage | null;     // submitted 時表當前在哪關;其他狀態為 null
   submitted_at: string | null;
+  pdf_path: string | null;                  // 核定通過後產生的 PDF 在 daily-log-pdfs bucket 的路徑
   created_at: string;
   updated_at: string;
 };

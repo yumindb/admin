@@ -5,7 +5,6 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NextStepHint } from "@/components/next-step-hint";
 
 export type CaseFormState =
   | { error?: string; fieldErrors?: Record<string, string[]> }
@@ -20,22 +19,20 @@ export type CaseFormDefaults = {
   notes?: string | null;
 };
 
-type Props = {
-  action: (state: CaseFormState, formData: FormData) => Promise<CaseFormState>;
+/**
+ * 純欄位元件 — 開新案／編輯共用。包在 <form> 內使用。
+ * 不含 submit / cancel 按鈕、不含 useActionState；交由外層決定。
+ */
+export function CaseFormFields({
+  defaults = {},
+  fieldErrors,
+}: {
   defaults?: CaseFormDefaults;
-  mode: "create" | "edit";
-  cancelHref: string;
-};
-
-export function CaseForm({ action, defaults = {}, mode, cancelHref }: Props) {
-  const [state, formAction, pending] = useActionState<CaseFormState, FormData>(
-    action,
-    undefined
-  );
-
+  fieldErrors?: Record<string, string[]>;
+}) {
   return (
-    <form action={formAction} className="space-y-5">
-      <Field label="案件名稱 *" htmlFor="name" error={state?.fieldErrors?.name?.[0]}>
+    <div className="space-y-5">
+      <Field label="案件名稱 *" htmlFor="name" error={fieldErrors?.name?.[0]}>
         <Input
           id="name"
           name="name"
@@ -46,7 +43,7 @@ export function CaseForm({ action, defaults = {}, mode, cancelHref }: Props) {
       </Field>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <Field label="案件編號" htmlFor="code">
+        <Field label="案件編號" htmlFor="code" error={fieldErrors?.code?.[0]}>
           <Input
             id="code"
             name="code"
@@ -92,6 +89,30 @@ export function CaseForm({ action, defaults = {}, mode, cancelHref }: Props) {
           className="flex w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm text-foreground outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
       </Field>
+    </div>
+  );
+}
+
+/**
+ * 編輯模式用的簡單表單 — 一個提交按鈕、一個取消連結。
+ */
+export function CaseForm({
+  action,
+  defaults = {},
+  cancelHref,
+}: {
+  action: (state: CaseFormState, formData: FormData) => Promise<CaseFormState>;
+  defaults?: CaseFormDefaults;
+  cancelHref: string;
+}) {
+  const [state, formAction, pending] = useActionState<CaseFormState, FormData>(
+    action,
+    undefined
+  );
+
+  return (
+    <form action={formAction} className="space-y-5">
+      <CaseFormFields defaults={defaults} fieldErrors={state?.fieldErrors} />
 
       {state?.error && (
         <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
@@ -99,50 +120,18 @@ export function CaseForm({ action, defaults = {}, mode, cancelHref }: Props) {
         </p>
       )}
 
-      {mode === "create" ? (
-        <>
-          <NextStepHint tone="info">
-            建議直接「建立並匯入標單」,工項才能用來填日誌;沒標單也可只建案件之後補。
-          </NextStepHint>
-          <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
-            <Button asChild variant="ghost" type="button">
-              <Link href={cancelHref}>取消</Link>
-            </Button>
-            <Button
-              type="submit"
-              name="next"
-              value="detail"
-              disabled={pending}
-              variant="outline"
-              className="border-[#E0DCD6]"
-            >
-              {pending ? "建立中…" : "只建立案件"}
-            </Button>
-            <Button
-              type="submit"
-              name="next"
-              value="import"
-              disabled={pending}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              {pending ? "建立中…" : "建立並匯入標單"}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <div className="flex items-center justify-end gap-3 pt-2">
-          <Button asChild variant="ghost" type="button">
-            <Link href={cancelHref}>取消</Link>
-          </Button>
-          <Button
-            type="submit"
-            disabled={pending}
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            {pending ? "儲存中…" : "儲存變更"}
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center justify-end gap-3 pt-2">
+        <Button asChild variant="ghost" type="button">
+          <Link href={cancelHref}>取消</Link>
+        </Button>
+        <Button
+          type="submit"
+          disabled={pending}
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          {pending ? "儲存中…" : "儲存變更"}
+        </Button>
+      </div>
     </form>
   );
 }

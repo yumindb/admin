@@ -11,6 +11,9 @@
 | 5 | [`migration-2.1.sql`](migration-2.1.sql) | daily_logs 加 extra_items + unsigned_items jsonb | 必跑 |
 | 6 | [`migration-2.2.sql`](migration-2.2.sql) | daily_logs 加 vendor_notices text | 必跑 |
 | 7 | [`migration-2.3.sql`](migration-2.3.sql) | daily_logs 加 current_stage approval_stage(四關正式流程,取消 auto-pass) | 必跑 |
+| 8 | [`migration-2.4.sql`](migration-2.4.sql) | daily_logs 加 pdf_path + 建 daily-log-pdfs bucket(核定後自動產 PDF) | 必跑 |
+| 9 | [`migration-2.5.sql`](migration-2.5.sql) | approval_stage enum 加 'fill'(填表人簽名) | 必跑 |
+| 10 | [`migration-2.6.sql`](migration-2.6.sql) | user_role 加 'field_assistant'(現場助理)+ profiles.is_active 停用旗標 | 必跑 |
 
 ## 排錯
 

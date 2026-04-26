@@ -43,7 +43,7 @@ export async function updateCaseAction(
 
   if (error) return { error: "儲存失敗:" + error.message };
 
-  revalidatePath("/");
+  revalidatePath("/cases");
   revalidatePath(`/cases/${caseId}`);
   redirect(`/cases/${caseId}`);
 }
@@ -61,6 +61,6 @@ export async function deleteCaseAction(formData: FormData) {
   // case_work_items / tender_imports 透過 ON DELETE CASCADE 自動清掉
   await supabase.from("cases").delete().eq("id", caseId);
 
-  revalidatePath("/");
-  redirect("/");
+  revalidatePath("/cases");
+  redirect("/cases");
 }

@@ -2,18 +2,21 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { generatePdfForLog } from "@/lib/pdf/generate";
 import type { ApprovalStage, UserRole } from "@/lib/types";
 
 /**
- * 四關正式簽核流(Phase 2.3 起):
+ * 四關正式簽核流(Phase 2.3 起,Phase 2.5 起每關都收簽名):
+ *   stage='fill'    → site_supervisor 送出時即簽(寫在 saveLogAction)
  *   stage='review'  → site_supervisor(主任複核,可自核)
  *   stage='audit'   → office_staff(辦公室助理審核)
- *   stage='approve' → owner(老闆核定 + 簽名)
+ *   stage='approve' → owner(老闆核定)
  *
  * 規則:
  *   - 操作者的 role 必須對應當前 stage(role-stage map 見下方),否則拒絕
- *   - 只有 approve 階段需要簽名圖
+ *   - review / audit / approve 三關都要附簽名圖(2.5 起統一)
  *   - 通過 → 推進到下一 stage(approve 通過則 status='approved' + current_stage=null)
  *   - 退回 → status='rejected' + current_stage=null,supervisor 編輯後重送回 review
  */
@@ -32,7 +35,7 @@ const NEXT_STAGE: Record<ApprovalStage, ApprovalStage | null> = {
 
 type ActPayload = {
   logId: string;
-  signatureUrl?: string;   // 只有 owner 階段需要
+  signatureUrl?: string;   // approveStageAction 必填(每關都要簽);rejectStageAction 不需要
   comment?: string;        // 退回必填,通過可選
 };
 
@@ -60,7 +63,7 @@ async function loadLogStage(supabase: Awaited<ReturnType<typeof createClient>>, 
 }
 
 /**
- * 通過當前關卡。owner 階段必須帶 signatureUrl。
+ * 通過當前關卡。每關都要帶 signatureUrl。
  */
 export async function approveStageAction(payload: ActPayload) {
   const { supabase, user, role } = await getActor();
@@ -80,7 +83,7 @@ export async function approveStageAction(payload: ActPayload) {
     };
   }
 
-  if (log.current_stage === "approve" && !payload.signatureUrl) {
+  if (!payload.signatureUrl) {
     return { ok: false as const, error: "請先簽名" };
   }
 
@@ -103,6 +106,14 @@ export async function approveStageAction(payload: ActPayload) {
       .from("daily_logs")
       .update({ status: "approved", current_stage: null })
       .eq("id", payload.logId);
+
+    // 核定通過 → 背景產 PDF（不阻塞 response）
+    after(async () => {
+      const res = await generatePdfForLog(payload.logId);
+      if (!res.ok) {
+        console.error("[approveStageAction] PDF gen failed:", res.error);
+      }
+    });
   } else {
     await supabase
       .from("daily_logs")

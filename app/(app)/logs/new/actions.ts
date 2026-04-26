@@ -23,6 +23,7 @@ type SaveLogPayload = {
   vendorNotices: string;
   notes: string;
   intent: "draft" | "submit";
+  fillSignatureUrl?: string;  // 送出時必帶 — 填表人手寫簽名
 };
 
 export async function saveLogAction(payload: SaveLogPayload) {
@@ -51,6 +52,9 @@ export async function saveLogAction(payload: SaveLogPayload) {
       ok: false,
       error: "送出前至少要填 1 個工項(主工項 / 合約外 / 未簽約 任一)",
     };
+  }
+  if (payload.intent === "submit" && !payload.fillSignatureUrl) {
+    return { ok: false, error: "送出前請先簽名" };
   }
 
   // 四關正式流程:submit 時 status='submitted' + current_stage='review'(第一關)。
@@ -110,6 +114,18 @@ export async function saveLogAction(payload: SaveLogPayload) {
   }
 
   // ⚠ Phase 2.3 起取消 auto-pass。三關都要對應角色的人手動點通過。
+  // Phase 2.5:送出時填表人也要簽名 → 寫一筆 stage='fill' 的 log_approvals 紀錄,
+  // 跟其他三關一致地進入 PDF 簽核紀錄區。重送被退回的日誌也會再寫一筆。
+  if (payload.intent === "submit" && payload.fillSignatureUrl && logId) {
+    const { error: sigErr } = await supabase.from("log_approvals").insert({
+      log_id: logId,
+      stage: "fill",
+      approver_id: user.id,
+      decision: "approved",
+      signature_url: payload.fillSignatureUrl,
+    });
+    if (sigErr) return { ok: false, error: "簽名儲存失敗:" + sigErr.message };
+  }
 
   revalidatePath("/logs");
   revalidatePath(`/logs/${logId}`);

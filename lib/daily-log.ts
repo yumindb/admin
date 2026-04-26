@@ -45,9 +45,19 @@ export function getRemainingDays(
   return Math.ceil((end.getTime() - current.getTime()) / 86400000);
 }
 
-export function buildReportNumber(logId: string | undefined, logDate: string): string {
-  const day = logDate.replaceAll("-", "");
-  if (!logId) return `YM-${day}-NEW`;
-  return `YM-${day}-${logId.slice(0, 4).toUpperCase()}`;
+/**
+ * 表報編號：`{案件編號}-{YYMMDD}{NN}`，例：`YM-2026-001-26042601`
+ *   - NN 是該案件當日第幾份日誌（1 開始，2 位數，01..99）
+ *   - caseCode null（罕見：案件沒設編號）→ fallback `YM-未編號`
+ */
+export function buildReportNumber(opts: {
+  caseCode: string | null;
+  logDate: string; // "YYYY-MM-DD"
+  daySeq: number; // 1-based
+}): string {
+  const yymmdd = opts.logDate.replace(/-/g, "").slice(2); // "260426"
+  const prefix = opts.caseCode ?? "YM-未編號";
+  const nn = String(Math.max(1, opts.daySeq)).padStart(2, "0");
+  return `${prefix}-${yymmdd}${nn}`;
 }
 

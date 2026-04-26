@@ -10,7 +10,13 @@ import {
   getRemainingDays,
   getWeekdayLabel,
 } from "@/lib/daily-log";
+import {
+  fetchWorkItemAncestry,
+  groupWorkItemsByAncestor,
+} from "@/lib/work-item-grouping";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
+import type { WorkItemGroup } from "@/lib/work-item-grouping";
+import type { DailyLogWorkItem } from "@/lib/types";
 
 const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
   site_supervisor: "review",
@@ -79,15 +85,26 @@ export default async function ApprovalDetailPage({
   }
   const stageCopy = STAGE_COPY[allowedStage];
 
+  // 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
+  const { count: dayCount } = await supabase
+    .from("daily_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("case_id", l.case_id)
+    .eq("log_date", l.log_date)
+    .lte("created_at", l.created_at);
+  const daySeq = dayCount ?? 1;
+
   const wiIds = (l.work_items ?? []).map((w) => w.work_item_id);
-  const { data: workItems } = wiIds.length
-    ? await supabase
-        .from("case_work_items")
-        .select("id, name, unit, tender_code")
-        .in("id", wiIds)
-    : { data: [] };
+  const ancestry = await fetchWorkItemAncestry(supabase, wiIds);
   const wiMap = new Map<string, WorkItemRow>();
-  for (const w of workItems ?? []) wiMap.set(w.id as string, w as WorkItemRow);
+  for (const [id, n] of ancestry) {
+    wiMap.set(id, { id, name: n.name, unit: n.unit, tender_code: n.tender_code });
+  }
+  const workItemGroups = groupWorkItemsByAncestor(
+    l.work_items ?? [],
+    (w) => w.work_item_id,
+    ancestry
+  );
   const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
 
   return (
@@ -112,7 +129,14 @@ export default async function ApprovalDetailPage({
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
           <span>日期:{new Date(l.log_date).toLocaleDateString("zh-TW")}</span>
           <span>{getWeekdayLabel(l.log_date)}</span>
-          <span>表報編號:{buildReportNumber(l.id, l.log_date)}</span>
+          <span>
+            表報編號:
+            {buildReportNumber({
+              caseCode: l.cases?.code ?? null,
+              logDate: l.log_date,
+              daySeq,
+            })}
+          </span>
           <span>工地主任:{l.profiles?.full_name ?? "—"}</span>
           <span>天氣:{formatWeatherSummary(l.weather)}</span>
         </div>
@@ -150,26 +174,14 @@ export default async function ApprovalDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {l.work_items.map((w) => {
-                  const wi = wiMap.get(w.work_item_id);
-                  const display =
-                    w.qty_mode === "percent"
-                      ? `${Math.round(w.qty * 100)}%${
-                          wi?.unit ? ` (${wi.unit})` : ""
-                        }`
-                      : `${w.qty}${wi?.unit ? " " + wi.unit : ""}`;
-                  return (
-                    <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
-                      <td className="h-14 px-4 align-top font-mono text-sm text-muted-foreground">
-                        {wi?.tender_code ?? "—"}
-                      </td>
-                      <td className="h-14 px-4 align-top">{wi?.name ?? "—"}</td>
-                      <td className="h-14 px-4 align-top text-right tabular-nums">
-                        {display}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {workItemGroups.map((g, gi) => (
+                  <GroupRows
+                    key={g.groupId ?? `orphan-${gi}`}
+                    group={g}
+                    wiMap={wiMap}
+                    cols={3}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -267,7 +279,7 @@ export default async function ApprovalDetailPage({
         <NextStepHint tone="info">
           {allowedStage === "approve"
             ? "確認上方內容後,在下方簽名按「核定通過」,系統自動跳下一份。要退回切到「退回」分頁。"
-            : `確認上方內容後按「${stageCopy.verb}」,系統會把日誌推到下一關。要退回切到「退回」分頁,主任會在「我的日誌」看到並可修正後重送。`}
+            : `確認上方內容後在下方簽名按「${stageCopy.verb}」,系統會把日誌推到下一關。要退回切到「退回」分頁,主任會在「我的日誌」看到並可修正後重送。`}
         </NextStepHint>
       </div>
       <ApprovalActions logId={id} stage={allowedStage} />
@@ -281,6 +293,60 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="mb-3 text-base font-semibold text-primary md:text-lg">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function GroupRows({
+  group,
+  wiMap,
+  cols,
+}: {
+  group: WorkItemGroup<DailyLogWorkItem>;
+  wiMap: Map<string, WorkItemRow>;
+  cols: number;
+}) {
+  const formatQty = (w: DailyLogWorkItem, unit: string | null) => {
+    if (w.qty_mode === "percent") {
+      return `${Math.round(w.qty * 100)}%${unit ? ` (${unit})` : ""}`;
+    }
+    return `${w.qty}${unit ? " " + unit : ""}`;
+  };
+  const showHeader = !group.selfOnly && group.groupName;
+  return (
+    <>
+      {showHeader && (
+        <tr className="border-b border-[#E0DCD6] bg-[#F5F1EC]">
+          <td
+            colSpan={cols}
+            className="px-4 py-2 text-sm font-semibold text-primary"
+          >
+            <span className="mr-2 text-xs font-normal text-muted-foreground">
+              大項
+            </span>
+            {group.groupTenderCode && (
+              <span className="mr-2 font-mono text-xs text-muted-foreground">
+                {group.groupTenderCode}
+              </span>
+            )}
+            {group.groupName}
+          </td>
+        </tr>
+      )}
+      {group.items.map((w) => {
+        const wi = wiMap.get(w.work_item_id);
+        return (
+          <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
+            <td className="h-14 px-4 align-top font-mono text-sm text-muted-foreground">
+              {wi?.tender_code ?? "—"}
+            </td>
+            <td className="h-14 px-4 align-top">{wi?.name ?? "—"}</td>
+            <td className="h-14 px-4 align-top text-right tabular-nums">
+              {formatQty(w, wi?.unit ?? null)}
+            </td>
+          </tr>
+        );
+      })}
+    </>
   );
 }
 
