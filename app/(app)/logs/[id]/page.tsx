@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
+import { ExtraItemsTable } from "@/components/extra-items-table";
 import { deleteLogAction } from "../new/actions";
 import type { DailyLog, LogApproval } from "@/lib/types";
 
@@ -178,7 +179,7 @@ export default async function LogDetailPage({
                         {wi?.name ?? "(已刪除工項)"}
                       </td>
                       <td className="h-12 px-3 align-top text-right tabular-nums">
-                        {w.qty} {wi?.unit ?? ""}
+                        {formatLogQty(w.qty, w.qty_mode, wi?.unit ?? null)}
                       </td>
                       <td className="h-12 px-3 align-top text-xs text-muted-foreground">
                         {w.note ?? ""}
@@ -191,6 +192,42 @@ export default async function LogDetailPage({
           </div>
         )}
       </Section>
+
+      {/* 合約外項目 */}
+      {l.extra_items?.length > 0 && (
+        <Section title={`合約外項目 (${l.extra_items.length})`}>
+          <ExtraItemsTable
+            rows={l.extra_items}
+            cols={[
+              { key: "name", label: "施工項目" },
+              { key: "unit", label: "單位" },
+              { key: "qty", label: "數量", align: "right" },
+              { key: "headcount", label: "人數", align: "right" },
+              { key: "location", label: "位置" },
+              { key: "requested_by", label: "甲方交辦" },
+              { key: "reason", label: "事由" },
+            ]}
+          />
+        </Section>
+      )}
+
+      {/* 未簽約項目 */}
+      {l.unsigned_items?.length > 0 && (
+        <Section title={`未簽約項目 (${l.unsigned_items.length})`}>
+          <ExtraItemsTable
+            rows={l.unsigned_items}
+            cols={[
+              { key: "name", label: "施工項目" },
+              { key: "unit", label: "單位" },
+              { key: "qty", label: "數量", align: "right" },
+              { key: "headcount", label: "人數", align: "right" },
+              { key: "category", label: "類別" },
+              { key: "quote_amount", label: "報價金額", align: "right" },
+              { key: "reason", label: "事由" },
+            ]}
+          />
+        </Section>
+      )}
 
       {/* 照片 */}
       <Section title={`照片 (${l.photos?.length ?? 0})`}>
@@ -274,4 +311,16 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       {children}
     </section>
   );
+}
+
+function formatLogQty(
+  qty: number,
+  mode: "absolute" | "percent" | undefined,
+  unit: string | null
+): string {
+  if (mode === "percent") {
+    const pct = Math.round(qty * 100);
+    return unit ? `${pct}% (${unit})` : `${pct}%`;
+  }
+  return `${qty}${unit ? " " + unit : ""}`;
 }

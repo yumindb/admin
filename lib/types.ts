@@ -8,13 +8,34 @@ export type ApprovalDecision = "approved" | "rejected";
 
 export type DailyLogWorkItem = {
   work_item_id: string;     // FK 到 case_work_items.id
-  qty: number;              // 當日完成量
+  qty: number;              // 永遠是「絕對量」(unit 的自然單位)。percent mode 也存 0-1 fraction。
+  qty_mode?: "absolute" | "percent"; // UI 顯示模式;default absolute
   note?: string;
 };
 
 export type DailyLogManpower = {
   own?: number;             // 自有
   contract?: number;        // 統包
+};
+
+export type DailyLogExtraItem = {
+  name: string;             // 施工項目名稱
+  unit?: string;
+  qty?: number;
+  headcount?: number;       // 人數
+  location?: string;        // 位置
+  requested_by?: string;    // 甲方交辦人員
+  reason?: string;          // 事由
+};
+
+export type DailyLogUnsignedItem = {
+  name: string;
+  unit?: string;
+  qty?: number;
+  headcount?: number;       // 人數
+  category?: "點工" | "變更追加";
+  quote_amount?: number;    // 報價金額
+  reason?: string;          // 尚未追加/報價事由
 };
 
 export type DailyLog = {
@@ -25,6 +46,8 @@ export type DailyLog = {
   weather: string | null;
   manpower: DailyLogManpower;
   work_items: DailyLogWorkItem[];
+  extra_items: DailyLogExtraItem[];      // 非合約內
+  unsigned_items: DailyLogUnsignedItem[]; // 未簽約
   photos: string[];         // storage path 陣列
   notes: string | null;
   status: LogStatus;

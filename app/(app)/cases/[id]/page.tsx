@@ -2,10 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
-import { WorkItemsTree, type TreeItem } from "@/components/work-items-tree";
+import {
+  WorkItemsTree,
+  type TreeItem,
+  type ProgressMap,
+} from "@/components/work-items-tree";
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
-import type { Case, CaseWorkItem, TenderImport } from "@/lib/types";
+import type {
+  Case,
+  CaseWorkItem,
+  TenderImport,
+  DailyLog,
+  DailyLogWorkItem,
+} from "@/lib/types";
 
 export default async function CaseDetailPage({
   params,
@@ -15,27 +25,56 @@ export default async function CaseDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: caseRow, error: caseErr }, { data: workItems }, { data: imports }] =
-    await Promise.all([
-      supabase.from("cases").select("*").eq("id", id).maybeSingle(),
-      supabase
-        .from("case_work_items")
-        .select("*")
-        .eq("case_id", id)
-        .order("sort_path", { ascending: true }),
-      supabase
-        .from("tender_imports")
-        .select("*")
-        .eq("case_id", id)
-        .order("created_at", { ascending: false })
-        .limit(5),
-    ]);
+  const [
+    { data: caseRow, error: caseErr },
+    { data: workItems },
+    { data: imports },
+    { data: logs },
+  ] = await Promise.all([
+    supabase.from("cases").select("*").eq("id", id).maybeSingle(),
+    supabase
+      .from("case_work_items")
+      .select("*")
+      .eq("case_id", id)
+      .order("sort_path", { ascending: true }),
+    supabase
+      .from("tender_imports")
+      .select("*")
+      .eq("case_id", id)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    // 抓所有送出後或核定的日誌(草稿不計進度)
+    supabase
+      .from("daily_logs")
+      .select("work_items, status")
+      .eq("case_id", id)
+      .in("status", ["submitted", "approved"]),
+  ]);
 
   if (caseErr || !caseRow) notFound();
   const c = caseRow as Case;
   const items = (workItems ?? []) as CaseWorkItem[];
   const importsList = (imports ?? []) as TenderImport[];
   const lastImport = importsList[0];
+
+  // 計算每個 work_item 的累計完成量
+  // qty_mode = "percent" 時 qty 是 0-1 fraction,要乘上「契約數量」換成絕對值再 sum
+  const itemMeta = new Map(items.map((x) => [x.id, x]));
+  const progress: ProgressMap = new Map();
+  for (const log of (logs ?? []) as Pick<DailyLog, "work_items" | "status">[]) {
+    for (const w of (log.work_items ?? []) as DailyLogWorkItem[]) {
+      const meta = itemMeta.get(w.work_item_id);
+      const total = meta?.quantity ?? null;
+      const inc =
+        w.qty_mode === "percent"
+          ? (total ?? 0) * w.qty   // percent → 還原成絕對量
+          : w.qty;
+      progress.set(
+        w.work_item_id,
+        (progress.get(w.work_item_id) ?? 0) + inc
+      );
+    }
+  }
 
   const treeItems: TreeItem[] = items.map((it) => ({
     id: it.id,
@@ -101,11 +140,16 @@ export default async function CaseDetailPage({
       </div>
 
       {/* 匯入資訊 */}
-      <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-4">
         <Stat
           label="工項總數"
           value={items.length}
           accent={items.length > 0}
+        />
+        <Stat
+          label="已登記日誌"
+          value={(logs ?? []).length}
+          accent={(logs ?? []).length > 0}
         />
         <Stat
           label="分類層"
@@ -160,7 +204,7 @@ export default async function CaseDetailPage({
           </Button>
         </div>
       ) : (
-        <WorkItemsTree items={treeItems} />
+        <WorkItemsTree items={treeItems} progress={progress} />
       )}
 
       {c.notes && (

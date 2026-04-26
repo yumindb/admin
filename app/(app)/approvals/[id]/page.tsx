@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ApprovalActions } from "./approval-actions";
+import { ExtraItemsTable } from "@/components/extra-items-table";
 import type { DailyLog } from "@/lib/types";
 
 type WorkItemRow = {
@@ -93,6 +94,12 @@ export default async function ApprovalDetailPage({
               <tbody>
                 {l.work_items.map((w) => {
                   const wi = wiMap.get(w.work_item_id);
+                  const display =
+                    w.qty_mode === "percent"
+                      ? `${Math.round(w.qty * 100)}%${
+                          wi?.unit ? ` (${wi.unit})` : ""
+                        }`
+                      : `${w.qty}${wi?.unit ? " " + wi.unit : ""}`;
                   return (
                     <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
                       <td className="h-12 px-3 align-top font-mono text-xs text-muted-foreground">
@@ -100,7 +107,7 @@ export default async function ApprovalDetailPage({
                       </td>
                       <td className="h-12 px-3 align-top">{wi?.name ?? "—"}</td>
                       <td className="h-12 px-3 align-top text-right tabular-nums">
-                        {w.qty} {wi?.unit ?? ""}
+                        {display}
                       </td>
                     </tr>
                   );
@@ -110,6 +117,40 @@ export default async function ApprovalDetailPage({
           </div>
         )}
       </Section>
+
+      {l.extra_items?.length > 0 && (
+        <Section title={`合約外項目 (${l.extra_items.length})`}>
+          <ExtraItemsTable
+            rows={l.extra_items}
+            cols={[
+              { key: "name", label: "施工項目" },
+              { key: "unit", label: "單位" },
+              { key: "qty", label: "數量", align: "right" },
+              { key: "headcount", label: "人數", align: "right" },
+              { key: "location", label: "位置" },
+              { key: "requested_by", label: "甲方交辦" },
+              { key: "reason", label: "事由" },
+            ]}
+          />
+        </Section>
+      )}
+
+      {l.unsigned_items?.length > 0 && (
+        <Section title={`未簽約項目 (${l.unsigned_items.length})`}>
+          <ExtraItemsTable
+            rows={l.unsigned_items}
+            cols={[
+              { key: "name", label: "施工項目" },
+              { key: "unit", label: "單位" },
+              { key: "qty", label: "數量", align: "right" },
+              { key: "headcount", label: "人數", align: "right" },
+              { key: "category", label: "類別" },
+              { key: "quote_amount", label: "報價金額", align: "right" },
+              { key: "reason", label: "事由" },
+            ]}
+          />
+        </Section>
+      )}
 
       <Section title={`照片 (${l.photos?.length ?? 0})`}>
         {!l.photos?.length ? (

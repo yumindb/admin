@@ -11,8 +11,13 @@ import {
   type PickerItem,
   type PickerValue,
 } from "@/components/work-items-picker";
+import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
 import { saveLogAction } from "./actions";
 import { uploadPhotoAction } from "../[id]/photo-actions";
+import type {
+  DailyLogExtraItem,
+  DailyLogUnsignedItem,
+} from "@/lib/types";
 
 export type CaseOption = {
   id: string;
@@ -36,6 +41,8 @@ export function NewLogForm({
     manpowerOwn: number;
     manpowerContract: number;
     workItems: PickerValue[];
+    extraItems: DailyLogExtraItem[];
+    unsignedItems: DailyLogUnsignedItem[];
     photos: string[];
     notes: string;
   };
@@ -58,6 +65,12 @@ export function NewLogForm({
     String(initial?.manpowerContract ?? "")
   );
   const [picked, setPicked] = useState<PickerValue[]>(initial?.workItems ?? []);
+  const [extras, setExtras] = useState<DailyLogExtraItem[]>(
+    initial?.extraItems ?? []
+  );
+  const [unsigned, setUnsigned] = useState<DailyLogUnsignedItem[]>(
+    initial?.unsignedItems ?? []
+  );
   const [photos, setPhotos] = useState<string[]>(initial?.photos ?? []);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +92,8 @@ export function NewLogForm({
       if (d.own !== undefined) setOwn(d.own);
       if (d.contract !== undefined) setContract(d.contract);
       if (Array.isArray(d.picked)) setPicked(d.picked);
+      if (Array.isArray(d.extras)) setExtras(d.extras);
+      if (Array.isArray(d.unsigned)) setUnsigned(d.unsigned);
       if (Array.isArray(d.photos)) setPhotos(d.photos);
       if (d.notes !== undefined) setNotes(d.notes);
       setAutosaved(true);
@@ -94,7 +109,10 @@ export function NewLogForm({
       try {
         localStorage.setItem(
           draftKey,
-          JSON.stringify({ caseId, logDate, weather, own, contract, picked, photos, notes })
+          JSON.stringify({
+            caseId, logDate, weather, own, contract, picked,
+            extras, unsigned, photos, notes,
+          })
         );
         setAutosaved(true);
       } catch {
@@ -102,7 +120,10 @@ export function NewLogForm({
       }
     }, 600);
     return () => clearTimeout(t);
-  }, [draftKey, caseId, logDate, weather, own, contract, picked, photos, notes]);
+  }, [
+    draftKey, caseId, logDate, weather, own, contract, picked,
+    extras, unsigned, photos, notes,
+  ]);
 
   const selectedCase = useMemo(
     () => cases.find((c) => c.id === caseId),
@@ -185,6 +206,8 @@ export function NewLogForm({
           contract: contract ? Number(contract) : undefined,
         },
         workItems: picked,
+        extraItems: extras,
+        unsignedItems: unsigned,
         photos,
         notes,
         intent,
@@ -320,8 +343,38 @@ export function NewLogForm({
         )}
       </Section>
 
+      {/* 合約外項目 */}
+      <Section
+        title={`5. 合約外項目${extras.length > 0 ? ` (${extras.length})` : ""}`}
+        hint="非合約內,但實際有施工的項目(甲方臨時交辦等)"
+      >
+        <ExtraItemsEditor<DailyLogExtraItem>
+          rows={extras}
+          onChange={setExtras}
+          empty={EMPTY_EXTRA}
+          columns={EXTRA_COLS}
+          addLabel="+ 新增合約外項目"
+          emptyHint="今天沒有合約外項目就不用填"
+        />
+      </Section>
+
+      {/* 未簽約項目 */}
+      <Section
+        title={`6. 未簽約項目${unsigned.length > 0 ? ` (${unsigned.length})` : ""}`}
+        hint="尚未追加合約 / 未報價的施工內容(點工或變更追加)"
+      >
+        <ExtraItemsEditor<DailyLogUnsignedItem>
+          rows={unsigned}
+          onChange={setUnsigned}
+          empty={EMPTY_UNSIGNED}
+          columns={UNSIGNED_COLS}
+          addLabel="+ 新增未簽約項目"
+          emptyHint="今天沒有未簽約項目就不用填"
+        />
+      </Section>
+
       {/* 照片 */}
-      <Section title={`5. 照片${photos.length > 0 ? ` (${photos.length})` : ""}`}>
+      <Section title={`7. 照片${photos.length > 0 ? ` (${photos.length})` : ""}`}>
         <input
           type="file"
           accept="image/*"
@@ -367,7 +420,7 @@ export function NewLogForm({
       </Section>
 
       {/* 備註 */}
-      <Section title="6. 備註">
+      <Section title="8. 備註(重要事項紀錄)">
         <textarea
           rows={3}
           value={notes}
@@ -420,15 +473,47 @@ export function NewLogForm({
 
 function Section({
   title,
+  hint,
   children,
 }: {
   title: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-md border border-[#E0DCD6] bg-card p-5">
-      <h2 className="mb-3 text-sm font-medium text-primary">{title}</h2>
+      <h2 className="mb-1 text-sm font-medium text-primary">{title}</h2>
+      {hint && <p className="mb-3 text-xs text-muted-foreground">{hint}</p>}
+      {!hint && <div className="mb-3" />}
       {children}
     </section>
   );
 }
+
+const EMPTY_EXTRA: DailyLogExtraItem = { name: "" };
+const EMPTY_UNSIGNED: DailyLogUnsignedItem = { name: "" };
+
+const EXTRA_COLS: ColumnDef<DailyLogExtraItem>[] = [
+  { key: "name", label: "施工項目", required: true, placeholder: "例:浴室牆面打除" },
+  { key: "unit", label: "單位", placeholder: "例:㎡ / 式" },
+  { key: "qty", label: "數量", type: "number" },
+  { key: "headcount", label: "人數", type: "number", inputMode: "numeric" },
+  { key: "location", label: "位置", placeholder: "例:1F 廁所" },
+  { key: "requested_by", label: "甲方交辦人員", placeholder: "例:王主任" },
+  { key: "reason", label: "事由", placeholder: "例:屋主臨時要求改格局" },
+];
+
+const UNSIGNED_COLS: ColumnDef<DailyLogUnsignedItem>[] = [
+  { key: "name", label: "施工項目", required: true, placeholder: "例:配電盤升級" },
+  { key: "unit", label: "單位" },
+  { key: "qty", label: "數量", type: "number" },
+  { key: "headcount", label: "人數", type: "number", inputMode: "numeric" },
+  {
+    key: "category",
+    label: "類別",
+    type: "select",
+    options: ["點工", "變更追加"],
+  },
+  { key: "quote_amount", label: "報價金額(元)", type: "number" },
+  { key: "reason", label: "尚未追加 / 報價事由", placeholder: "例:等業主決定材質" },
+];

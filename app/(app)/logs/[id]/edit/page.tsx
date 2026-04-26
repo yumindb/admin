@@ -93,6 +93,8 @@ export default async function EditLogPage({
           manpowerOwn: l.manpower?.own ?? 0,
           manpowerContract: l.manpower?.contract ?? 0,
           workItems: l.work_items ?? [],
+          extraItems: l.extra_items ?? [],
+          unsignedItems: l.unsigned_items ?? [],
           photos: l.photos ?? [],
           notes: l.notes ?? "",
         }}

@@ -30,11 +30,19 @@ export type TreeItem = {
   warningMsg?: string;
 };
 
+/**
+ * 進度資料 — case detail 顯示「累計完成」用。
+ * key = work_item_id,value = 跨所有日誌的累計完成量(absolute,unit 自然單位)。
+ * 不傳就不顯示「進度」欄。
+ */
+export type ProgressMap = Map<string, number>;
+
 type Props = {
   items: TreeItem[];                // 扁平陣列，但有 parentId
   defaultExpandSpecs?: boolean;     // 預設展開 spec 子項
   onToggleSkipped?: (id: string, next: boolean) => void;
   showSkippedToggle?: boolean;
+  progress?: ProgressMap;
 };
 
 export function WorkItemsTree({
@@ -42,6 +50,7 @@ export function WorkItemsTree({
   defaultExpandSpecs = false,
   onToggleSkipped,
   showSkippedToggle = false,
+  progress,
 }: Props) {
   // 重建樹
   const { roots, byParent } = useMemo(() => {
@@ -81,17 +90,20 @@ export function WorkItemsTree({
     );
   }
 
+  const showProgress = !!progress;
+
   return (
     <div className="overflow-x-auto rounded-md border border-[#E0DCD6] bg-card">
       <table className="min-w-full text-sm">
         <thead>
           <tr className="bg-primary text-primary-foreground">
-            <Th className="w-[20%]">項次</Th>
-            <Th className="w-[40%]">項目及說明</Th>
-            <Th className="w-[8%]">單位</Th>
-            <Th className="w-[8%] text-right">數量</Th>
-            <Th className="w-[10%] text-right">單價</Th>
-            <Th className="w-[10%] text-right">複價</Th>
+            <Th className="w-[18%]">項次</Th>
+            <Th className={showProgress ? "w-[32%]" : "w-[40%]"}>項目及說明</Th>
+            <Th className="w-[6%]">單位</Th>
+            <Th className="w-[8%] text-right">契約數量</Th>
+            {showProgress && <Th className="w-[14%] text-right">累計完成</Th>}
+            <Th className="w-[8%] text-right">單價</Th>
+            <Th className="w-[8%] text-right">複價</Th>
             {showSkippedToggle ? (
               <Th className="w-[4%] text-center">略過</Th>
             ) : (
@@ -109,6 +121,7 @@ export function WorkItemsTree({
               onToggle={toggle}
               onToggleSkipped={onToggleSkipped}
               showSkippedToggle={showSkippedToggle}
+              progress={progress}
             />
           ))}
         </tbody>
@@ -132,6 +145,7 @@ function Row({
   onToggle,
   onToggleSkipped,
   showSkippedToggle,
+  progress,
 }: {
   node: TreeItem;
   byParent: Map<string | null, TreeItem[]>;
@@ -139,6 +153,7 @@ function Row({
   onToggle: (id: string) => void;
   onToggleSkipped?: (id: string, next: boolean) => void;
   showSkippedToggle: boolean;
+  progress?: ProgressMap;
 }) {
   const children = byParent.get(node.id) ?? [];
   const hasChildren = children.length > 0;
@@ -206,6 +221,14 @@ function Row({
         <td className="h-12 px-3 align-top text-right tabular-nums">
           {node.quantity ?? "—"}
         </td>
+        {progress && (
+          <ProgressCell
+            done={progress.get(node.id)}
+            total={node.quantity ?? null}
+            unit={node.unit ?? null}
+            isSection={isSection}
+          />
+        )}
         <td className="h-12 px-3 align-top text-right tabular-nums">
           {node.unitPrice ?? "—"}
         </td>
@@ -236,9 +259,49 @@ function Row({
               onToggle={onToggle}
               onToggleSkipped={onToggleSkipped}
               showSkippedToggle={showSkippedToggle}
+              progress={progress}
             />
           ))
         : null}
     </>
+  );
+}
+
+function ProgressCell({
+  done,
+  total,
+  unit,
+  isSection,
+}: {
+  done: number | undefined;
+  total: number | null;
+  unit: string | null;
+  isSection: boolean;
+}) {
+  if (isSection || !done || done <= 0) {
+    return <td className="h-12 px-3 align-top text-right text-xs text-muted-foreground">—</td>;
+  }
+  const pct = total && total > 0 ? Math.round((done / total) * 100) : null;
+  // 顏色:0% 灰、1-99% 琥珀、100% 松綠、>100% 銅金(超量)
+  const color =
+    pct === null
+      ? "text-muted-foreground"
+      : pct >= 100
+      ? "text-[#4A7C59]"
+      : pct >= 50
+      ? "text-[#D97706]"
+      : "text-[#A07850]";
+  return (
+    <td className="h-12 px-3 align-top text-right">
+      <div className={cn("text-xs tabular-nums", color)}>
+        {done.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        {unit ? ` ${unit}` : ""}
+      </div>
+      {pct !== null && (
+        <div className={cn("text-[11px] tabular-nums", color)}>
+          {pct}%
+        </div>
+      )}
+    </td>
   );
 }

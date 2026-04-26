@@ -191,3 +191,77 @@
 8. **`work_items` 沒做完整 normalize** — jsonb 內存的 `work_item_id` 沒 FK 約束,工項被刪掉會變 dangling pointer。Phase 3 改 normalize 表 + RESTRICT。
 9. **沒有「我簽過的」歷史頁** — Phil 說想查證自己簽過什麼,目前要靠 SQL。
 10. **中間兩關真的 auto-pass** — 不是 mock,是實際寫進 log_approvals。Phase 2 正式版要把這兩關分給對的角色操作。
+
+---
+
+## Phase 2.1 — 對齊真實日誌格式 + 工項進度 (2026-04-26)
+
+### 一、對應裕民現有「內部施工日誌格式.xlsx」
+
+讀過 Phil 提供的真實日誌表 (`裕民現有資料/表單/內部施工日誌格式.xlsx`),六大區塊:
+1. 依施工計畫書執行 → 我們已有 `work_items`
+2. 外包人員及機具 → 暫用 `manpower` 簡化(POC),Phase 3 擴展
+3. 通知協力廠商 → 暫合併到 `notes`
+4. 非合約內施工項目 → ✅ 新增 `extra_items jsonb`
+5. 未簽約施工內容 → ✅ 新增 `unsigned_items jsonb`
+6. 重要事項紀錄 → `notes`
+
+### 二、工項數量加「百分比模式」
+
+**2.1.1 為什麼**
+- 標單單位是「組/式/套/個/處」時,1 組可能跨多天才做完。supervisor 想記「今天做了 30%」而不是「0.3 組」(對使用者反直覺)。
+- 讀 site-supervisor-sim 與 Evelyn 都認同這需求。
+
+**2.1.2 設計**
+- `DailyLogWorkItem.qty_mode?: "absolute" | "percent"` — 預設 absolute
+- 預設依 unit 自動切換:`{組,式,套,個,處,批,戶,棟,件,台,部,項,座,間}` → percent
+- 儲存時:**`qty` 永遠是「絕對量」**(unit 自然單位)。percent mode 下 `qty` 是 0-1 fraction(50% = 0.5)。
+- UI 顯示:percent mode 下輸入框值 ×100,旁邊顯示 `%`;切換 mode 時 qty 重置避免「30 米」被當成「30%」。
+- 累計計算(progress)時 percent 要乘上「契約數量」還原成絕對量再 sum。
+
+**2.1.3 邊界**
+- 同一工項在不同日誌可以混用 mode(罕見但允許);總和都正確,因為一律以絕對量加總。
+- 累計 > 契約量(>100%)用銅金色標示「超量」(可能漏報、誤填、或追加的數量)。
+
+### 三、案件 detail 顯示「累計完成」進度
+
+**2.1.4 計算範圍**
+- 只計入 `status IN ('submitted', 'approved')` 的日誌。
+- 草稿不計入(supervisor 還在編輯)。
+- 退回的日誌:目前不計入(rejected 不在 IN list)。Phase 3 思考是否要計入 rejected 之前的版本(但被退回後 supervisor 應該會修正後重送,所以實務上沒影響)。
+
+**2.1.5 為什麼放在 case detail 既有的工項表**
+- supervisor-sim 提的需求是「在案件那邊看到已被登記完成的項目」,做一張獨立報表頁太重。
+- 在現有 `WorkItemsTree` 加一欄「累計完成」最自然 — 用 `progress?: ProgressMap` prop 控制顯示。
+- 顏色:0% 灰、50% 以下銅金、50-99% 琥珀、100% 松綠、>100% 銅金(超量)。
+
+**2.1.6 為什麼用 jsonb 不另開表**
+- 跟 Phase 2 的 `work_items` 同樣理由(2.2 章)。
+- Trade-off:跨案統計每個工項當月完成量需要 jsonb 展開查詢;現階段量小不痛。Phase 3 量大時可改 normalize。
+
+### 四、合約外 / 未簽約項目
+
+**2.1.7 為什麼用 jsonb 不另開表**
+- 同上。每份日誌的 extras / unsigned 加起來也就 0-5 筆,不會大。
+- 結構彈性:未來欄位調整不用 migration。
+- 缺點:沒法 cross-log 查「某主任今年回報的所有未簽約項目」,需要 `jsonb_array_elements` 展開。Phase 3 量大時改表。
+
+**2.1.8 schema 欄位**
+```
+extra_items jsonb     [{name, unit?, qty?, headcount?, location?, requested_by?, reason?}]
+unsigned_items jsonb  [{name, unit?, qty?, headcount?, category?: 點工|變更追加, quote_amount?, reason?}]
+```
+都 default `'[]'::jsonb`,already-existing logs 兼容。
+
+**2.1.9 UI 復用**
+- `ExtraItemsEditor<T>` 為 generic,接 `ColumnDef<T>[]` + `empty: T` template。
+- 兩個 section 一個用 `EXTRA_COLS` 一個用 `UNSIGNED_COLS`,共用 component。
+- 唯讀檢視用 `ExtraItemsTable<T>`,在 log detail / approval detail 共用。
+
+### 五、Phase 2.1 已知限制 / Phase 3 TODO
+
+1. **天氣沒拆 上午/下午** — 真實表有但 POC 維持單欄。Phase 3 改 `weather jsonb {am, pm}`。
+2. **外包人員及機具沒做** — `manpower` 仍是 `{own, contract}` 簡化版。真實表有「工別 + 機具」,Phase 3 擴展。
+3. **通知協力廠商沒獨立欄位** — 合進 `notes`。
+4. **四級簽章圖** — 真實表底部要 工地主任 / 填表人員 / 審核人員 / 審定人員 / 核定人員 五個簽章區。POC 只有「核定」一關真的簽,其他 auto-pass 沒簽。Phase 2 正式版要做。
+5. **跨日誌查詢效能** — jsonb 展開查每個工項當月進度,目前 case detail 是讀全部日誌再 sum。資料量大(>500 日誌)會慢。Phase 3 加 materialized view 或 normalize 表。

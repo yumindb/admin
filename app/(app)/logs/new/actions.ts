@@ -3,7 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { DailyLogManpower, DailyLogWorkItem } from "@/lib/types";
+import type {
+  DailyLogManpower,
+  DailyLogWorkItem,
+  DailyLogExtraItem,
+  DailyLogUnsignedItem,
+} from "@/lib/types";
 
 type SaveLogPayload = {
   logId?: string;        // 編輯時帶
@@ -12,6 +17,8 @@ type SaveLogPayload = {
   weather: string;
   manpower: DailyLogManpower;
   workItems: DailyLogWorkItem[];
+  extraItems: DailyLogExtraItem[];
+  unsignedItems: DailyLogUnsignedItem[];
   photos: string[];      // storage paths
   notes: string;
   intent: "draft" | "submit";
@@ -26,8 +33,15 @@ export async function saveLogAction(payload: SaveLogPayload) {
 
   if (!payload.caseId) return { ok: false, error: "請選案件" };
   if (!payload.logDate) return { ok: false, error: "請選日期" };
-  if (payload.intent === "submit" && payload.workItems.length === 0) {
-    return { ok: false, error: "送出前至少要選 1 個工項" };
+  const hasContent =
+    payload.workItems.length > 0 ||
+    payload.extraItems.length > 0 ||
+    payload.unsignedItems.length > 0;
+  if (payload.intent === "submit" && !hasContent) {
+    return {
+      ok: false,
+      error: "送出前至少要填 1 個工項(主工項 / 合約外 / 未簽約 任一)",
+    };
   }
 
   const status = payload.intent === "submit" ? "submitted" : "draft";
@@ -45,6 +59,8 @@ export async function saveLogAction(payload: SaveLogPayload) {
         weather: payload.weather || null,
         manpower: payload.manpower,
         work_items: payload.workItems,
+        extra_items: payload.extraItems,
+        unsigned_items: payload.unsignedItems,
         photos: payload.photos,
         notes: payload.notes || null,
         status,
@@ -63,6 +79,8 @@ export async function saveLogAction(payload: SaveLogPayload) {
         weather: payload.weather || null,
         manpower: payload.manpower,
         work_items: payload.workItems,
+        extra_items: payload.extraItems,
+        unsigned_items: payload.unsignedItems,
         photos: payload.photos,
         notes: payload.notes || null,
         status,
