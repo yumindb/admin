@@ -70,54 +70,73 @@ export function NewLogForm({
   const router = useRouter();
 
   // localStorage 自動存草稿:只對新建(沒 logId)生效。
+  // ⚠ 不可在 useState initializer 讀 localStorage:server 拿不到 → null,
+  //   client hydrate 拿得到 → 不同值,React hydration mismatch。
+  //   改在 useEffect on-mount 拿,用 setters 覆寫初始值。
   const draftKey = logId ? null : "yumin-newlog-draft-v1";
-  const [draft] = useState<StoredDraft | null>(() => readStoredDraft(draftKey));
 
-  const [caseId, setCaseId] = useState(
-    draft?.caseId ?? initial?.caseId ?? presetCaseId ?? ""
-  );
-  const [logDate, setLogDate] = useState(
-    draft?.logDate ?? initial?.logDate ?? new Date().toISOString().slice(0, 10)
-  );
-  const [weather, setWeather] = useState<DailyWeather>(
-    draft?.weather ?? initial?.weather ?? {}
-  );
+  const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
+  // logDate 也不能用 new Date() 當初值(server/client 跨午夜 UTC 會不同),
+  // 留空字串等 mount 後在 useEffect 補今天
+  const [logDate, setLogDate] = useState(initial?.logDate ?? "");
+  const [weather, setWeather] = useState<DailyWeather>(initial?.weather ?? {});
   const [todayTotal, setTodayTotal] = useState<string>(
-    draft?.todayTotal ?? String(initial?.manpowerTodayTotal ?? "")
+    String(initial?.manpowerTodayTotal ?? "")
   );
   const [accumulatedTotal, setAccumulatedTotal] = useState<string>(
-    draft?.accumulatedTotal ?? String(initial?.manpowerAccumulatedTotal ?? "")
+    String(initial?.manpowerAccumulatedTotal ?? "")
   );
   const [subcontractors, setSubcontractors] = useState<DailyLogSubcontractor[]>(
-    draft?.subcontractors ?? initial?.subcontractors ?? []
+    initial?.subcontractors ?? []
   );
   const [machines, setMachines] = useState<DailyLogMachine[]>(
-    draft?.machines ?? initial?.machines ?? []
+    initial?.machines ?? []
   );
-  const [picked, setPicked] = useState<PickerValue[]>(
-    draft?.picked ?? initial?.workItems ?? []
-  );
+  const [picked, setPicked] = useState<PickerValue[]>(initial?.workItems ?? []);
   const [extras, setExtras] = useState<DailyLogExtraItem[]>(
-    draft?.extras ?? initial?.extraItems ?? []
+    initial?.extraItems ?? []
   );
   const [unsigned, setUnsigned] = useState<DailyLogUnsignedItem[]>(
-    draft?.unsigned ?? initial?.unsignedItems ?? []
+    initial?.unsignedItems ?? []
   );
-  const [photos, setPhotos] = useState<string[]>(
-    draft?.photos ?? initial?.photos ?? []
-  );
-  const [vendorNotices, setVendorNotices] = useState(
-    draft?.vendorNotices ?? initial?.vendorNotices ?? ""
-  );
-  const [notes, setNotes] = useState(draft?.notes ?? initial?.notes ?? "");
+  const [photos, setPhotos] = useState<string[]>(initial?.photos ?? []);
+  const [vendorNotices, setVendorNotices] = useState(initial?.vendorNotices ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [autosaved, setAutosaved] = useState(Boolean(draft));
+  const [autosaved, setAutosaved] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // debounce 寫 localStorage
+  // mount 後:還原 localStorage 草稿 + 補 logDate 預設(今天)
   useEffect(() => {
-    if (!draftKey) return;
+    const draft = readStoredDraft(draftKey);
+    if (draft) {
+      if (draft.caseId !== undefined) setCaseId(draft.caseId);
+      if (draft.logDate !== undefined) setLogDate(draft.logDate);
+      if (draft.weather !== undefined) setWeather(draft.weather);
+      if (draft.todayTotal !== undefined) setTodayTotal(draft.todayTotal);
+      if (draft.accumulatedTotal !== undefined) setAccumulatedTotal(draft.accumulatedTotal);
+      if (draft.subcontractors !== undefined) setSubcontractors(draft.subcontractors);
+      if (draft.machines !== undefined) setMachines(draft.machines);
+      if (draft.picked !== undefined) setPicked(draft.picked);
+      if (draft.extras !== undefined) setExtras(draft.extras);
+      if (draft.unsigned !== undefined) setUnsigned(draft.unsigned);
+      if (draft.photos !== undefined) setPhotos(draft.photos);
+      if (draft.vendorNotices !== undefined) setVendorNotices(draft.vendorNotices);
+      if (draft.notes !== undefined) setNotes(draft.notes);
+      setAutosaved(true);
+    } else if (!initial?.logDate) {
+      // 沒草稿、也沒帶初始值 → logDate 設為今天
+      setLogDate(new Date().toISOString().slice(0, 10));
+    }
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // debounce 寫 localStorage(等 hydrated 才開始,避免覆蓋掉 restore 中的 draft)
+  useEffect(() => {
+    if (!draftKey || !hydrated) return;
     const t = setTimeout(() => {
       try {
         localStorage.setItem(
@@ -135,7 +154,7 @@ export function NewLogForm({
     }, 600);
     return () => clearTimeout(t);
   }, [
-    draftKey, caseId, logDate, weather, todayTotal, accumulatedTotal,
+    draftKey, hydrated, caseId, logDate, weather, todayTotal, accumulatedTotal,
     subcontractors, machines, picked, extras, unsigned, photos,
     vendorNotices, notes,
   ]);
