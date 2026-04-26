@@ -4,19 +4,34 @@ import { useRef, useState, useTransition } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
 import {
-  approveLogAction,
-  rejectLogAction,
+  approveStageAction,
+  rejectStageAction,
   nextPendingRedirect,
 } from "./actions";
 import { uploadSignatureAction } from "../../logs/[id]/photo-actions";
+import type { ApprovalStage } from "@/lib/types";
 
-export function ApprovalActions({ logId }: { logId: string }) {
+const VERB: Record<ApprovalStage, string> = {
+  review: "複核通過",
+  audit: "審核通過",
+  approve: "核定通過",
+};
+
+export function ApprovalActions({
+  logId,
+  stage,
+}: {
+  logId: string;
+  stage: ApprovalStage;
+}) {
   const sigRef = useRef<SignatureCanvas>(null);
   const [mode, setMode] = useState<"approve" | "reject">("approve");
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const requireSignature = stage === "approve";
 
   function clearSig() {
     sigRef.current?.clear();
@@ -25,32 +40,46 @@ export function ApprovalActions({ logId }: { logId: string }) {
 
   function handleApprove() {
     setError(null);
-    if (sigRef.current?.isEmpty()) {
-      setError("請在下方簽名再核定");
-      return;
-    }
-    const dataUrl = sigRef.current?.toDataURL("image/png");
-    if (!dataUrl) {
-      setError("簽名讀取失敗,請重試");
-      return;
-    }
-    startTransition(async () => {
-      const fd = new FormData();
-      fd.set("dataUrl", dataUrl);
-      const upload = await uploadSignatureAction(fd);
-      if (!upload.ok) {
-        setError(upload.error);
+
+    let signaturePromise: Promise<string | undefined> = Promise.resolve(undefined);
+
+    if (requireSignature) {
+      if (sigRef.current?.isEmpty()) {
+        setError("請在下方簽名再核定");
         return;
       }
-      const res = await approveLogAction({
+      const dataUrl = sigRef.current?.toDataURL("image/png");
+      if (!dataUrl) {
+        setError("簽名讀取失敗,請重試");
+        return;
+      }
+      signaturePromise = (async () => {
+        const fd = new FormData();
+        fd.set("dataUrl", dataUrl);
+        const upload = await uploadSignatureAction(fd);
+        if (!upload.ok) throw new Error(upload.error);
+        return upload.path;
+      })();
+    }
+
+    startTransition(async () => {
+      let signatureUrl: string | undefined;
+      try {
+        signatureUrl = await signaturePromise;
+      } catch (e) {
+        setError((e as Error).message);
+        return;
+      }
+      const res = await approveStageAction({
         logId,
-        signatureUrl: upload.path,
+        signatureUrl,
+        comment: comment.trim() || undefined,
       });
       if (!res.ok) {
         setError(res.error);
         return;
       }
-      setSuccess("已核定,跳下一份…");
+      setSuccess(`已${VERB[stage]},跳下一份…`);
       await nextPendingRedirect(logId);
     });
   }
@@ -62,7 +91,7 @@ export function ApprovalActions({ logId }: { logId: string }) {
       return;
     }
     startTransition(async () => {
-      const res = await rejectLogAction({ logId, comment });
+      const res = await rejectStageAction({ logId, comment });
       if (!res.ok) {
         setError(res.error);
         return;
@@ -101,38 +130,62 @@ export function ApprovalActions({ logId }: { logId: string }) {
 
       {mode === "approve" ? (
         <div>
-          <p className="mb-2 text-sm text-muted-foreground">
-            在下方手寫板簽名後按「核定通過」
-          </p>
-          {/* touch-action: none 防止簽名時整頁跟著手指捲動 */}
-          <div
-            className="rounded-md border border-[#E0DCD6] bg-white"
-            style={{ touchAction: "none" }}
-          >
-            <SignatureCanvas
-              ref={sigRef}
-              penColor="#003153"
-              canvasProps={{
-                className: "w-full",
-                style: { width: "100%", height: "260px", touchAction: "none" },
-              }}
+          {requireSignature ? (
+            <>
+              <p className="mb-2 text-sm text-muted-foreground">
+                在下方手寫板簽名後按「核定通過」
+              </p>
+              <div
+                className="rounded-md border border-[#E0DCD6] bg-white"
+                style={{ touchAction: "none" }}
+              >
+                <SignatureCanvas
+                  ref={sigRef}
+                  penColor="#003153"
+                  canvasProps={{
+                    className: "w-full",
+                    style: { width: "100%", height: "260px", touchAction: "none" },
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={clearSig}
+                  className="text-xs text-muted-foreground hover:text-accent"
+                >
+                  清除重簽
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="mb-2 text-sm text-muted-foreground">
+              通過後,日誌會自動推進到下一關。可在下方加備註(選填)。
+            </p>
+          )}
+
+          {!requireSignature && (
+            <textarea
+              rows={2}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="備註(選填,例如:照片不錯、補充說明等)"
+              className="mt-3 w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
-          </div>
-          <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={clearSig}
-              className="text-xs text-muted-foreground hover:text-accent"
-            >
-              清除重簽
-            </button>
-          </div>
+          )}
+
+          {!requireSignature && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              這關不需簽名圖,只要點下方按鈕就會推進到下一關。
+            </p>
+          )}
+
           <Button
             onClick={handleApprove}
             disabled={isPending}
             className="mt-4 h-12 w-full bg-primary text-base text-primary-foreground hover:bg-primary/90"
           >
-            {isPending ? "處理中…" : "核定通過"}
+            {isPending ? "處理中…" : VERB[stage]}
           </Button>
         </div>
       ) : (

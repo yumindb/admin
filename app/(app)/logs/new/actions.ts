@@ -53,7 +53,11 @@ export async function saveLogAction(payload: SaveLogPayload) {
     };
   }
 
+  // 四關正式流程:submit 時 status='submitted' + current_stage='review'(第一關)。
+  // draft 時兩個欄位都 null。
+  // 重送被退回的日誌(rejected → submit)也會回到 review 起點。
   const status = payload.intent === "submit" ? "submitted" : "draft";
+  const currentStage = payload.intent === "submit" ? "review" : null;
   const submittedAt = payload.intent === "submit" ? new Date().toISOString() : null;
 
   let logId = payload.logId;
@@ -74,6 +78,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
         vendor_notices: payload.vendorNotices || null,
         notes: payload.notes || null,
         status,
+        current_stage: currentStage,
         submitted_at: submittedAt ?? undefined,
       })
       .eq("id", logId)
@@ -95,6 +100,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
         vendor_notices: payload.vendorNotices || null,
         notes: payload.notes || null,
         status,
+        current_stage: currentStage,
         submitted_at: submittedAt,
       })
       .select("id")
@@ -103,25 +109,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
     logId = data.id;
   }
 
-  // POC 簡化:送出時自動寫 review + audit 兩關 auto-pass
-  if (payload.intent === "submit") {
-    await supabase.from("log_approvals").insert([
-      {
-        log_id: logId,
-        stage: "review",
-        approver_id: user.id, // POC: 自核
-        decision: "approved",
-        comment: "POC 階段 review 自動通過",
-      },
-      {
-        log_id: logId,
-        stage: "audit",
-        approver_id: null,
-        decision: "approved",
-        comment: "POC 階段 audit 自動通過",
-      },
-    ]);
-  }
+  // ⚠ Phase 2.3 起取消 auto-pass。三關都要對應角色的人手動點通過。
 
   revalidatePath("/logs");
   revalidatePath(`/logs/${logId}`);

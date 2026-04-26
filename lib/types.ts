@@ -73,6 +73,7 @@ export type DailyLog = {
   vendor_notices: string | null;
   notes: string | null;
   status: LogStatus;
+  current_stage: ApprovalStage | null;     // submitted 時表當前在哪關;其他狀態為 null
   submitted_at: string | null;
   created_at: string;
   updated_at: string;

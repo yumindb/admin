@@ -199,6 +199,7 @@ create table if not exists public.daily_logs (
   photos          jsonb not null default '[]'::jsonb,
   notes           text,
   status          log_status not null default 'draft',
+  current_stage   approval_stage,                       -- submitted 時表當前在哪關
   submitted_at    timestamptz,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
@@ -207,6 +208,9 @@ create table if not exists public.daily_logs (
 create index if not exists daily_logs_case_idx on public.daily_logs(case_id);
 create index if not exists daily_logs_status_idx on public.daily_logs(status);
 create index if not exists daily_logs_date_idx on public.daily_logs(log_date desc);
+create index if not exists daily_logs_current_stage_idx
+  on public.daily_logs(current_stage)
+  where current_stage is not null;
 
 
 -- ==========================================================================

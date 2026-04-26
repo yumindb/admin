@@ -149,12 +149,23 @@ export default async function LogDetailPage({
               </button>
             </form>
           )}
-          {profile?.role === "owner" && l.status === "submitted" && (
+          {l.status === "submitted" && (
+            (profile?.role === "site_supervisor" && l.current_stage === "review" && l.supervisor_id === user!.id) ||
+            (profile?.role === "office_staff" && l.current_stage === "audit") ||
+            (profile?.role === "owner" && l.current_stage === "approve")
+          ) && (
             <Button
               asChild
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              <Link href={`/approvals/${id}`}>前往簽核</Link>
+              <Link href={`/approvals/${id}`}>
+                前往
+                {l.current_stage === "review"
+                  ? "複核"
+                  : l.current_stage === "audit"
+                  ? "審核"
+                  : "核定"}
+              </Link>
             </Button>
           )}
         </div>
@@ -168,20 +179,46 @@ export default async function LogDetailPage({
           </NextStepHint>
         </div>
       )}
-      {l.status === "submitted" && profile?.role === "owner" && (
-        <div className="mb-6">
-          <NextStepHint tone="info" title="待你核定">
-            這份還沒簽核,點右上「前往簽核」進入簽名頁。
-          </NextStepHint>
-        </div>
-      )}
-      {l.status === "submitted" && profile?.role !== "owner" && (
-        <div className="mb-6">
-          <NextStepHint tone="info" title="已送出,等候核定">
-            老闆會在「待簽核」收到並簽名。
-          </NextStepHint>
-        </div>
-      )}
+      {/* 四關正式流程的 status hint:依 current_stage × 角色 細分 */}
+      {l.status === "submitted" && (() => {
+        const stage = l.current_stage;
+        const stageLabel: Record<string, string> = {
+          review: "複核(工地主任)",
+          audit: "審核(辦公室助理)",
+          approve: "核定(老闆)",
+        };
+        const myStage =
+          profile?.role === "site_supervisor"
+            ? "review"
+            : profile?.role === "office_staff"
+            ? "audit"
+            : profile?.role === "owner"
+            ? "approve"
+            : null;
+        const isMyTurn = stage && myStage === stage;
+        if (isMyTurn) {
+          return (
+            <div className="mb-6">
+              <NextStepHint tone="info" title={`待你${stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}`}>
+                這份等你處理,點右上「前往{stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}」進入。
+              </NextStepHint>
+            </div>
+          );
+        }
+        return (
+          <div className="mb-6">
+            <NextStepHint tone="info" title={`已送出,目前在「${stage ? stageLabel[stage] : "?"}」階段`}>
+              {stage === "review"
+                ? "工地主任複核中。"
+                : stage === "audit"
+                ? "辦公室助理審核中。"
+                : stage === "approve"
+                ? "老闆核定中,簽名後即完成。"
+                : "等待中。"}
+            </NextStepHint>
+          </div>
+        );
+      })()}
       {l.status === "rejected" && isOwnerOfLog && (
         <div className="mb-6">
           <NextStepHint tone="warning" title="已被退回">

@@ -7,9 +7,15 @@ import type { DailyLog } from "@/lib/types";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: "草稿", cls: "bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]" },
-  submitted: { label: "待核定", cls: "bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]" },
+  submitted: { label: "簽核中", cls: "bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]" },
   approved: { label: "已核定", cls: "bg-[#ECFDF5] text-[#4A7C59] border-[#A7F3D0]" },
   rejected: { label: "已退回", cls: "bg-[#FEF2F2] text-[#B91C1C] border-[#FCA5A5]" },
+};
+
+const STAGE_LABEL_SHORT: Record<string, string> = {
+  review: "複核",
+  audit: "審核",
+  approve: "核定",
 };
 
 type LogRow = DailyLog & { cases: { name: string; code: string | null } | null };
@@ -95,6 +101,9 @@ export default async function LogsPage() {
                     className={`rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
                   >
                     {s.label}
+                    {l.status === "submitted" && l.current_stage
+                      ? `:${STAGE_LABEL_SHORT[l.current_stage]}`
+                      : ""}
                   </span>
                 </div>
                 <h3 className="text-lg font-semibold text-primary md:text-xl">

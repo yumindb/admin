@@ -319,3 +319,83 @@ reviewer 跑了一輪 checklist,找到 1 個必補 + 1 個建議補 + 4 個 ⚠,
 - ✅ `/cases/[id]/import` Step 3 改用 `<NextStepHint>`(原是純 `<p>`)
 - ✅ `/logs/[id]` submitted 依 role 分支(owner / 其他)
 - ✅ case-form / approval / submitted hint 都縮短到 < 50 字
+
+---
+
+## Phase 2.3 — 四關正式簽核流(取消 auto-pass) (2026-04-26)
+
+### 一、為什麼
+
+POC 階段為簡化只走「supervisor 送出 → owner 核定」,中間 review + audit 兩關 server action 自動寫 approved 跳過。客戶反饋:正式環境不能跳。本階段把所有三關都做成需要對應角色手動點。
+
+### 二、四關流程
+
+```
+draft →[submit]→ submitted+review
+              →[supervisor 通過]→ submitted+audit
+              →[office_staff 通過]→ submitted+approve
+              →[owner 通過 + 簽名]→ approved
+              →[任一關退回]→ rejected →[supervisor 編輯重送]→ submitted+review
+```
+
+(填表本身是「supervisor 寫日誌按送出」,所以實際是 1 個填表動作 + 3 個簽核動作 = 4 關。)
+
+### 三、Schema 決策
+
+**2.3.1 新增 `daily_logs.current_stage approval_stage` nullable**
+- submitted 時表當前在哪關;draft / approved / rejected 時為 null
+- 不擴增 `log_status` enum(維持 4 個值清晰),用 `(status, current_stage)` pair 表示更彈性
+- 加 partial index `WHERE current_stage IS NOT NULL` 加速「我這關該做什麼」查詢
+
+**2.3.2 backfill 既有 submitted = 'approve'**
+- POC 階段 auto-pass 已寫了 review + audit 兩個 approvals,所以舊 submitted 邏輯上只剩 owner 那關
+- migration-2.3.sql 內 `update ... set current_stage = 'approve'` 一行搞定
+
+### 四、Server Action 設計
+
+**2.3.3 統一 `approveStageAction` / `rejectStageAction`**
+- 取代原本只有 owner 用的 `approveLogAction` / `rejectLogAction`
+- 內部:
+  1. 撈 user 的 role
+  2. 撈 log 的 current_stage
+  3. 用 `STAGE_FOR_ROLE` map 驗證 role 對應 stage(不對就拒絕)
+  4. 通過時推進到 `NEXT_STAGE[current_stage]`,若推進結果為 null(approve 通過)就 status='approved'
+  5. 退回時直接 status='rejected', current_stage=null
+- 只有 approve 階段強制簽名;review/audit 階段簽名是選填
+
+**2.3.4 為什麼不分開三個 action(approveReview / approveAudit / approveApprove)**
+- DRY:三個 stage 邏輯 95% 相同(寫 approval 紀錄 + 推進 stage)
+- 角色驗證集中在一處,容易檢視
+- 加新 stage(例如未來 #22 監工複審)只需加 enum + map,不用加 action
+
+### 五、UI 決策
+
+**2.3.5 `/approvals` 列表 role-aware,不開三個獨立路由**
+- 三個角色看到的「我該做什麼」都在同一個 URL,網址簡單
+- 內部 query 用 `STAGE_FOR_ROLE[role]` 過濾
+- supervisor 額外加 `eq("supervisor_id", user.id)` 只看自己日誌(複核 = 自核)
+
+**2.3.6 Nav 三個角色都顯示自己的待辦 link,但用詞不同**
+- supervisor:「待複核」
+- office_staff:「待審核」
+- owner:「待核定」
+- 內部都指向 `/approvals`,page 自動切換內容
+
+**2.3.7 review/audit 不簽名,approve 簽名**
+- approval-actions.tsx 用 `requireSignature = stage === "approve"` 切換 UI
+- review/audit 階段顯示「這關不需簽名圖」+ 選填備註 textarea + 一顆通過按鈕
+- approve 階段保留原本 260px 簽名板 + touch-action: none
+
+### 六、guidance-reviewer 抓到的 5 個 issue 已修
+
+1. ✅ owner nav 缺「施工日誌」入口 — 補上
+2. ✅ `/logs` 列表 status badge label「待核定」過時 — 改「簽核中:複核/審核/核定」
+3. ✅ `role === "approve"` typo — 改 `=== "owner"`
+4. ✅ approve 階段「前往簽核」用詞不一致 — 統一「前往核定」
+5. ✅ review/audit 通過 UI 視覺份量輕 — 加一行「這關不需簽名圖,點按鈕推進到下一關」收尾
+
+### 七、Phase 3+ TODO
+
+- 「自核」checkbox(supervisor 送出時可勾「我自己複核」一鍵跳過 review):PROJECT.md 提到的選項,目前 POC 不做
+- supervisor 看別人的日誌(跨主任協同):目前 supervisor `/approvals` 只看自己的,Phase 3 看公司怎麼分工
+- 退回後重送是否要保留歷史版本:目前 supervisor 編輯後 status 直接從 rejected → submitted+review,前一輪的 log_approvals 紀錄保留但日誌內容已覆寫

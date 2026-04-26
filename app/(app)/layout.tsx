@@ -58,6 +58,9 @@ export default async function AppLayout({
                 <Link href="/logs" className="hover:text-white">
                   我的日誌
                 </Link>
+                <Link href="/approvals" className="hover:text-white">
+                  待複核
+                </Link>
                 <Link href="/" className="hover:text-white">
                   案件
                 </Link>
@@ -65,16 +68,22 @@ export default async function AppLayout({
             ) : profile?.role === "owner" ? (
               <>
                 <Link href="/approvals" className="hover:text-white">
-                  待簽核
+                  待核定
                 </Link>
                 <Link href="/" className="hover:text-white">
                   案件
+                </Link>
+                <Link href="/logs" className="hover:text-white">
+                  施工日誌
                 </Link>
               </>
             ) : (
               <>
                 <Link href="/" className="hover:text-white">
                   案件
+                </Link>
+                <Link href="/approvals" className="hover:text-white">
+                  待審核
                 </Link>
                 <Link href="/logs" className="hover:text-white">
                   施工日誌

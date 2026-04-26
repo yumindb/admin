@@ -10,6 +10,7 @@
 | 4 | [`storage.sql`](storage.sql) | 建 daily-photos + signatures bucket | 必跑 |
 | 5 | [`migration-2.1.sql`](migration-2.1.sql) | daily_logs 加 extra_items + unsigned_items jsonb | 必跑 |
 | 6 | [`migration-2.2.sql`](migration-2.2.sql) | daily_logs 加 vendor_notices text | 必跑 |
+| 7 | [`migration-2.3.sql`](migration-2.3.sql) | daily_logs 加 current_stage approval_stage(四關正式流程,取消 auto-pass) | 必跑 |
 
 ## 排錯
 

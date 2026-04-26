@@ -10,7 +10,19 @@ import {
   getRemainingDays,
   getWeekdayLabel,
 } from "@/lib/daily-log";
-import type { DailyLog } from "@/lib/types";
+import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
+
+const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
+  site_supervisor: "review",
+  office_staff: "audit",
+  owner: "approve",
+};
+
+const STAGE_COPY: Record<ApprovalStage, { title: string; verb: string }> = {
+  review: { title: "複核", verb: "複核通過" },
+  audit: { title: "審核", verb: "審核通過" },
+  approve: { title: "核定", verb: "核定通過" },
+};
 
 type WorkItemRow = {
   id: string;
@@ -34,7 +46,9 @@ export default async function ApprovalDetailPage({
     .select("role")
     .eq("id", user!.id)
     .maybeSingle();
-  if (roleProfile?.role !== "owner") redirect("/logs");
+  const role = (roleProfile?.role ?? null) as UserRole | null;
+  const allowedStage = role ? STAGE_FOR_ROLE[role] : null;
+  if (!allowedStage) redirect("/logs");
 
   const { data: log } = await supabase
     .from("daily_logs")
@@ -56,8 +70,14 @@ export default async function ApprovalDetailPage({
     profiles: { full_name: string } | null;
   };
 
-  // 已處理過的就跳到 detail 頁
+  // 已處理過或當前不在我的關卡 → 回 detail / 列表
   if (l.status !== "submitted") redirect(`/logs/${id}`);
+  if (l.current_stage !== allowedStage) redirect(`/logs/${id}`);
+  // supervisor 只能複核自己的日誌
+  if (role === "site_supervisor" && l.supervisor_id !== user!.id) {
+    redirect("/approvals");
+  }
+  const stageCopy = STAGE_COPY[allowedStage];
 
   const wiIds = (l.work_items ?? []).map((w) => w.work_item_id);
   const { data: workItems } = wiIds.length
@@ -74,7 +94,7 @@ export default async function ApprovalDetailPage({
     <div className="mx-auto max-w-5xl">
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/approvals" className="hover:text-accent">
-          待簽核
+          待{stageCopy.title}
         </Link>
         <span className="mx-1.5">／</span>
         <span>
@@ -83,7 +103,9 @@ export default async function ApprovalDetailPage({
       </nav>
 
       <div className="mb-7">
-        <div className="text-sm text-muted-foreground">{l.cases?.code ?? "未編號"}</div>
+        <div className="text-sm text-muted-foreground">
+          {l.cases?.code ?? "未編號"} · {stageCopy.title}階段
+        </div>
         <h1 className="mt-1.5 text-2xl font-semibold text-primary md:text-3xl">
           {l.cases?.name}
         </h1>
@@ -243,10 +265,12 @@ export default async function ApprovalDetailPage({
       {/* 簽核 */}
       <div className="mb-4">
         <NextStepHint tone="info">
-          確認上方內容後,在下方簽名按「核定通過」,系統自動跳下一份。要退回切到「退回」分頁。
+          {allowedStage === "approve"
+            ? "確認上方內容後,在下方簽名按「核定通過」,系統自動跳下一份。要退回切到「退回」分頁。"
+            : `確認上方內容後按「${stageCopy.verb}」,系統會把日誌推到下一關。要退回切到「退回」分頁,主任會在「我的日誌」看到並可修正後重送。`}
         </NextStepHint>
       </div>
-      <ApprovalActions logId={id} />
+      <ApprovalActions logId={id} stage={allowedStage} />
     </div>
   );
 }
