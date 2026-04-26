@@ -37,7 +37,14 @@
 **1.6 `auth.users → profiles` 自動建立 trigger**
 - `handle_new_user()` 在 `auth.users` 插入時自動補 `profiles`，避免「Supabase Dashboard 建帳號→profile 不存在→login 後 layout 抓不到 role」的 race。
 - 帳號用 `raw_user_meta_data` 帶 `full_name` / `role`；POC seed 的 3 個帳號就是這樣建的。
-- ⚠ **必須用 `search_path = ''` (空) + 完全 schema-qualified 引用 (`public.profiles`, `public.user_role`)。**寫 `search_path = public` 簡化會讓 Supabase GoTrue 登入時報 "Database error querying schema"。需 `grant ... to supabase_auth_admin` 讓 GoTrue 能 introspect。詳見 `docs/fix-auth.sql` 與 `schema.sql` 內註解。
+- 用 `search_path = ''` (空) + 完全 schema-qualified 引用 (`public.profiles`, `public.user_role`) 是 Supabase canonical pattern，建議比照（雖然 v1 用 `search_path = public` 也能跑，但 GoTrue 對 SECURITY DEFINER 函數的 introspection 更嚴）。
+
+**1.7 ⚠ Manual `INSERT INTO auth.users` 必須帶所有 *_token 欄位 = `''`**
+- Supabase 新版的 `auth.users` 對 `confirmation_token` / `recovery_token` / `email_change_token_new` / `email_change` / `email_change_token_current` / `phone_change` / `phone_change_token` / `reauthentication_token` 這 8 個欄位:**值是 NULL 時 GoTrue 會 panic** (Go 端 `Scan error: converting NULL to string is unsupported`),登入時回 "Database error querying schema"。
+- 這些欄位的 default 通常是 NULL,所以 `INSERT` 不指定就會踩雷。
+- 解法:`INSERT` 時顯式給 `''`(空字串)。`docs/seed-accounts.sql` 已修正。
+- 此問題與 `handle_new_user` trigger 無關 — 即使 trigger 完美也會失敗。troubleshooting 時先看 Supabase Dashboard → Logs 找實際 Postgres 錯誤,不要先動 trigger。
+- 已知 fix 腳本:`docs/fix-auth-3.sql`(對現有 row UPDATE 補 `''`)。
 
 ### 二、標單 parser 邊界處理
 
