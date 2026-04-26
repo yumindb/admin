@@ -1,7 +1,7 @@
 -- ==========================================================================
 -- POC 帳號建立 — 在 Supabase SQL Editor 執行
 -- ==========================================================================
--- 此腳本建立 3 個帳號:office_staff / site_supervisor / owner
+-- 此腳本建立 4 個帳號:office_staff / site_supervisor / owner / field_assistant
 -- 密碼統一為 'yumin1234'(POC 階段,正式版改用邀請流程)
 --
 -- ⚠ 此腳本依賴 schema.sql 已先執行(profiles 表 + handle_new_user trigger)。
@@ -16,7 +16,8 @@
 delete from auth.users where email in (
   'office@yumin.local',
   'supervisor@yumin.local',
-  'owner@yumin.local'
+  'owner@yumin.local',
+  'field@yumin.local'
 );
 
 -- ----- 1. 辦公室助理 -----
@@ -91,9 +92,33 @@ values (
   '', '', '', '', '', '', '', ''
 );
 
+-- ----- 4. 現場助理 -----
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at,
+  confirmation_token, recovery_token,
+  email_change_token_new, email_change, email_change_token_current,
+  phone_change, phone_change_token, reauthentication_token
+)
+values (
+  '00000000-0000-0000-0000-000000000000',
+  gen_random_uuid(),
+  'authenticated',
+  'authenticated',
+  'field@yumin.local',
+  crypt('yumin1234', gen_salt('bf')),
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  jsonb_build_object('full_name','現場助理','role','field_assistant'),
+  now(),
+  now(),
+  '', '', '', '', '', '', '', ''
+);
+
 -- 驗證
 select p.full_name, p.role, p.company, u.email
 from public.profiles p
 join auth.users u on u.id = p.id
-where u.email in ('office@yumin.local','supervisor@yumin.local','owner@yumin.local')
+where u.email in ('office@yumin.local','supervisor@yumin.local','owner@yumin.local','field@yumin.local')
 order by p.role;
