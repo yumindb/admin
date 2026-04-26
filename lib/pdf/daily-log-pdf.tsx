@@ -1,9 +1,13 @@
 /**
  * 施工日誌 PDF 元件 — 給 @react-pdf/renderer 用。
  *
- * 字型：Noto Sans TC（從 jsdelivr 拉取的 stable URL，避免 bundle 大檔到 Vercel function）。
+ * 字型：Noto Sans CJK TC（自架在 Supabase Storage `fonts` public bucket，
+ * 避免 jsdelivr 偶發不穩、避免 bundle 大檔到 Vercel function）。
  * 第一次產 PDF 時 react-pdf 會 fetch 字型並 cache 到 process memory，
  * 之後同 process 重用不會再下載。
+ *
+ * react-pdf 嵌入 PDF 時會自動只 embed 用到的 glyphs（PDF 標準 subset），
+ * 所以最終 PDF 檔案不會塞完整 ~33MB 字型。
  */
 import {
   Document,
@@ -30,15 +34,20 @@ import type {
 let fontRegistered = false;
 function ensureFont() {
   if (fontRegistered) return;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL not set — required for PDF font loading");
+  }
+  const fontBase = `${supabaseUrl}/storage/v1/object/public/fonts`;
   Font.register({
     family: "Noto Sans TC",
     fonts: [
       {
-        src: "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf",
+        src: `${fontBase}/NotoSansCJKtc-Regular.otf`,
         fontWeight: "normal",
       },
       {
-        src: "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Bold.otf",
+        src: `${fontBase}/NotoSansCJKtc-Bold.otf`,
         fontWeight: "bold",
       },
     ],
