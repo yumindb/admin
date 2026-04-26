@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   裕民 Admin — 品牌色系統（覆寫 shadcn 預設）
+   配色依 .claude/agents/frontend-designer.md
+   ========================================================================== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f1ec;          /* 暖米白 */
+  --foreground: #5a5050;          /* 棕灰內文 */
+  --card: #ffffff;
+  --card-foreground: #5a5050;
+  --popover: #ffffff;
+  --popover-foreground: #5a5050;
+  --primary: #003153;             /* 深邃海軍藍 */
+  --primary-foreground: #f5f1ec;
+  --secondary: #e8e4de;           /* 淺暖灰 */
+  --secondary-foreground: #5a5050;
+  --muted: #e8e4de;
+  --muted-foreground: #8a847c;
+  --accent: #a07850;              /* 溫銅金 */
+  --accent-foreground: #ffffff;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: #e0dcd6;              /* 暖灰邊框 */
+  --input: #e0dcd6;
+  --ring: #a07850;                /* focus ring 用銅金 */
+
+  --radius: 0.375rem;             /* rounded-md */
+
+  /* 狀態色 */
+  --status-waiting: #d97706;
+  --status-approved: #4a7c59;
+  --status-rejected: #b91c1c;
+  --status-draft: #9ca3af;
+  --status-info: #0369a1;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-status-waiting: var(--status-waiting);
+  --color-status-approved: var(--status-approved);
+  --color-status-rejected: var(--status-rejected);
+  --color-status-draft: var(--status-draft);
+  --color-status-info: var(--status-info);
+
+  --font-sans: var(--font-geist-sans), "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --font-mono: var(--font-geist-mono);
+  --font-serif: Georgia, "Noto Serif TC", serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+}
+
+/* 標題稍微寬鬆一點 */
+h1, h2, h3 {
+  letter-spacing: 0.04em;
+  color: var(--primary);
+}
+
+/* 數字強調用襯線 */
+.stat-number {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  color: var(--accent);
 }

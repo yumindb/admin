@@ -45,3 +45,4 @@ next-env.d.ts
 .env*.local
 工地照片/
 # 標單範例/  # 暫時保留（給 parser dev 用）
+_work/
