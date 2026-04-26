@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "裕民工務 Admin",
-  description: "裕民工務內部工程管理系統",
+  title: "裕民工務 管理系統",
+  description: "裕民工務 管理系統",
 };
 
 export default function RootLayout({

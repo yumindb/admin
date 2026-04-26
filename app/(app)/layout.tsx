@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -37,8 +38,19 @@ export default async function AppLayout({
     <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center justify-between border-b border-[#E0DCD6] bg-primary px-6 text-primary-foreground">
         <div className="flex items-center gap-6">
-          <Link href="/" className="text-base font-semibold tracking-wider">
-            裕民工務 Admin
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 text-base font-semibold tracking-wider"
+          >
+            <Image
+              src="/yumin-badge-white.svg"
+              alt=""
+              width={22}
+              height={31}
+              priority
+              className="h-7 w-auto"
+            />
+            裕民工務 管理系統
           </Link>
           <nav className="hidden items-center gap-5 text-sm text-[#E8E4DE] md:flex">
             <Link href="/" className="hover:text-white">

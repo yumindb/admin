@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage({
@@ -10,11 +11,18 @@ export default async function LoginPage({
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <Image
+            src="/yumin-badge.svg"
+            alt="裕民工務"
+            width={56}
+            height={80}
+            priority
+            className="mb-3 h-14 w-auto"
+          />
           <h1 className="text-2xl font-semibold tracking-wide text-primary">
-            裕民工務
+            裕民工務 管理系統
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">內部工程管理系統</p>
         </div>
 
         <div className="rounded-md border border-[#E0DCD6] bg-card p-6 shadow-none">
