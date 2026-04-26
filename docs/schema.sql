@@ -339,8 +339,18 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- supabase_auth_admin (GoTrue 內部 role) 必須能 introspect 此函數,否則
--- 登入時會回 "Database error querying schema"
+-- supabase_auth_admin (GoTrue 內部 role) 必須能 introspect 整個 public schema,
+-- 包括自定 enum types,否則登入時會回 "Database error querying schema"。
+-- (它做 full schema scan, 走過 profiles 表的 role 欄位 → user_role enum)
 grant usage on schema public to supabase_auth_admin;
-grant all on public.profiles to supabase_auth_admin;
-grant execute on function public.handle_new_user() to supabase_auth_admin;
+grant select on all tables in schema public to supabase_auth_admin;
+grant select on all sequences in schema public to supabase_auth_admin;
+grant execute on all functions in schema public to supabase_auth_admin;
+grant usage on type public.user_role            to supabase_auth_admin;
+grant usage on type public.case_status          to supabase_auth_admin;
+grant usage on type public.work_item_type       to supabase_auth_admin;
+grant usage on type public.tender_import_status to supabase_auth_admin;
+grant usage on type public.log_status           to supabase_auth_admin;
+grant usage on type public.approval_stage       to supabase_auth_admin;
+grant usage on type public.approval_decision    to supabase_auth_admin;
+alter function public.handle_new_user() owner to postgres;
