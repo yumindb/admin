@@ -25,6 +25,7 @@ const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
   site_supervisor: "review",
   office_staff: "audit",
   owner: "approve",
+  field_assistant: null,
 };
 
 const NEXT_STAGE: Record<ApprovalStage, ApprovalStage | null> = {
