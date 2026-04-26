@@ -1,0 +1,30 @@
+# Supabase Migration 執行順序
+
+新環境或重建時依此順序跑;現有環境只跑沒跑過的。所有檔案都冪等(可重複跑)。
+
+| # | 檔案 | 用途 | 狀態 |
+|---|------|------|------|
+| 1 | [`schema.sql`](schema.sql) | 6 張表 + enum + RLS + auth trigger | 必跑 |
+| 2 | [`fix-auth-3.sql`](fix-auth-3.sql) | 修 auth.users 8 個 token 欄位 NULL → '' (新版 Supabase 必要) | 若手動 INSERT auth.users 後失敗才跑 |
+| 3 | [`seed-accounts.sql`](seed-accounts.sql) | 建 3 個 POC 帳號(office / supervisor / owner)| POC 環境跑 |
+| 4 | [`storage.sql`](storage.sql) | 建 daily-photos + signatures bucket | 必跑 |
+| 5 | [`migration-2.1.sql`](migration-2.1.sql) | daily_logs 加 extra_items + unsigned_items jsonb | 必跑 |
+| 6 | [`migration-2.2.sql`](migration-2.2.sql) | daily_logs 加 vendor_notices text | 必跑 |
+
+## 排錯
+
+### 「Could not find the 'X' column of 'daily_logs' in the schema cache」
+→ 對應的 migration-X.X.sql 沒跑。對照上表跑該支即可。
+
+### 「Database error querying schema」(登入失敗)
+→ `seed-accounts.sql` 用了舊寫法,跑 `fix-auth-3.sql` 補 8 個 token 欄位 = ''。新 seed-accounts.sql 已修正,新環境不會再中。
+
+### 工項進度沒更新 / 累計完成 = 0
+→ 檢查日誌 status 是否為 `submitted` 或 `approved`(草稿 / 退回不計入)。
+
+## 已棄用(不要再跑)
+
+| 檔案 | 為何不用 |
+|------|---------|
+| `fix-auth.sql` | trigger pattern 修法,實際根本不是 trigger 問題,留檔當歷史紀錄 |
+| `fix-auth-2.sql` | enum 權限修法,同上,真實原因是 token 欄位 NULL |
