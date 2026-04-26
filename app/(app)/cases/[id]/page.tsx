@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { WorkItemsTree, type TreeItem } from "@/components/work-items-tree";
 import { undoImportAction } from "./import/actions";
+import { DeleteCaseButton } from "./delete-case-button";
 import type { Case, CaseWorkItem, TenderImport } from "@/lib/types";
 
 export default async function CaseDetailPage({
@@ -77,12 +78,26 @@ export default async function CaseDetailPage({
             </span>
           </div>
         </div>
-        <Button
-          asChild
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Link href={`/cases/${id}/import`}>上傳標單</Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            asChild
+            variant="outline"
+            className="border-[#E0DCD6]"
+          >
+            <Link href={`/cases/${id}/edit`}>編輯</Link>
+          </Button>
+          <DeleteCaseButton
+            caseId={c.id}
+            caseName={c.name}
+            workItemCount={items.length}
+          />
+          <Button
+            asChild
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Link href={`/cases/${id}/import`}>上傳標單</Link>
+          </Button>
+        </div>
       </div>
 
       {/* 匯入資訊 */}

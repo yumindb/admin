@@ -66,10 +66,12 @@ export async function confirmImportAction(payload: ConfirmPayload) {
   if (impErr || !imp) return { ok: false, error: "匯入記錄寫入失敗：" + impErr?.message };
   const importId = imp.id as string;
 
-  // 2) 撈現有 work items 做 dedupe
+  // 2) 撈現有 work items 做 dedupe — 必須限定當前 case,否則跨案匯入會把
+  //    新案的工項 parent_id 接到舊案的 row 上(bug fixed 2026-04-26)
   const { data: existing, error: existErr } = await supabase
     .from("case_work_items")
-    .select("id, tender_code, name, modified_by_user");
+    .select("id, tender_code, name, modified_by_user")
+    .eq("case_id", payload.caseId);
   if (existErr) return { ok: false, error: "讀取現有工項失敗：" + existErr.message };
 
   const dedupeKey = (code: string | null, name: string) => `${code ?? ""}|${name}`;
