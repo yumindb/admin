@@ -2,6 +2,47 @@ export type UserRole = "office_staff" | "site_supervisor" | "owner";
 export type CaseStatus = "active" | "paused" | "closed";
 export type WorkItemType = "section" | "item" | "spec" | "manual";
 export type TenderImportStatus = "parsed" | "imported" | "failed";
+export type LogStatus = "draft" | "submitted" | "approved" | "rejected";
+export type ApprovalStage = "review" | "audit" | "approve";
+export type ApprovalDecision = "approved" | "rejected";
+
+export type DailyLogWorkItem = {
+  work_item_id: string;     // FK 到 case_work_items.id
+  qty: number;              // 當日完成量
+  note?: string;
+};
+
+export type DailyLogManpower = {
+  own?: number;             // 自有
+  contract?: number;        // 統包
+};
+
+export type DailyLog = {
+  id: string;
+  case_id: string;
+  supervisor_id: string | null;
+  log_date: string;
+  weather: string | null;
+  manpower: DailyLogManpower;
+  work_items: DailyLogWorkItem[];
+  photos: string[];         // storage path 陣列
+  notes: string | null;
+  status: LogStatus;
+  submitted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LogApproval = {
+  id: string;
+  log_id: string;
+  stage: ApprovalStage;
+  approver_id: string | null;
+  decision: ApprovalDecision;
+  comment: string | null;
+  signature_url: string | null;
+  created_at: string;
+};
 
 export type Case = {
   id: string;

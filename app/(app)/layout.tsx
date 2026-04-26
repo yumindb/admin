@@ -53,9 +53,34 @@ export default async function AppLayout({
             裕民工務 管理系統
           </Link>
           <nav className="hidden items-center gap-5 text-sm text-[#E8E4DE] md:flex">
-            <Link href="/" className="hover:text-white">
-              案件
-            </Link>
+            {profile?.role === "site_supervisor" ? (
+              <>
+                <Link href="/logs" className="hover:text-white">
+                  我的日誌
+                </Link>
+                <Link href="/" className="hover:text-white">
+                  案件
+                </Link>
+              </>
+            ) : profile?.role === "owner" ? (
+              <>
+                <Link href="/approvals" className="hover:text-white">
+                  待簽核
+                </Link>
+                <Link href="/" className="hover:text-white">
+                  案件
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/" className="hover:text-white">
+                  案件
+                </Link>
+                <Link href="/approvals" className="hover:text-white">
+                  簽核管理
+                </Link>
+              </>
+            )}
           </nav>
         </div>
 

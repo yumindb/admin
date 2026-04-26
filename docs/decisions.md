@@ -114,3 +114,80 @@
 9. **沒有簽核 UI** — `log_approvals` 同上。
 10. **Excel parser 沒測過邊界 sheet**（多 sheet、隱藏列、合併 cell）。範例兩份檔案都單一 sheet 結構乾淨；Phase 2 拿 Phil 給的 19 份其他標單測。
 11. **重複匯入時 `modified_by_user` 永遠 = false** — 因為還沒有編輯 UI 把它設為 true。Phase 2 補完編輯後此欄才開始發揮作用。
+
+---
+
+## Phase 2 — 施工日誌 + 老闆簽核 (2026-04-26)
+
+### 一、角色導向
+
+**2.1 三個 role 三個首頁**
+- `office_staff` → `/`(案件列表)
+- `site_supervisor` → `/logs`(我的日誌)
+- `owner` → `/approvals`(待簽核)
+- 在 `app/(app)/page.tsx` 第一行做 `redirect()`,nav 也照 role 條件渲染。
+- 三個 role 都可手動切到其他頁(POC RLS 全放),正式版要 RLS + 路由 guard。
+
+### 二、日誌 schema 與簽核流
+
+**2.2 daily_logs.work_items 用 jsonb 不是另一張表**
+- 結構:`[{ work_item_id, qty, note }]`。
+- 用 jsonb 的原因:同一份日誌寫一次就好,不用 N 次 INSERT;查詢用 `?` operator 也夠用。Phase 3+ 若要做「跨案統計每個工項當月完成量」可以再 normalize 成 `daily_log_work_items` 表。
+- TS 型別:`DailyLogWorkItem` 用 `work_item_id`(snake)而非 camelCase,讓 client picker → server action → DB 一條路不需轉換(踩過坑;見 git c90693c 後的 follow-up)。
+
+**2.3 POC 兩關 auto-pass**
+- 工地主任送出時,server action 自動寫兩筆 `log_approvals`:
+  - `stage='review' decision='approved' approver_id=supervisor_id` (自核)
+  - `stage='audit' decision='approved' approver_id=null`
+- daily_logs.status 直接從 `draft` → `submitted`,等老闆 `approve`。
+- 正式版這兩關要分別由 supervisor / office_staff 操作。enum 已經預留三 stage,擴充時改 server action 與 UI 即可,DB 不動。
+
+**2.4 老闆簽核走 `/approvals`,不是 `/logs`**
+- 兩條路徑分開:`/logs/[id]` 是「看細節」、`/approvals/[id]` 是「動手簽」。同 log 兩個視角不同。
+- `/approvals/[id]` 開啟時若 status 已不是 `submitted`(別人搶簽過了),redirect 回 `/logs/[id]`。
+
+**2.5 簽完跳下一份 vs 回列表**
+- `nextPendingRedirect()` server action 撈下一個 submitted 的 log,有就 redirect 過去,沒有就回列表。
+- 為什麼放 server action:client 知道哪個 log 已簽完不準(可能其他人剛搶簽);server 撈最即時。
+- 副作用:沒有「全部簽完了 ✓」的 celebratory state,直接落到列表的 empty state。Phase 2.5+ 可加。
+
+### 三、Storage 與照片
+
+**2.6 Storage bucket POC 是 public**
+- `daily-photos` + `signatures` 都是 public bucket。
+- 為什麼:demo 階段直接用 `getPublicUrl` 顯示最快,不用 signed URL。
+- 風險:照片 URL 如果外洩任何人都能看(構造 URL 較難但可能)。Phase 3 改 private + signed URL(每次發 URL 帶 60s 過期)。
+- 路徑慣例:`{user_id}/{timestamp}-{rand}.{ext}`,避免衝突。
+
+**2.7 簽名圖以 dataURL 上 server action 後再轉 Buffer**
+- react-signature-canvas 出 PNG dataURL,client 直接傳給 server action 解 base64 上傳。
+- 為什麼不 direct upload:server action 裡可以驗證 user 身份再上傳,且簽名圖小(< 50KB)不需要分段。
+
+### 四、Sim 驗收後修正
+
+**2.8 site-supervisor-sim 提的 high severity 已處理**
+- ✅ 觸控目標 ≥ 44px(整列可點切換、stepper 按鈕 size-10、min-h-[56px] row、checkbox 變視覺裝飾、整列吃 hit area)
+- ✅ 天氣改 6 個 chip 按鈕(晴/多雲/陰/小雨/大雨/雨停),不用打字
+- ✅ 數量 stepper(±1 按鈕),戴手套也能按
+- ✅ localStorage 自動存草稿(每 600ms debounce 寫,進頁面自動還原,儲存/送出後清掉)
+- ✅ 照片並行上傳 + 進度條 (X/Y + bar)
+- ⏳ 未做(Phase 3):離線送出、照片 client 端壓縮、複製昨日日誌、工項搜尋、手機 nav
+
+**2.9 owner-sim (Phil) 提的 high severity 已處理**
+- ✅ 簽名板 180px → 260px + `touch-action: none`(避免簽名時整頁捲動)
+- ✅ 退回原因 5 個 preset chips(照片不夠清楚 / 工項數量怪 / 請補拍 / 工項漏報 / 備註不清楚),自由輸入也保留
+- ✅ approve/reject 按下立即 disabled,防止訊號慢時雙擊重送
+- ⏳ 未做(Phase 3):批簽、簽過記錄查詢、手機底部 tab bar、退回也記簽名
+
+### 五、已知限制 / Phase 3 TODO
+
+1. **RLS 仍 wide-open** — 跟 Phase 1 同。
+2. **沒有 LINE 通知** — 老闆要主動開 web 才看得到待簽核。Phase 5 整合 LINE OA。
+3. **照片是 public bucket** — 見 2.6。
+4. **批簽未做** — Phil 明確提到希望可以一次簽 5 份,Phase 3 做。
+5. **離線送出未做** — 工地主任訊號爛時送出失敗 = 資料丟。需要 Service Worker + IndexedDB 排隊。
+6. **複製昨日日誌未做** — supervisor 重複工作的需求。
+7. **工項搜尋未做** — 標單 200+ 項時 picker 滑很久。Phase 3 加搜尋框。
+8. **`work_items` 沒做完整 normalize** — jsonb 內存的 `work_item_id` 沒 FK 約束,工項被刪掉會變 dangling pointer。Phase 3 改 normalize 表 + RESTRICT。
+9. **沒有「我簽過的」歷史頁** — Phil 說想查證自己簽過什麼,目前要靠 SQL。
+10. **中間兩關真的 auto-pass** — 不是 mock,是實際寫進 log_approvals。Phase 2 正式版要把這兩關分給對的角色操作。

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import type { Case } from "@/lib/types";
@@ -11,6 +12,21 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 
 export default async function CasesPage() {
   const supabase = await createClient();
+
+  // 角色導向首頁:supervisor → /logs,owner → /approvals,office_staff 留下看 cases
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profile?.role === "site_supervisor") redirect("/logs");
+    if (profile?.role === "owner") redirect("/approvals");
+  }
+
   const { data: cases, error } = await supabase
     .from("cases")
     .select("*")
