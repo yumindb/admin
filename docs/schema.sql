@@ -304,24 +304,30 @@ create policy poc_authenticated_all on public.log_approvals
 
 
 -- ==========================================================================
--- auth.users → profiles 自動建立 trigger
+-- auth.users → profiles 自動建立 trigger (Supabase canonical pattern)
 -- ==========================================================================
--- 用 Supabase Dashboard 建帳號時，會自動在 profiles 補一筆。
--- raw_user_meta_data 可帶 full_name / role，否則用 email 前綴 + 預設 office_staff。
+-- 用 Supabase Dashboard 建帳號時,會自動在 profiles 補一筆。
+-- raw_user_meta_data 可帶 full_name / role,否則用 email 前綴 + 預設 office_staff。
+--
+-- ⚠ 寫法注意:必須用 `search_path = ''` (空) + 完全 schema-qualified 引用
+-- (`public.profiles`, `public.user_role`),不可寫 `search_path = public` 簡化,
+-- 否則 Supabase GoTrue 在登入時會回 "Database error querying schema"。
+-- (見 docs/fix-auth.sql 的歷史紀錄)
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
-declare
-  meta jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
 begin
   insert into public.profiles (id, full_name, role)
   values (
     new.id,
-    coalesce(meta->>'full_name', split_part(new.email, '@', 1)),
-    coalesce((meta->>'role')::user_role, 'office_staff')
+    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    coalesce(
+      (new.raw_user_meta_data->>'role')::public.user_role,
+      'office_staff'::public.user_role
+    )
   )
   on conflict (id) do nothing;
   return new;
@@ -332,3 +338,9 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- supabase_auth_admin (GoTrue 內部 role) 必須能 introspect 此函數,否則
+-- 登入時會回 "Database error querying schema"
+grant usage on schema public to supabase_auth_admin;
+grant all on public.profiles to supabase_auth_admin;
+grant execute on function public.handle_new_user() to supabase_auth_admin;

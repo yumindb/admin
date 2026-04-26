@@ -37,6 +37,7 @@
 **1.6 `auth.users → profiles` 自動建立 trigger**
 - `handle_new_user()` 在 `auth.users` 插入時自動補 `profiles`，避免「Supabase Dashboard 建帳號→profile 不存在→login 後 layout 抓不到 role」的 race。
 - 帳號用 `raw_user_meta_data` 帶 `full_name` / `role`；POC seed 的 3 個帳號就是這樣建的。
+- ⚠ **必須用 `search_path = ''` (空) + 完全 schema-qualified 引用 (`public.profiles`, `public.user_role`)。**寫 `search_path = public` 簡化會讓 Supabase GoTrue 登入時報 "Database error querying schema"。需 `grant ... to supabase_auth_admin` 讓 GoTrue 能 introspect。詳見 `docs/fix-auth.sql` 與 `schema.sql` 內註解。
 
 ### 二、標單 parser 邊界處理
 
