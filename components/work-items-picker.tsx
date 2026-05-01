@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkItemAggregate } from "@/lib/work-item-aggregates";
 
@@ -270,7 +270,19 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
             className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 md:h-12"
           />
         </div>
-        <div className="divide-y divide-[#E0DCD6]">
+        {/* 手機:資料夾抽屜式 — 一次只看一層,深度不擠 */}
+        <div className="md:hidden">
+          <MobileBrowseView
+            items={items}
+            byParent={byParent}
+            valueMap={valueMap}
+            onToggle={toggle}
+            query={query}
+          />
+        </div>
+
+        {/* 桌機:樹狀展開 — 寬度足夠多層展開不會擠 */}
+        <div className="hidden divide-y divide-[#E0DCD6] md:block">
           {visibleRoots.length === 0 ? (
             <div className="px-4 py-8 text-center text-base text-muted-foreground">
               找不到符合「{query}」的工項
@@ -591,6 +603,224 @@ function BrowseRow({
         : null}
     </>
   );
+}
+
+/* =============================================================== */
+/* 手機抽屜式瀏覽 — 一次只顯示一層,深度不會擠                        */
+/* =============================================================== */
+
+function MobileBrowseView({
+  items,
+  byParent,
+  valueMap,
+  onToggle,
+  query,
+}: {
+  items: PickerItem[];
+  byParent: Map<string | null, PickerItem[]>;
+  valueMap: Map<string, PickerValue>;
+  onToggle: (id: string, checked: boolean) => void;
+  query: string;
+}) {
+  const [path, setPath] = useState<PickerItem[]>([]);
+
+  // 搜尋中:忽略 path,顯示扁平結果(只可勾選的 item / spec / manual)
+  if (query.trim()) {
+    const q = query.trim().toLowerCase();
+    const matches = items.filter((it) => {
+      if (it.itemType === "section") return false;
+      const haystack = `${it.tenderCode ?? ""} ${it.name} ${it.unit ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+    if (matches.length === 0) {
+      return (
+        <div className="px-4 py-8 text-center text-base text-muted-foreground">
+          找不到符合「{query}」的工項
+        </div>
+      );
+    }
+    return (
+      <ul className="divide-y divide-[#E0DCD6]">
+        {matches.map((it) => (
+          <MobileItemRow
+            key={it.id}
+            item={it}
+            checked={valueMap.has(it.id)}
+            onToggle={() => onToggle(it.id, !valueMap.has(it.id))}
+          />
+        ))}
+      </ul>
+    );
+  }
+
+  const currentParentId = path.length === 0 ? null : path[path.length - 1].id;
+  const currentChildren = byParent.get(currentParentId) ?? [];
+
+  return (
+    <div>
+      {path.length > 0 && (
+        <div className="border-b border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setPath((p) => p.slice(0, -1))}
+            className="inline-flex min-h-[36px] items-center gap-1.5 text-sm font-medium text-accent active:opacity-70"
+          >
+            <ChevronLeft className="size-4" /> 上一層
+          </button>
+          <div className="mt-1 break-words text-sm text-muted-foreground">
+            {path.map((p) => p.name).join(" › ")}
+          </div>
+        </div>
+      )}
+      {currentChildren.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+          這層裡沒有工項
+        </div>
+      ) : (
+        <ul className="divide-y divide-[#E0DCD6]">
+          {currentChildren.map((child) =>
+            child.itemType === "section" ? (
+              <MobileSectionRow
+                key={child.id}
+                section={child}
+                count={countDescendantSelectables(byParent, child.id)}
+                selectedCount={countSelectedDescendants(byParent, child.id, valueMap)}
+                onTap={() => setPath((p) => [...p, child])}
+              />
+            ) : (
+              <MobileItemRow
+                key={child.id}
+                item={child}
+                checked={valueMap.has(child.id)}
+                onToggle={() => onToggle(child.id, !valueMap.has(child.id))}
+              />
+            )
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function MobileSectionRow({
+  section,
+  count,
+  selectedCount,
+  onTap,
+}: {
+  section: PickerItem;
+  count: number;
+  selectedCount: number;
+  onTap: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onTap}
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-[#F5F1EC]"
+      >
+        <div className="min-w-0 flex-1">
+          {section.tenderCode && (
+            <div className="font-mono text-xs text-muted-foreground">
+              {section.tenderCode}
+            </div>
+          )}
+          <div className="break-words text-base font-semibold leading-snug text-primary">
+            {section.name}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {count > 0 ? `${count} 個工項` : "無工項"}
+            {selectedCount > 0 && (
+              <span className="ml-2 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-1.5 py-0.5 text-[#4A7C59]">
+                已選 {selectedCount}
+              </span>
+            )}
+          </div>
+        </div>
+        <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
+      </button>
+    </li>
+  );
+}
+
+function MobileItemRow({
+  item,
+  checked,
+  onToggle,
+}: {
+  item: PickerItem;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors active:bg-[#F5F1EC]",
+          checked && "bg-[#FAF7F2]"
+        )}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          readOnly
+          tabIndex={-1}
+          className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850] pointer-events-none"
+        />
+        <div className="min-w-0 flex-1">
+          {item.tenderCode && (
+            <div className="font-mono text-xs text-muted-foreground">
+              {item.tenderCode}
+            </div>
+          )}
+          <div className="break-words text-base font-medium leading-snug text-foreground">
+            {item.name}
+          </div>
+          {item.totalQuantity !== null && (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {item.totalQuantity}
+              {item.unit ? ` ${item.unit}` : ""}
+            </div>
+          )}
+        </div>
+        {checked && (
+          <span className="mt-0.5 shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-xs font-medium text-[#4A7C59]">
+            ✓
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
+function countDescendantSelectables(
+  byParent: Map<string | null, PickerItem[]>,
+  id: string
+): number {
+  let count = 0;
+  const children = byParent.get(id) ?? [];
+  for (const child of children) {
+    if (child.itemType !== "section") count++;
+    count += countDescendantSelectables(byParent, child.id);
+  }
+  return count;
+}
+
+function countSelectedDescendants(
+  byParent: Map<string | null, PickerItem[]>,
+  id: string,
+  valueMap: Map<string, PickerValue>
+): number {
+  let count = 0;
+  const children = byParent.get(id) ?? [];
+  for (const child of children) {
+    if (child.itemType !== "section" && valueMap.has(child.id)) count++;
+    count += countSelectedDescendants(byParent, child.id, valueMap);
+  }
+  return count;
 }
 
 /* =============================================================== */
