@@ -653,22 +653,33 @@ function MobileBrowseView({
     );
   }
 
-  const currentParentId = path.length === 0 ? null : path[path.length - 1].id;
+  // Path collapse:單一 section 子節點的層級自動跳過,使用者少按好幾下。
+  // path = 使用者實際點過的;skippedSuffix = 自動跳進去的中介層;
+  // effectivePath = 兩者合併,只用於顯示與計算 currentChildren。
+  const userParentId = path.length === 0 ? null : path[path.length - 1].id;
+  const skippedSuffix = collapseSinglePathSections(userParentId, byParent);
+  const effectivePath = [...path, ...skippedSuffix];
+  const currentParentId =
+    effectivePath.length === 0
+      ? null
+      : effectivePath[effectivePath.length - 1].id;
   const currentChildren = byParent.get(currentParentId) ?? [];
 
   return (
     <div>
-      {path.length > 0 && (
+      {effectivePath.length > 0 && (
         <div className="border-b border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2.5">
-          <button
-            type="button"
-            onClick={() => setPath((p) => p.slice(0, -1))}
-            className="inline-flex min-h-[36px] items-center gap-1.5 text-sm font-medium text-accent active:opacity-70"
-          >
-            <ChevronLeft className="size-4" /> 上一層
-          </button>
+          {path.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setPath((p) => p.slice(0, -1))}
+              className="inline-flex min-h-[36px] items-center gap-1.5 text-sm font-medium text-accent active:opacity-70"
+            >
+              <ChevronLeft className="size-4" /> 上一層
+            </button>
+          )}
           <div className="mt-1 break-words text-sm text-muted-foreground">
-            {path.map((p) => p.name).join(" › ")}
+            {effectivePath.map((p) => p.name).join(" › ")}
           </div>
         </div>
       )}
@@ -794,6 +805,24 @@ function MobileItemRow({
       </button>
     </li>
   );
+}
+
+/**
+ * 單一通道層級自動跳過:若某層只有一個 section 子節點(沒有可勾的工項),
+ * 那層只是中介資料夾,直接跳進該子節點繼續判斷,直到遇到分岔或可勾項目。
+ */
+function collapseSinglePathSections(
+  parentId: string | null,
+  byParent: Map<string | null, PickerItem[]>
+): PickerItem[] {
+  const children = byParent.get(parentId) ?? [];
+  if (children.length === 1 && children[0].itemType === "section") {
+    return [
+      children[0],
+      ...collapseSinglePathSections(children[0].id, byParent),
+    ];
+  }
+  return [];
 }
 
 function countDescendantSelectables(
