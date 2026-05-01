@@ -90,16 +90,18 @@ export default async function FieldReportsPage() {
         </ul>
       )}
 
-      {/* 手機 FAB:浮在右下,坐在底部 tab bar 上方 — field_assistant 已有底部
-          tab「新增回報」,所以不重複顯示;其他角色手機才需要這顆鈕。 */}
+      {/* 手機 FAB(extended):浮在右下,坐在底部 tab bar 上方。圖標 + 文字
+          並排,讓使用者一眼看出來這顆鈕是做什麼的。field_assistant 已有
+          底部 tab「新增回報」,不重複顯示。 */}
       {canCreate && !isFieldAssistant && (
         <Link
           href="/field-reports/new"
           aria-label="新增回報"
-          className="fixed right-4 z-30 inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform active:scale-95 md:hidden"
+          className="fixed right-4 z-30 inline-flex h-14 items-center gap-1.5 rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground shadow-lg transition-transform active:scale-95 md:hidden"
           style={{ bottom: "calc(72px + env(safe-area-inset-bottom))" }}
         >
-          <span className="text-3xl leading-none">＋</span>
+          <span className="text-2xl leading-none">＋</span>
+          <span>新回報</span>
         </Link>
       )}
     </div>
