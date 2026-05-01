@@ -144,6 +144,27 @@ export type CaseWorkItem = {
   updated_at: string;
 };
 
+export type FieldReportStatus = "pending" | "merged" | "archived";
+
+export type FieldReportPhoto = {
+  path: string;
+  caption: string;
+};
+
+export type FieldReport = {
+  id: string;
+  case_id: string;
+  author_id: string | null;
+  note: string | null;
+  photos: FieldReportPhoto[];
+  status: FieldReportStatus;
+  merged_into_log_id: string | null;
+  merged_by: string | null;
+  merged_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TenderImport = {
   id: string;
   case_id: string;
