@@ -14,6 +14,7 @@
 | 8 | [`migration-2.4.sql`](migration-2.4.sql) | daily_logs 加 pdf_path + 建 daily-log-pdfs bucket(核定後自動產 PDF) | 必跑 |
 | 9 | [`migration-2.5.sql`](migration-2.5.sql) | approval_stage enum 加 'fill'(填表人簽名) | 必跑 |
 | 10 | [`migration-2.6.sql`](migration-2.6.sql) | user_role 加 'field_assistant'(現場助理)+ profiles.is_active 停用旗標 | 必跑 |
+| 11 | [`migration-2.7.sql`](migration-2.7.sql) | field_reports 表(現場回報)+ field_report_status enum + RLS | 必跑 |
 
 ## 排錯
 
