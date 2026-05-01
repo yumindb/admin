@@ -17,6 +17,35 @@ type ReportRow = FieldReport & {
   author: { full_name: string | null } | null;
 };
 
+type CaseGroup = {
+  caseId: string;
+  caseName: string;
+  caseCode: string | null;
+  reports: ReportRow[];
+  latest: string;
+};
+
+function groupByCase(list: ReportRow[]): CaseGroup[] {
+  const map = new Map<string, CaseGroup>();
+  for (const r of list) {
+    const key = r.case_id ?? "_unknown";
+    let g = map.get(key);
+    if (!g) {
+      g = {
+        caseId: key,
+        caseName: r.cases?.name ?? "(已刪除案件)",
+        caseCode: r.cases?.code ?? null,
+        reports: [],
+        latest: r.created_at,
+      };
+      map.set(key, g);
+    }
+    g.reports.push(r);
+    if (r.created_at > g.latest) g.latest = r.created_at;
+  }
+  return [...map.values()].sort((a, b) => b.latest.localeCompare(a.latest));
+}
+
 export default async function FieldReportsPage() {
   const supabase = await createClient();
   const {
@@ -80,14 +109,39 @@ export default async function FieldReportsPage() {
 
       {!list.length ? (
         <Empty isFieldAssistant={isFieldAssistant} canCreate={canCreate} />
-      ) : (
+      ) : isFieldAssistant ? (
+        // 現場助理只看自己的,通常案場單一,不分組
         <ul className="space-y-4">
           {list.map((r) => (
             <li key={r.id}>
-              <ReportCard report={r} showAuthor={!isFieldAssistant} />
+              <ReportCard report={r} showAuthor={false} />
             </li>
           ))}
         </ul>
+      ) : (
+        // 工地主任 / 老闆 / 辦公室助理:跨案場 — 依案場分組
+        // sticky case header 讓使用者捲動時隨時知道目前是哪個案場
+        <div className="space-y-7">
+          {groupByCase(list).map((g) => (
+            <section key={g.caseId}>
+              <div className="sticky top-0 z-10 -mx-4 mb-3 border-b-2 border-[#A07850]/30 bg-background/95 px-4 py-2.5 backdrop-blur md:-mx-8 md:px-8">
+                <h2 className="line-clamp-2 text-base font-bold leading-snug text-primary md:text-lg">
+                  📍 {g.caseName}
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {g.reports.length} 筆 · {g.caseCode ?? "未編號"}
+                  </span>
+                </h2>
+              </div>
+              <ul className="space-y-4">
+                {g.reports.map((r) => (
+                  <li key={r.id}>
+                    <ReportCard report={r} showAuthor hideCaseName />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
 
       {/* 手機 FAB(extended):浮在右下,坐在底部 tab bar 上方。圖標 + 文字
@@ -115,9 +169,12 @@ export default async function FieldReportsPage() {
 function ReportCard({
   report: r,
   showAuthor,
+  hideCaseName = false,
 }: {
   report: ReportRow;
   showAuthor: boolean;
+  /** 分組視圖中,案場名已在 sticky header 顯示,卡片內不重複 */
+  hideCaseName?: boolean;
 }) {
   const s = STATUS[r.status];
   const photoCount = r.photos?.length ?? 0;
@@ -138,10 +195,12 @@ function ReportCard({
       {/* Header */}
       <div className="flex items-start justify-between gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-lg font-semibold text-primary">
-            {r.cases?.name ?? "(已刪除案件)"}
-          </div>
-          <div className="mt-0.5 text-sm text-muted-foreground">
+          {!hideCaseName && (
+            <div className="line-clamp-2 text-lg font-semibold leading-snug text-primary">
+              {r.cases?.name ?? "(已刪除案件)"}
+            </div>
+          )}
+          <div className={hideCaseName ? "text-sm text-muted-foreground" : "mt-0.5 text-sm text-muted-foreground"}>
             {ts}
             {showAuthor && r.author?.full_name && ` · ${r.author.full_name}`}
           </div>
