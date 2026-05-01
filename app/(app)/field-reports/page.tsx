@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -48,14 +49,38 @@ export default async function FieldReportsPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-2 text-2xl font-semibold text-primary md:text-3xl">
-        {isFieldAssistant ? "我的回報" : "現場回報"}
-      </h1>
-      <p className="mb-6 text-base text-muted-foreground">
-        {isFieldAssistant
-          ? "下面是你拍過、寫過的紀錄。要新增請按下方「新增回報」。"
-          : "現場拍照與文字紀錄。工地主任填日誌時可勾選整合。"}
-      </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
+            {isFieldAssistant ? "我的回報" : "現場回報"}
+          </h1>
+          <p className="mt-1.5 text-base text-muted-foreground">
+            {isFieldAssistant
+              ? "下面是你拍過、寫過的紀錄。要新增請按下方「新增回報」。"
+              : "現場拍照與文字紀錄,你也可以自己加。工地主任填日誌時可勾選整合。"}
+          </p>
+        </div>
+        {/* 桌機顯示「+ 新增回報」;field_assistant 手機已有底部 tab,
+            其他角色手機沒底部 tab 直達建立頁,所以也顯示這顆鈕 */}
+        {canCreate && !isFieldAssistant && (
+          <Button
+            asChild
+            size="lg"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Link href="/field-reports/new">+ 新增回報</Link>
+          </Button>
+        )}
+        {canCreate && isFieldAssistant && (
+          <Button
+            asChild
+            size="lg"
+            className="hidden bg-primary text-primary-foreground hover:bg-primary/90 md:inline-flex"
+          >
+            <Link href="/field-reports/new">+ 新增回報</Link>
+          </Button>
+        )}
+      </div>
 
       {error && (
         <p className="mb-4 rounded-lg border-2 border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-base text-[#B91C1C]">
