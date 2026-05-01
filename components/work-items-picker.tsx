@@ -211,12 +211,15 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* 已選卡片區 */}
+      {/* 已選卡片區 — 視覺強調這裡是重點 */}
       {selectedInOrder.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-primary">
-              已選 {selectedInOrder.length} 個工項
+        <div className="space-y-3">
+          <div className="flex items-center justify-between border-b-2 border-[#A07850]/30 pb-2">
+            <h3 className="flex items-center gap-2 text-lg font-bold text-primary">
+              <span className="inline-flex size-7 items-center justify-center rounded-full bg-[#A07850] text-sm font-semibold text-white">
+                {selectedInOrder.length}
+              </span>
+              今天要填的工項
             </h3>
             <button
               type="button"
@@ -226,7 +229,7 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
               全部移除
             </button>
           </div>
-          <ul className="space-y-2.5">
+          <ul className="space-y-2">
             {selectedInOrder.map(({ item, value: v }) => (
               <li key={item.id}>
                 <SelectedItemCard
@@ -358,27 +361,26 @@ function SelectedItemCard({
     : fillCap ?? undefined;
 
   return (
-    <div className="rounded-lg border-2 border-[#E0DCD6] bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-lg border border-[#A07850]/40 bg-[#FAF7F2] p-3 shadow-sm">
+      {/* 第一列:工項名 + 移除 */}
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          {item.tenderCode && (
-            <div className="font-mono text-xs text-muted-foreground">
-              {item.tenderCode}
-            </div>
-          )}
-          <div className="mt-0.5 text-base font-semibold leading-snug text-primary md:text-lg">
+          <div className="break-words text-base font-semibold leading-snug text-primary">
             {item.name}
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            {item.tenderCode && (
+              <span className="font-mono">{item.tenderCode}</span>
+            )}
             {item.totalQuantity !== null && (
               <span>
-                標單總量 {item.totalQuantity}
+                · 標單 {item.totalQuantity}
                 {item.unit ? ` ${item.unit}` : ""}
               </span>
             )}
             {aggregate && (
               <span>
-                目前累計{" "}
+                · 累計{" "}
                 <span className="font-medium text-foreground">
                   {formatAggregate(aggregate, item.unit, item.totalQuantity)}
                 </span>
@@ -389,45 +391,20 @@ function SelectedItemCard({
         <button
           type="button"
           onClick={onRemove}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-[#B91C1C] transition-colors hover:bg-[#FEF2F2]"
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-[#B91C1C] transition-colors hover:bg-[#FEF2F2] active:bg-[#FCE7E7]"
           aria-label="移除這個工項"
         >
           <Trash2 className="size-4" />
         </button>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#F0EBE4] pt-3">
-        <button
-          type="button"
-          onClick={() => {
-            if (modeLocked) return;
-            onToggleMode();
-          }}
-          disabled={modeLocked}
-          aria-disabled={modeLocked}
-          className={cn(
-            "rounded-full border border-[#E0DCD6] bg-white px-3 py-1 text-xs text-muted-foreground transition-colors",
-            modeLocked
-              ? "cursor-not-allowed opacity-70"
-              : "hover:bg-[#FAF7F2]"
-          )}
-          title={
-            modeLocked
-              ? `已鎖定為${isPct ? "百分比" : "實際數量"}模式`
-              : isPct
-                ? "切換為輸入實際數量"
-                : "切換為輸入百分比"
-          }
-        >
-          {isPct ? "% 百分比" : "量 實際數量"}
-          {modeLocked ? " · 已鎖定" : ""}
-        </button>
-
-        <div className="flex items-center gap-2">
+      {/* 第二列:數量 + 模式 segmented control */}
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={onMinus}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
             aria-label="減"
           >
             −
@@ -444,28 +421,101 @@ function SelectedItemCard({
               if (!Number.isFinite(n)) return;
               onChangeQty(clampStored(isPct ? n / 100 : n));
             }}
-            className="h-11 w-20 rounded-md border border-[#E0DCD6] bg-white px-2 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+            className="h-10 w-16 rounded-md border border-[#E0DCD6] bg-white px-1 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
           <button
             type="button"
             onClick={onPlus}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
             aria-label="加"
           >
             ＋
           </button>
-          <span className="ml-1 text-sm text-muted-foreground">
-            {isPct ? "%" : item.unit ?? ""}
-          </span>
         </div>
+
+        <ModeSegment
+          isPct={isPct}
+          locked={modeLocked}
+          unit={item.unit}
+          onSwitch={onToggleMode}
+        />
       </div>
 
-      <div className="mt-2 text-xs text-muted-foreground">
+      {/* 填寫後預覽 — 小字輔助 */}
+      <div className="mt-1.5 text-xs text-muted-foreground">
         填寫後{" "}
         <span className="font-medium tabular-nums text-foreground">
           {formatAfterFill(v, aggregate, item.unit, item.totalQuantity)}
         </span>
       </div>
+    </div>
+  );
+}
+
+function ModeSegment({
+  isPct,
+  locked,
+  unit,
+  onSwitch,
+}: {
+  isPct: boolean;
+  locked: boolean;
+  unit: string | null;
+  onSwitch: () => void;
+}) {
+  // 用兩個並排的按鈕做 segmented control;active 那邊填銅金底色,
+  // 一眼就看得出「兩個模式可切換」。鎖定狀態時整個變半透明,點擊無效。
+  const segBase =
+    "inline-flex h-10 items-center justify-center px-3 text-sm font-medium transition-colors";
+  return (
+    <div
+      className={cn(
+        "inline-flex overflow-hidden rounded-md border border-[#E0DCD6] bg-white",
+        locked && "opacity-60"
+      )}
+      role="tablist"
+      aria-label="輸入模式"
+      title={
+        locked
+          ? `已鎖定為${isPct ? "百分比" : "實際數量"}模式(歷史日誌已使用此模式)`
+          : "點選切換輸入模式"
+      }
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={isPct}
+        disabled={locked || isPct}
+        onClick={() => {
+          if (!locked && !isPct) onSwitch();
+        }}
+        className={cn(
+          segBase,
+          isPct
+            ? "bg-[#A07850] text-white"
+            : "text-muted-foreground hover:bg-[#F5F1EC]"
+        )}
+      >
+        百分比 %
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={!isPct}
+        disabled={locked || !isPct}
+        onClick={() => {
+          if (!locked && isPct) onSwitch();
+        }}
+        className={cn(
+          segBase,
+          "border-l border-[#E0DCD6]",
+          !isPct
+            ? "bg-[#A07850] text-white"
+            : "text-muted-foreground hover:bg-[#F5F1EC]"
+        )}
+      >
+        實際數量{unit ? ` (${unit})` : ""}
+      </button>
     </div>
   );
 }
