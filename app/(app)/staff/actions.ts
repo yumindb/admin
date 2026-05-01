@@ -3,14 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import type { UserRole } from "@/lib/types";
-
-const ALLOWED_ROLES: UserRole[] = [
-  "owner",
-  "office_staff",
-  "site_supervisor",
-  "field_assistant",
-];
+import type { StaffActionResult } from "./types";
 
 async function requireManager() {
   const supabase = await createClient();
@@ -36,12 +29,6 @@ const CreateSchema = z.object({
   role: z.enum(["owner", "office_staff", "site_supervisor", "field_assistant"]),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
 });
-
-export type StaffActionResult = {
-  ok: boolean;
-  error?: string;
-  fieldErrors?: Record<string, string[]>;
-};
 
 export async function createStaffAction(
   _prev: StaffActionResult | undefined,
@@ -189,5 +176,3 @@ export async function toggleActiveAction(formData: FormData): Promise<StaffActio
   revalidatePath("/staff");
   return { ok: true };
 }
-
-export { ALLOWED_ROLES };

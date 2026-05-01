@@ -26,8 +26,8 @@ import {
   updateStaffAction,
   resetPasswordAction,
   toggleActiveAction,
-  type StaffActionResult,
 } from "./actions";
+import type { StaffActionResult } from "./types";
 import type { StaffRow } from "./page";
 
 type RoleMeta = {
