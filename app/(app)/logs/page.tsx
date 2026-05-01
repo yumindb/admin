@@ -85,11 +85,12 @@ export default async function LogsPage({
             {isSupervisor ? "依案件分組,點開查看每天的日誌" : isOfficeStaff ? "辦公室助理可查看全部日誌與簽核狀態" : "依案件分組,點開查看每天的日誌"}
           </p>
         </div>
+        {/* 桌機:右上角按鈕 */}
         {canCreateLog && (
           <Button
             asChild
             size="lg"
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
+            className="hidden bg-primary text-primary-foreground hover:bg-primary/90 md:inline-flex"
           >
             <Link href="/logs/new">+ 新日誌</Link>
           </Button>
@@ -217,6 +218,21 @@ export default async function LogsPage({
             );
           })}
         </div>
+      )}
+
+      {/* 手機 extended FAB:浮在右下,坐在底部 tab bar 上方。
+          兩個會建日誌的角色(site_supervisor / owner)都有底部 tab,
+          所以 FAB 都要 fixed 並設 bottom 含 safe-area。 */}
+      {canCreateLog && (
+        <Link
+          href="/logs/new"
+          aria-label="新日誌"
+          className="fixed right-4 z-30 inline-flex h-14 items-center gap-1.5 rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground shadow-lg transition-transform active:scale-95 md:hidden"
+          style={{ bottom: "calc(72px + env(safe-area-inset-bottom))" }}
+        >
+          <span className="text-2xl leading-none">＋</span>
+          <span>新日誌</span>
+        </Link>
       )}
     </div>
   );
