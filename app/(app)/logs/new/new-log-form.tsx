@@ -418,25 +418,32 @@ export function NewLogForm({
           <span>· 填表 {currentUserName}</span>
         </div>
       </div>
-      <div className="hidden md:block">
-        <Section title="表頭資料" hint="依照裕民現有施工日誌格式，自動帶入案件與填表資訊">
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <InfoCard label="表報編號" value={reportNumber} />
-            <InfoCard label="日期" value={`${logDate} · ${weekdayLabel}`} />
-            <InfoCard label="工程名稱" value={selectedCase?.name ?? "先選案件"} />
-            <InfoCard label="承攬廠商名稱" value={selectedCase?.company ?? "—"} />
-            <InfoCard
-              label="預定完工日期"
-              value={selectedCase?.expectedEnd ?? "—"}
-            />
-            <InfoCard
-              label="剩餘工期"
-              value={remainingDays === null ? "—" : `${remainingDays} 天`}
-            />
-            <InfoCard label="人員姓名" value={currentUserName} />
-            <InfoCard label="施工地點" value={selectedCase?.location ?? "—"} />
-          </div>
-        </Section>
+      {/* 桌機:緊湊 2 行資訊條,不再 8 張卡片佔半個畫面 */}
+      <div className="hidden rounded-lg border border-[#E0DCD6] bg-card px-5 py-4 md:block">
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1.5">
+          <HeaderField label="表報編號" value={reportNumber} mono />
+          <HeaderField label="日期" value={`${logDate} ${weekdayLabel}`} />
+          <HeaderField label="填表" value={currentUserName} />
+        </div>
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1.5">
+          <HeaderField
+            label="工程"
+            value={selectedCase?.name ?? "（先選案件）"}
+            highlight
+          />
+          {selectedCase?.company && (
+            <HeaderField label="廠商" value={selectedCase.company} />
+          )}
+          {selectedCase?.location && (
+            <HeaderField label="地點" value={selectedCase.location} />
+          )}
+          {selectedCase?.expectedEnd && (
+            <HeaderField label="預完" value={selectedCase.expectedEnd} />
+          )}
+          {remainingDays !== null && (
+            <HeaderField label="剩餘" value={`${remainingDays} 天`} />
+          )}
+        </div>
       </div>
 
       {/* 案件選擇 */}
@@ -931,6 +938,34 @@ function InfoCard({ label, value }: { label: string; value: string }) {
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-sm font-medium text-primary">{value}</div>
     </div>
+  );
+}
+
+function HeaderField({
+  label,
+  value,
+  mono,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  highlight?: boolean;
+}) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5 text-sm">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span
+        className={
+          (mono ? "font-mono " : "") +
+          (highlight
+            ? "text-base font-semibold text-primary"
+            : "font-medium text-primary")
+        }
+      >
+        {value}
+      </span>
+    </span>
   );
 }
 

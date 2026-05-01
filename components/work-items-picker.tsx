@@ -1,15 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkItemAggregate } from "@/lib/work-item-aggregates";
 
 /**
- * 行動裝置友善的工項勾選器 — 給工地主任填日誌用。
- * - 只能勾 item / spec / manual(section 只當分隔顯示,不能勾)
- * - 勾起來才出現數量輸入
- * - section 可摺疊
+ * 工項勾選器(card-first 介面) — 給工地主任填日誌用。
+ *
+ * UI 分兩塊:
+ *   1. 上方「已選工項」卡片區 — 編輯數量、切換模式、移除
+ *   2. 下方「瀏覽全部工項」可摺疊區 — 樹狀結構,只負責勾選 / 取消勾選
+ *
+ * 行為:
+ *   - 只有 item / spec / manual 可勾,section 只當分隔
+ *   - 勾起來會出現在上方卡片區,預設 qty 依 unit 推測為 absolute 或 percent
+ *   - 數量編輯只在卡片區,不在樹中
+ *   - 樹只負責瀏覽/勾選,在已勾的 row 顯示「✓ 已選」標籤,點再次取消
  */
 
 export type PickerItem = {
@@ -53,6 +60,14 @@ type Props = {
 
 export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
   const [query, setQuery] = useState("");
+  const [browserOpen, setBrowserOpen] = useState(value.length === 0);
+
+  const itemMap = useMemo(() => {
+    const m = new Map<string, PickerItem>();
+    for (const it of items) m.set(it.id, it);
+    return m;
+  }, [items]);
+
   const byParent = useMemo(() => {
     const m = new Map<string | null, PickerItem[]>();
     for (const it of items) {
@@ -69,11 +84,20 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
     return m;
   }, [value]);
 
+  // 已選工項的「樹順序」— 用 sort_path 不存在但可以用 items 原本順序近似
+  const selectedInOrder = useMemo(() => {
+    const out: { item: PickerItem; value: PickerValue }[] = [];
+    for (const it of items) {
+      const v = valueMap.get(it.id);
+      if (v) out.push({ item: it, value: v });
+    }
+    return out;
+  }, [items, valueMap]);
+
   const visibleIds = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return null;
 
-    const itemMap = new Map(items.map((it) => [it.id, it]));
     const visible = new Set<string>();
 
     function addAncestors(id: string) {
@@ -101,7 +125,7 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
     }
 
     return visible;
-  }, [byParent, items, query]);
+  }, [byParent, itemMap, items, query]);
 
   function patchValue(id: string, patch: Partial<PickerValue>) {
     const idx = value.findIndex((v) => v.work_item_id === id);
@@ -126,13 +150,10 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
 
   function toggle(id: string, checked: boolean) {
     if (checked) {
-      const item = items.find((it) => it.id === id);
-      // 已被歷史日誌鎖定的工項,只能用同一 mode;否則依 unit 推斷
+      const item = itemMap.get(id);
       const lockedMode = aggregates?.[id]?.mode;
       const mode = lockedMode ?? defaultModeForUnit(item?.unit ?? null);
-      // percent mode default 是 50% (0.5),absolute mode default 是 1
       let qty = mode === "percent" ? 0.5 : 1;
-      // 不能讓初始值就超過剩餘可填空間(總計 ≤ 100%)
       const priorTotal =
         aggregates?.[id] && aggregates[id].mode === mode
           ? aggregates[id].total
@@ -153,10 +174,8 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
   function toggleMode(id: string) {
     const v = value.find((x) => x.work_item_id === id);
     if (!v) return;
-    // 已鎖定就不能切;此 fn 在 UI 層也不會被呼叫到,留 guard 防呆
     if (aggregates?.[id]) return;
     const nextMode = v.qty_mode === "percent" ? "absolute" : "percent";
-    // 模式切換時 qty 重置成該 mode 的 default,避免使用者誤把 30(米)當成 30(%)
     const nextQty = nextMode === "percent" ? 0.5 : 1;
     patchValue(id, { qty_mode: nextMode, qty: nextQty });
   }
@@ -177,11 +196,6 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
       return n;
     });
 
-  const roots = byParent.get(null) ?? [];
-  const visibleRoots = visibleIds
-    ? roots.filter((r) => visibleIds.has(r.id))
-    : roots;
-
   if (!items.length) {
     return (
       <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-4 py-10 text-center text-base text-muted-foreground">
@@ -190,44 +204,265 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
     );
   }
 
+  const roots = byParent.get(null) ?? [];
+  const visibleRoots = visibleIds
+    ? roots.filter((r) => visibleIds.has(r.id))
+    : roots;
+
   return (
-    <div className="rounded-lg border border-[#E0DCD6] bg-card">
-      <div className="border-b border-[#E0DCD6] px-3 py-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜尋項次、工項名稱或單位"
-          className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 md:h-12"
-        />
-      </div>
-      <div className="divide-y divide-[#E0DCD6]">
-        {visibleRoots.length === 0 ? (
-          <div className="px-4 py-8 text-center text-base text-muted-foreground">
-            找不到符合「{query}」的工項
+    <div className="space-y-4">
+      {/* 已選卡片區 */}
+      {selectedInOrder.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-primary">
+              已選 {selectedInOrder.length} 個工項
+            </h3>
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="text-xs text-muted-foreground transition-colors hover:text-[#B91C1C]"
+            >
+              全部移除
+            </button>
           </div>
-        ) : visibleRoots.map((r) => (
-          <PickerRow
-            key={r.id}
-            node={r}
-            byParent={byParent}
-            expanded={expanded}
-            visibleIds={visibleIds}
-            forceExpand={query.trim().length > 0}
-            onToggleExpand={toggleExpand}
-            valueMap={valueMap}
-            onToggle={toggle}
-            onSetQty={setQty}
-            onToggleMode={toggleMode}
-            aggregates={aggregates}
+          <ul className="space-y-2.5">
+            {selectedInOrder.map(({ item, value: v }) => (
+              <li key={item.id}>
+                <SelectedItemCard
+                  item={item}
+                  value={v}
+                  aggregate={aggregates?.[item.id]}
+                  onChangeQty={(qty) => setQty(item.id, qty)}
+                  onToggleMode={() => toggleMode(item.id)}
+                  onRemove={() => toggle(item.id, false)}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 瀏覽器 */}
+      <details
+        open={browserOpen || query.trim().length > 0}
+        onToggle={(e) => setBrowserOpen((e.target as HTMLDetailsElement).open)}
+        className="rounded-lg border border-[#E0DCD6] bg-card"
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-base font-medium text-primary [&::-webkit-details-marker]:hidden">
+          <span>
+            {selectedInOrder.length > 0 ? "+ 加更多工項" : "選擇工項"}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              （從標單裡挑）
+            </span>
+          </span>
+          <span className="shrink-0 text-muted-foreground transition-transform duration-150 [details[open]_&]:rotate-180">
+            <ChevronDown className="size-5" />
+          </span>
+        </summary>
+
+        <div className="border-t border-[#E0DCD6] px-3 py-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜尋項次、工項名稱或單位"
+            className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 md:h-12"
           />
-        ))}
+        </div>
+        <div className="divide-y divide-[#E0DCD6]">
+          {visibleRoots.length === 0 ? (
+            <div className="px-4 py-8 text-center text-base text-muted-foreground">
+              找不到符合「{query}」的工項
+            </div>
+          ) : (
+            visibleRoots.map((r) => (
+              <BrowseRow
+                key={r.id}
+                node={r}
+                byParent={byParent}
+                expanded={expanded}
+                visibleIds={visibleIds}
+                forceExpand={query.trim().length > 0}
+                onToggleExpand={toggleExpand}
+                valueMap={valueMap}
+                onToggle={toggle}
+              />
+            ))
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/* =============================================================== */
+/* 已選卡片 — 編輯數量 / 模式 / 移除                                  */
+/* =============================================================== */
+
+function SelectedItemCard({
+  item,
+  value: v,
+  aggregate,
+  onChangeQty,
+  onToggleMode,
+  onRemove,
+}: {
+  item: PickerItem;
+  value: PickerValue;
+  aggregate?: WorkItemAggregate;
+  onChangeQty: (qty: number) => void;
+  onToggleMode: () => void;
+  onRemove: () => void;
+}) {
+  const isPct = v.qty_mode === "percent";
+  const modeLocked = !!aggregate;
+  const priorTotal =
+    aggregate && aggregate.mode === v.qty_mode ? aggregate.total : 0;
+  const fillCap = isPct
+    ? Math.max(0, 1 - priorTotal)
+    : item.totalQuantity != null
+      ? Math.max(0, item.totalQuantity - priorTotal)
+      : null;
+  const clampStored = (n: number) => {
+    if (n < 0) return 0;
+    if (fillCap != null && n > fillCap) return fillCap;
+    return n;
+  };
+  const display = isPct ? Math.round((v.qty ?? 0) * 100) : v.qty;
+  const step = isPct ? 10 : 1;
+  const onMinus = () => {
+    const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
+    const next = Math.max(0, cur - step);
+    onChangeQty(clampStored(isPct ? next / 100 : next));
+  };
+  const onPlus = () => {
+    const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
+    const next = cur + step;
+    onChangeQty(clampStored(isPct ? next / 100 : next));
+  };
+  const inputMax = isPct
+    ? Math.round(Math.max(0, 1 - priorTotal) * 100)
+    : fillCap ?? undefined;
+
+  return (
+    <div className="rounded-lg border-2 border-[#E0DCD6] bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {item.tenderCode && (
+            <div className="font-mono text-xs text-muted-foreground">
+              {item.tenderCode}
+            </div>
+          )}
+          <div className="mt-0.5 text-base font-semibold leading-snug text-primary md:text-lg">
+            {item.name}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            {item.totalQuantity !== null && (
+              <span>
+                標單總量 {item.totalQuantity}
+                {item.unit ? ` ${item.unit}` : ""}
+              </span>
+            )}
+            {aggregate && (
+              <span>
+                目前累計{" "}
+                <span className="font-medium text-foreground">
+                  {formatAggregate(aggregate, item.unit, item.totalQuantity)}
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-[#B91C1C] transition-colors hover:bg-[#FEF2F2]"
+          aria-label="移除這個工項"
+        >
+          <Trash2 className="size-4" />
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#F0EBE4] pt-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (modeLocked) return;
+            onToggleMode();
+          }}
+          disabled={modeLocked}
+          aria-disabled={modeLocked}
+          className={cn(
+            "rounded-full border border-[#E0DCD6] bg-white px-3 py-1 text-xs text-muted-foreground transition-colors",
+            modeLocked
+              ? "cursor-not-allowed opacity-70"
+              : "hover:bg-[#FAF7F2]"
+          )}
+          title={
+            modeLocked
+              ? `已鎖定為${isPct ? "百分比" : "實際數量"}模式`
+              : isPct
+                ? "切換為輸入實際數量"
+                : "切換為輸入百分比"
+          }
+        >
+          {isPct ? "% 百分比" : "量 實際數量"}
+          {modeLocked ? " · 已鎖定" : ""}
+        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onMinus}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+            aria-label="減"
+          >
+            −
+          </button>
+          <input
+            type="number"
+            min={0}
+            max={inputMax}
+            step="any"
+            inputMode="decimal"
+            value={display}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (!Number.isFinite(n)) return;
+              onChangeQty(clampStored(isPct ? n / 100 : n));
+            }}
+            className="h-11 w-20 rounded-md border border-[#E0DCD6] bg-white px-2 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+          <button
+            type="button"
+            onClick={onPlus}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+            aria-label="加"
+          >
+            ＋
+          </button>
+          <span className="ml-1 text-sm text-muted-foreground">
+            {isPct ? "%" : item.unit ?? ""}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-muted-foreground">
+        填寫後{" "}
+        <span className="font-medium tabular-nums text-foreground">
+          {formatAfterFill(v, aggregate, item.unit, item.totalQuantity)}
+        </span>
       </div>
     </div>
   );
 }
 
-function PickerRow({
+/* =============================================================== */
+/* 瀏覽 row — 只負責勾選 / 取消勾選,沒有數量輸入                       */
+/* =============================================================== */
+
+function BrowseRow({
   node,
   byParent,
   expanded,
@@ -236,9 +471,6 @@ function PickerRow({
   onToggleExpand,
   valueMap,
   onToggle,
-  onSetQty,
-  onToggleMode,
-  aggregates,
 }: {
   node: PickerItem;
   byParent: Map<string | null, PickerItem[]>;
@@ -248,9 +480,6 @@ function PickerRow({
   onToggleExpand: (id: string) => void;
   valueMap: Map<string, PickerValue>;
   onToggle: (id: string, checked: boolean) => void;
-  onSetQty: (id: string, qty: number | null) => void;
-  onToggleMode: (id: string) => void;
-  aggregates?: Record<string, WorkItemAggregate>;
 }) {
   const children = (byParent.get(node.id) ?? []).filter(
     (child) => !visibleIds || visibleIds.has(child.id)
@@ -259,12 +488,8 @@ function PickerRow({
   const isOpen = forceExpand || expanded.has(node.id);
   const isSection = node.itemType === "section";
 
-  const v = valueMap.get(node.id);
-  const checked = !!v;
-  const aggregate = aggregates?.[node.id];
-  const modeLocked = !!aggregate;
+  const checked = valueMap.has(node.id);
 
-  // section 整列可點摺疊;非 section 整列可點切換勾選(觸控目標 ≥ 48px 高)
   const handleRowClick = () => {
     if (isSection) {
       if (hasChildren) onToggleExpand(node.id);
@@ -286,12 +511,12 @@ function PickerRow({
           }
         }}
         className={cn(
-          "flex min-h-[56px] cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 active:bg-[#F5F1EC] md:flex-nowrap",
-          isSection && "bg-[#FAF7F2]"
+          "flex min-h-[52px] cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors active:bg-[#F5F1EC]",
+          isSection && "bg-[#FAF7F2]",
+          checked && !isSection && "bg-[#FAF7F2]"
         )}
         style={{ paddingLeft: `${12 + node.depth * 14}px` }}
       >
-        {/* 摺疊鈕 — 即使 section 整列可點,獨立小區仍給滑鼠使用者方便 */}
         {hasChildren ? (
           <button
             type="button"
@@ -308,7 +533,6 @@ function PickerRow({
           <span className="inline-block size-8 shrink-0" />
         )}
 
-        {/* checkbox(section 不顯示) — 視覺保留小,實際 hit area 由整列吃掉 */}
         {!isSection ? (
           <input
             type="checkbox"
@@ -321,166 +545,38 @@ function PickerRow({
           <span className="inline-block size-5 shrink-0" />
         )}
 
-        {/* 名稱 + 編碼 */}
         <div className="min-w-0 flex-1">
           {node.tenderCode && (
-            <div className="font-mono text-sm text-muted-foreground">
+            <div className="font-mono text-xs text-muted-foreground">
               {node.tenderCode}
             </div>
           )}
           <div
             className={cn(
-              "text-lg leading-snug",
+              "text-base leading-snug",
               isSection ? "font-semibold text-primary" : "font-medium text-foreground"
             )}
           >
             {node.name}
           </div>
           {node.totalQuantity !== null && !isSection && (
-            <div className="text-sm text-muted-foreground">
-              標單總量 {node.totalQuantity}
-              {node.unit ? ` ${node.unit}` : ""}
-            </div>
-          )}
-          {!isSection && aggregate && (
             <div className="text-xs text-muted-foreground">
-              目前累計{" "}
-              <span className="font-medium tabular-nums text-foreground">
-                {formatAggregate(aggregate, node.unit, node.totalQuantity)}
-              </span>
+              {node.totalQuantity}
+              {node.unit ? ` ${node.unit}` : ""}
             </div>
           )}
         </div>
 
-        {/* 數量輸入(checked 才出現) — 加 stepper 方便戴手套 */}
         {checked && !isSection && (
-          <div
-            className="flex w-full shrink-0 flex-col items-end gap-1 md:ml-auto md:w-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* mode 切換:% / 量(歷史已填則鎖定,只能用同一模式) */}
-            <button
-              type="button"
-              onClick={() => {
-                if (modeLocked) return;
-                onToggleMode(node.id);
-              }}
-              disabled={modeLocked}
-              aria-disabled={modeLocked}
-              className={cn(
-                "rounded-full border border-[#E0DCD6] bg-white px-2.5 py-0.5 text-xs text-muted-foreground transition-colors",
-                modeLocked
-                  ? "cursor-not-allowed opacity-70"
-                  : "hover:bg-[#FAF7F2]"
-              )}
-              title={
-                modeLocked
-                  ? `已鎖定為${v.qty_mode === "percent" ? "百分比" : "實際數量"}模式(此工項先前填寫已使用此模式)`
-                  : v.qty_mode === "percent"
-                    ? "切換為輸入實際數量"
-                    : "切換為輸入百分比"
-              }
-            >
-              {v.qty_mode === "percent" ? "% 模式" : "量 模式"}
-              {modeLocked ? " · 已鎖定" : ""}
-            </button>
-
-            <div className="flex items-center gap-1">
-              {(() => {
-                const isPct = v.qty_mode === "percent";
-                // 同 mode 才能加入歷史累計;否則本次當第一筆
-                const priorTotal =
-                  aggregate && aggregate.mode === v.qty_mode
-                    ? aggregate.total
-                    : 0;
-                // 本次填寫上限:absolute=標單總量-priorTotal;percent=1-priorTotal
-                // 不限總量(totalQuantity 為 null 的 absolute 工項)就不設上限
-                const fillCap = isPct
-                  ? Math.max(0, 1 - priorTotal)
-                  : node.totalQuantity != null
-                    ? Math.max(0, node.totalQuantity - priorTotal)
-                    : null;
-                const clampStored = (n: number) => {
-                  if (n < 0) return 0;
-                  if (fillCap != null && n > fillCap) return fillCap;
-                  return n;
-                };
-                // percent mode:畫面 0-100,儲存 0-1
-                const display = isPct ? Math.round((v.qty ?? 0) * 100) : v.qty;
-                const step = isPct ? 10 : 1;
-                const onMinus = () => {
-                  const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
-                  const next = Math.max(0, cur - step);
-                  onSetQty(node.id, clampStored(isPct ? next / 100 : next));
-                };
-                const onPlus = () => {
-                  const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
-                  const next = cur + step;
-                  onSetQty(node.id, clampStored(isPct ? next / 100 : next));
-                };
-                // input max 給原生瀏覽器提示;真實限制在 onChange clamp
-                const inputMax = isPct
-                  ? Math.round(Math.max(0, 1 - priorTotal) * 100)
-                  : fillCap ?? undefined;
-                return (
-                  <>
-                    <button
-                      type="button"
-                      onClick={onMinus}
-                      className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-base text-[#5A5050] hover:bg-[#F5F1EC]"
-                      aria-label="減"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min={0}
-                      max={inputMax}
-                      step="any"
-                      inputMode="decimal"
-                      value={display}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        if (!Number.isFinite(n)) return;
-                        onSetQty(node.id, clampStored(isPct ? n / 100 : n));
-                      }}
-                      className="h-10 w-20 rounded-md border border-[#E0DCD6] bg-white px-2 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={onPlus}
-                      className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-base text-[#5A5050] hover:bg-[#F5F1EC]"
-                      aria-label="加"
-                    >
-                      ＋
-                    </button>
-                    <span className="ml-1 w-8 text-xs text-muted-foreground">
-                      {isPct ? "%" : node.unit ?? ""}
-                    </span>
-                  </>
-                );
-              })()}
-            </div>
-
-            {/* 填寫後累計即時試算 */}
-            <div className="text-xs text-muted-foreground">
-              填寫後{" "}
-              <span className="font-medium tabular-nums text-foreground">
-                {formatAfterFill(
-                  v,
-                  aggregate,
-                  node.unit,
-                  node.totalQuantity,
-                )}
-              </span>
-            </div>
-          </div>
+          <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-xs font-medium text-[#4A7C59]">
+            ✓ 已選
+          </span>
         )}
       </div>
 
       {hasChildren && isOpen
         ? children.map((c) => (
-            <PickerRow
+            <BrowseRow
               key={c.id}
               node={c}
               byParent={byParent}
@@ -490,9 +586,6 @@ function PickerRow({
               onToggleExpand={onToggleExpand}
               valueMap={valueMap}
               onToggle={onToggle}
-              onSetQty={onSetQty}
-              onToggleMode={onToggleMode}
-              aggregates={aggregates}
             />
           ))
         : null}
@@ -500,8 +593,9 @@ function PickerRow({
   );
 }
 
+/* =============================================================== */
+
 function formatNumber(n: number): string {
-  // 去除多餘小數,但保留最多 2 位
   return Number.isInteger(n) ? String(n) : Number(n.toFixed(2)).toString();
 }
 
@@ -529,9 +623,7 @@ function formatAfterFill(
 ): string {
   const fillQty = Number.isFinite(v.qty) ? v.qty : 0;
   const mode = v.qty_mode ?? "absolute";
-  // 鎖定模式 + 同 mode 才能加;否則只顯示本次填寫值(極少數 legacy 模式衝突情境)
-  const priorTotal =
-    agg && agg.mode === mode ? agg.total : 0;
+  const priorTotal = agg && agg.mode === mode ? agg.total : 0;
   const next = priorTotal + fillQty;
   if (mode === "percent") {
     return `${formatNumber(next * 100)}%`;
