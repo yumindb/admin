@@ -97,10 +97,10 @@ export default async function FieldReportsPage() {
         <Link
           href="/field-reports/new"
           aria-label="新增回報"
-          className="fixed right-4 z-30 inline-flex h-14 items-center gap-1.5 rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground shadow-lg transition-transform active:scale-95 md:hidden"
-          style={{ bottom: "calc(72px + env(safe-area-inset-bottom))" }}
+          className="fixed right-4 z-30 inline-flex h-16 items-center gap-2 rounded-full bg-[#A07850] px-6 text-lg font-bold text-white shadow-xl ring-2 ring-white transition-transform active:scale-95 md:hidden"
+          style={{ bottom: "calc(84px + env(safe-area-inset-bottom))" }}
         >
-          <span className="text-2xl leading-none">＋</span>
+          <span className="text-3xl leading-none">＋</span>
           <span>新回報</span>
         </Link>
       )}
