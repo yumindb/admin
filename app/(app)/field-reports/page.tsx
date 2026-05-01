@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
@@ -119,28 +119,44 @@ export default async function FieldReportsPage() {
           ))}
         </ul>
       ) : (
-        // 工地主任 / 老闆 / 辦公室助理:跨案場 — 依案場分組
-        // sticky case header 讓使用者捲動時隨時知道目前是哪個案場
-        <div className="space-y-7">
-          {groupByCase(list).map((g) => (
-            <section key={g.caseId}>
-              <div className="sticky top-0 z-10 -mx-4 mb-3 border-b-2 border-[#A07850]/30 bg-background/95 px-4 py-2.5 backdrop-blur md:-mx-8 md:px-8">
-                <h2 className="line-clamp-2 text-base font-bold leading-snug text-primary md:text-lg">
-                  📍 {g.caseName}
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    {g.reports.length} 筆 · {g.caseCode ?? "未編號"}
+        // 工地主任 / 老闆 / 辦公室助理:跨案場 — 依案場分組,可摺疊。
+        // 預設展開「有待整合」的案場,其餘收起 — 一打開就先處理該處理的。
+        <div className="space-y-3">
+          {groupByCase(list).map((g) => {
+            const pendingCount = g.reports.filter(
+              (r) => r.status === "pending"
+            ).length;
+            const defaultOpen = pendingCount > 0;
+            return (
+              <details
+                key={g.caseId}
+                open={defaultOpen}
+                className="group/case rounded-lg"
+              >
+                <summary className="sticky top-0 z-10 -mx-4 flex cursor-pointer list-none items-center gap-2 border-b-2 border-[#A07850]/30 bg-background/95 px-4 py-3 backdrop-blur transition-colors hover:bg-[#FAF7F2] md:-mx-8 md:px-8 [&::-webkit-details-marker]:hidden">
+                  <span className="line-clamp-2 flex-1 text-base font-bold leading-snug text-primary md:text-lg">
+                    📍 {g.caseName}
                   </span>
-                </h2>
-              </div>
-              <ul className="space-y-4">
-                {g.reports.map((r) => (
-                  <li key={r.id}>
-                    <ReportCard report={r} showAuthor hideCaseName />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {g.reports.length} 筆
+                    {pendingCount > 0 && (
+                      <span className="ml-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 font-medium text-[#D97706]">
+                        {pendingCount} 待整合
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown className="size-5 shrink-0 text-muted-foreground transition-transform duration-150 group-open/case:rotate-180" />
+                </summary>
+                <ul className="mt-3 space-y-4">
+                  {g.reports.map((r) => (
+                    <li key={r.id}>
+                      <ReportCard report={r} showAuthor hideCaseName />
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            );
+          })}
         </div>
       )}
 
