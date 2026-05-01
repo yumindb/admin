@@ -155,12 +155,12 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
               key={p.path + idx}
               className="overflow-hidden rounded-lg border-2 border-[#E0DCD6] bg-card"
             >
-              <div className="relative">
+              <div className="relative bg-[#F5F1EC]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={p.path}
                   alt=""
-                  className="block h-56 w-full object-cover"
+                  className="mx-auto block h-40 w-full object-contain"
                 />
                 <button
                   type="button"

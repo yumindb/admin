@@ -66,7 +66,7 @@ export default async function FieldReportsPage() {
       {!list.length ? (
         <Empty isFieldAssistant={isFieldAssistant} canCreate={canCreate} />
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-4">
           {list.map((r) => (
             <li key={r.id}>
               <ReportCard report={r} showAuthor={!isFieldAssistant} />
@@ -88,7 +88,7 @@ function ReportCard({
   const s = STATUS[r.status];
   const photoCount = r.photos?.length ?? 0;
   const firstPhoto = r.photos?.[0]?.path ?? null;
-  const noteSnippet = r.note?.trim().slice(0, 60) ?? "";
+  const note = r.note?.trim() ?? "";
   const ts = new Date(r.created_at).toLocaleString("zh-TW", {
     month: "2-digit",
     day: "2-digit",
@@ -99,49 +99,53 @@ function ReportCard({
   return (
     <Link
       href={`/field-reports/${r.id}`}
-      className="flex items-stretch gap-3 overflow-hidden rounded-lg border-2 border-[#E0DCD6] bg-card transition-colors hover:border-accent active:bg-[#FAF7F2]"
+      className="block overflow-hidden rounded-xl border-2 border-[#E0DCD6] bg-card transition-colors hover:border-accent active:bg-[#FAF7F2]"
     >
-      <div className="flex w-24 shrink-0 items-center justify-center bg-[#F5F1EC] sm:w-28">
-        {firstPhoto ? (
-          // eslint-disable-next-line @next/next/no-img-element
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-lg font-semibold text-primary">
+            {r.cases?.name ?? "(已刪除案件)"}
+          </div>
+          <div className="mt-0.5 text-sm text-muted-foreground">
+            {ts}
+            {showAuthor && r.author?.full_name && ` · ${r.author.full_name}`}
+          </div>
+        </div>
+        <span
+          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
+        >
+          {s.label}
+        </span>
+      </div>
+
+      {/* Photo (big, contain — full image visible) */}
+      {firstPhoto ? (
+        <div className="relative bg-[#F5F1EC]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={firstPhoto}
             alt=""
-            className="h-full w-full object-cover"
+            className="mx-auto block h-56 w-full object-contain"
           />
-        ) : (
-          <span className="text-3xl text-[#D4CFC8]" aria-hidden>
-            📝
-          </span>
-        )}
-      </div>
-      <div className="min-w-0 flex-1 py-3 pr-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-base font-semibold text-primary">
-              {r.cases?.name ?? "(已刪除案件)"}
-            </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {ts}
-              {showAuthor && r.author?.full_name && ` · ${r.author.full_name}`}
-              {photoCount > 0 && ` · ${photoCount} 張`}
-            </div>
-          </div>
-          <span
-            className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${s.cls}`}
-          >
-            {s.label}
-          </span>
+          {photoCount > 1 && (
+            <span className="absolute right-3 top-3 rounded-full bg-black/65 px-3 py-1 text-sm font-medium text-white shadow-sm">
+              📷 {photoCount}
+            </span>
+          )}
         </div>
-        {noteSnippet && (
-          <p className="mt-1.5 line-clamp-2 text-sm text-foreground">
-            {noteSnippet}
-          </p>
-        )}
-        {!noteSnippet && photoCount === 0 && (
-          <p className="mt-1.5 text-sm text-muted-foreground">(空白)</p>
-        )}
-      </div>
+      ) : null}
+
+      {/* Note */}
+      {note ? (
+        <p className="line-clamp-3 whitespace-pre-line px-4 py-3 text-base text-foreground">
+          {note}
+        </p>
+      ) : !firstPhoto ? (
+        <p className="px-4 py-6 text-center text-base text-muted-foreground">
+          (空白)
+        </p>
+      ) : null}
     </Link>
   );
 }
@@ -154,8 +158,8 @@ function Empty({
   canCreate: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center">
-      <div className="mb-4 text-6xl text-[#E0DCD6]">📷</div>
+    <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
+      <div className="mb-4 text-7xl">📷</div>
       <p className="mb-2 text-lg font-medium text-foreground">
         {isFieldAssistant ? "你還沒有任何回報" : "還沒有現場回報"}
       </p>
