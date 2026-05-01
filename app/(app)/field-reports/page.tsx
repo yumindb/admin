@@ -49,7 +49,7 @@ export default async function FieldReportsPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-primary md:text-3xl">
             {isFieldAssistant ? "我的回報" : "現場回報"}
@@ -60,18 +60,8 @@ export default async function FieldReportsPage() {
               : "現場拍照與文字紀錄,你也可以自己加。工地主任填日誌時可勾選整合。"}
           </p>
         </div>
-        {/* 桌機顯示「+ 新增回報」;field_assistant 手機已有底部 tab,
-            其他角色手機沒底部 tab 直達建立頁,所以也顯示這顆鈕 */}
-        {canCreate && !isFieldAssistant && (
-          <Button
-            asChild
-            size="lg"
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            <Link href="/field-reports/new">+ 新增回報</Link>
-          </Button>
-        )}
-        {canCreate && isFieldAssistant && (
+        {/* 桌機版:右上角 — 跟 /logs 的「+ 新日誌」一致 */}
+        {canCreate && (
           <Button
             asChild
             size="lg"
@@ -98,6 +88,19 @@ export default async function FieldReportsPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* 手機 FAB:浮在右下,坐在底部 tab bar 上方 — field_assistant 已有底部
+          tab「新增回報」,所以不重複顯示;其他角色手機才需要這顆鈕。 */}
+      {canCreate && !isFieldAssistant && (
+        <Link
+          href="/field-reports/new"
+          aria-label="新增回報"
+          className="fixed right-4 z-30 inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform active:scale-95 md:hidden"
+          style={{ bottom: "calc(72px + env(safe-area-inset-bottom))" }}
+        >
+          <span className="text-3xl leading-none">＋</span>
+        </Link>
       )}
     </div>
   );
