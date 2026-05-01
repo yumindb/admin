@@ -86,15 +86,15 @@ export default async function LogsPage({
             {isSupervisor ? "依案件分組,點開查看每天的日誌" : isOfficeStaff ? "辦公室助理可查看全部日誌與簽核狀態" : "依案件分組,點開查看每天的日誌"}
           </p>
         </div>
-        {/* 桌機:右上角按鈕 */}
+        {/* 桌機:右上角藥丸形按鈕 — 跟手機 FAB 同配色,不浮空 */}
         {canCreateLog && (
-          <Button
-            asChild
-            size="lg"
-            className="hidden bg-primary text-primary-foreground hover:bg-primary/90 md:inline-flex"
+          <Link
+            href="/logs/new"
+            className="hidden h-14 items-center gap-2 rounded-full border border-[#8B6845] bg-[#A07850] py-0 pl-5 pr-6 text-base font-medium tracking-wider text-white shadow-sm transition-all duration-150 hover:bg-[#8B6845] active:scale-[0.97] md:inline-flex"
           >
-            <Link href="/logs/new">+ 新日誌</Link>
-          </Button>
+            <Plus className="size-5" strokeWidth={2.25} aria-hidden />
+            <span>新日誌</span>
+          </Link>
         )}
       </div>
 

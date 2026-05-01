@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -61,15 +60,15 @@ export default async function FieldReportsPage() {
               : "現場拍照與文字紀錄,你也可以自己加。工地主任填日誌時可勾選整合。"}
           </p>
         </div>
-        {/* 桌機版:右上角 — 跟 /logs 的「+ 新日誌」一致 */}
+        {/* 桌機版:右上角藥丸形按鈕 — 跟手機 FAB 同配色,只是不浮空 */}
         {canCreate && (
-          <Button
-            asChild
-            size="lg"
-            className="hidden bg-primary text-primary-foreground hover:bg-primary/90 md:inline-flex"
+          <Link
+            href="/field-reports/new"
+            className="hidden h-14 items-center gap-2 rounded-full border border-[#8B6845] bg-[#A07850] py-0 pl-5 pr-6 text-base font-medium tracking-wider text-white shadow-sm transition-all duration-150 hover:bg-[#8B6845] active:scale-[0.97] md:inline-flex"
           >
-            <Link href="/field-reports/new">+ 新增回報</Link>
-          </Button>
+            <Plus className="size-5" strokeWidth={2.25} aria-hidden />
+            <span>新回報</span>
+          </Link>
         )}
       </div>
 
