@@ -106,7 +106,7 @@ function navByRole(role: string | undefined): {
     case "site_supervisor":
       return {
         desktopNav: [
-          { href: "/logs", label: "我的日誌" },
+          { href: "/logs", label: "日誌" },
           { href: "/approvals", label: "待複核" },
           { href: "/field-reports", label: "現場回報" },
           { href: "/cases", label: "案件總覽" },
@@ -123,7 +123,7 @@ function navByRole(role: string | undefined): {
         desktopNav: [
           { href: "/approvals", label: "待核定" },
           { href: "/cases", label: "案件總覽" },
-          { href: "/logs", label: "施工日誌" },
+          { href: "/logs", label: "日誌" },
           { href: "/field-reports", label: "現場回報" },
           { href: "/staff", label: "人員管理" },
         ],
@@ -151,7 +151,7 @@ function navByRole(role: string | undefined): {
         desktopNav: [
           { href: "/cases", label: "案件總覽" },
           { href: "/approvals", label: "待審核" },
-          { href: "/logs", label: "施工日誌" },
+          { href: "/logs", label: "日誌" },
           { href: "/staff", label: "人員管理" },
         ],
         mobileTabs: [

@@ -360,8 +360,46 @@ function SelectedItemCard({
     ? Math.round(Math.max(0, 1 - priorTotal) * 100)
     : fillCap ?? undefined;
 
+  // 進度條:percent 模式以 1 為分母,absolute 模式以標單數量為分母。
+  // 沒有分母時(absolute 模式且無標單量)不顯示進度條。
+  const progressDenom = isPct ? 1 : item.totalQuantity ?? 0;
+  const showProgress = progressDenom > 0;
+  const fillQty = Number.isFinite(v.qty) ? v.qty : 0;
+  const priorPct = showProgress ? Math.min(1, priorTotal / progressDenom) : 0;
+  const addedPct = showProgress
+    ? Math.min(1 - priorPct, Math.max(0, fillQty / progressDenom))
+    : 0;
+  const totalPct = priorPct + addedPct;
+
   return (
-    <div className="rounded-lg border border-[#A07850]/40 bg-[#FAF7F2] p-3 shadow-sm">
+    <div className="overflow-hidden rounded-lg border border-[#A07850]/40 bg-[#FAF7F2] shadow-sm">
+      {showProgress && (
+        <div
+          className="relative h-1 w-full bg-[#E8DFD3]"
+          aria-label={`填寫後 ${Math.round(totalPct * 100)}%`}
+          role="progressbar"
+          aria-valuenow={Math.round(totalPct * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          {priorPct > 0 && (
+            <div
+              className="absolute left-0 top-0 h-full bg-[#C9B59A]"
+              style={{ width: `${priorPct * 100}%` }}
+            />
+          )}
+          {addedPct > 0 && (
+            <div
+              className="absolute top-0 h-full bg-[#A07850]"
+              style={{
+                left: `${priorPct * 100}%`,
+                width: `${addedPct * 100}%`,
+              }}
+            />
+          )}
+        </div>
+      )}
+      <div className="p-3">
       {/* 第一列:工項名 + 移除 */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -441,12 +479,6 @@ function SelectedItemCard({
         />
       </div>
 
-      {/* 填寫後預覽 — 小字輔助 */}
-      <div className="mt-1.5 text-xs text-muted-foreground">
-        填寫後{" "}
-        <span className="font-medium tabular-nums text-foreground">
-          {formatAfterFill(v, aggregate, item.unit, item.totalQuantity)}
-        </span>
       </div>
     </div>
   );
@@ -485,6 +517,7 @@ function ModeSegment({
         type="button"
         role="tab"
         aria-selected={isPct}
+        aria-label="百分比"
         disabled={locked || isPct}
         onClick={() => {
           if (!locked && !isPct) onSwitch();
@@ -496,12 +529,13 @@ function ModeSegment({
             : "text-muted-foreground hover:bg-[#F5F1EC]"
         )}
       >
-        百分比 %
+        %
       </button>
       <button
         type="button"
         role="tab"
         aria-selected={!isPct}
+        aria-label={`實際數量${unit ? `(${unit})` : ""}`}
         disabled={locked || !isPct}
         onClick={() => {
           if (!locked && isPct) onSwitch();
@@ -514,7 +548,7 @@ function ModeSegment({
             : "text-muted-foreground hover:bg-[#F5F1EC]"
         )}
       >
-        實際數量{unit ? ` (${unit})` : ""}
+        {unit || "數量"}
       </button>
     </div>
   );
@@ -924,23 +958,3 @@ function formatAggregate(
   return base;
 }
 
-function formatAfterFill(
-  v: PickerValue,
-  agg: WorkItemAggregate | undefined,
-  unit: string | null,
-  totalQuantity: number | null,
-): string {
-  const fillQty = Number.isFinite(v.qty) ? v.qty : 0;
-  const mode = v.qty_mode ?? "absolute";
-  const priorTotal = agg && agg.mode === mode ? agg.total : 0;
-  const next = priorTotal + fillQty;
-  if (mode === "percent") {
-    return `${formatNumber(next * 100)}%`;
-  }
-  const base = `${formatNumber(next)}${unit ? ` ${unit}` : ""}`;
-  if (totalQuantity && totalQuantity > 0) {
-    const pct = formatNumber((next / totalQuantity) * 100);
-    return `${base}（${pct}%）`;
-  }
-  return base;
-}

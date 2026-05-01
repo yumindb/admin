@@ -31,6 +31,7 @@ import type {
   DailyWeather,
   DailyLogUnsignedItem,
   FieldReportPhoto,
+  LogPhoto,
 } from "@/lib/types";
 
 export type CaseOption = {
@@ -52,6 +53,26 @@ export type PendingFieldReport = {
   createdAt: string;
 };
 
+/** 現場回報的文字併入哪個區塊。photos 一律進照片區。
+ * photos-only 表示文字直接捨棄,僅併照片(用在沒文字 / 不想帶文字的情況) */
+type MergeDest = "notes" | "extra" | "unsigned" | "photos-only";
+
+const MERGE_DEST_OPTIONS: {
+  value: MergeDest;
+  label: string;
+  /** 此選項是否需要 report 有文字才能用 */
+  requiresText: boolean;
+}[] = [
+  { value: "notes", label: "重要事項紀錄", requiresText: true },
+  { value: "extra", label: "非合約內", requiresText: true },
+  { value: "unsigned", label: "未簽約", requiresText: true },
+  { value: "photos-only", label: "只合併照片", requiresText: false },
+];
+
+function defaultDestFor(r: PendingFieldReport): MergeDest {
+  return r.note.trim() ? "notes" : "photos-only";
+}
+
 export function NewLogForm({
   cases,
   presetCaseId,
@@ -61,6 +82,7 @@ export function NewLogForm({
   dayLogCounts,
   currentDaySeq,
   priorAggregates,
+  priorManpowerByCase,
   pendingReportsByCase,
 }: {
   cases: CaseOption[];
@@ -72,6 +94,8 @@ export function NewLogForm({
   currentDaySeq?: number;
   /** 各案件各工項的歷史累計與鎖定模式(由 server 撈 submitted/approved 日誌算出) */
   priorAggregates?: WorkItemAggregateMap;
+  /** 各案件之前已累計的出工人次(submitted/approved 日誌 today_total 加總,編輯時排除自己) */
+  priorManpowerByCase?: Record<string, number>;
   /** 各案件待整合的現場回報(pending) */
   pendingReportsByCase?: Record<string, PendingFieldReport[]>;
   initial?: {
@@ -79,13 +103,12 @@ export function NewLogForm({
     logDate: string;
     weather: DailyWeather;
     manpowerTodayTotal: number;
-    manpowerAccumulatedTotal: number;
     subcontractors: DailyLogSubcontractor[];
     machines: DailyLogMachine[];
     workItems: PickerValue[];
     extraItems: DailyLogExtraItem[];
     unsignedItems: DailyLogUnsignedItem[];
-    photos: string[];
+    photos: LogPhoto[];
     vendorNotices: string;
     notes: string;
   };
@@ -97,7 +120,8 @@ export function NewLogForm({
   // ⚠ 不可在 useState initializer 讀 localStorage:server 拿不到 → null,
   //   client hydrate 拿得到 → 不同值,React hydration mismatch。
   //   改在 useEffect on-mount 拿,用 setters 覆寫初始值。
-  const draftKey = logId ? null : "yumin-newlog-draft-v1";
+  // v2:photos schema 從 string[] 改為 { path, caption }[],舊草稿不相容直接捨棄
+  const draftKey = logId ? null : "yumin-newlog-draft-v2";
 
   const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
   // logDate 也不能用 new Date() 當初值(server/client 跨午夜 UTC 會不同),
@@ -106,9 +130,6 @@ export function NewLogForm({
   const [weather, setWeather] = useState<DailyWeather>(initial?.weather ?? {});
   const [todayTotal, setTodayTotal] = useState<string>(
     String(initial?.manpowerTodayTotal ?? "")
-  );
-  const [accumulatedTotal, setAccumulatedTotal] = useState<string>(
-    String(initial?.manpowerAccumulatedTotal ?? "")
   );
   const [subcontractors, setSubcontractors] = useState<DailyLogSubcontractor[]>(
     initial?.subcontractors ?? []
@@ -123,12 +144,16 @@ export function NewLogForm({
   const [unsigned, setUnsigned] = useState<DailyLogUnsignedItem[]>(
     initial?.unsignedItems ?? []
   );
-  const [photos, setPhotos] = useState<string[]>(initial?.photos ?? []);
+  const [photos, setPhotos] = useState<LogPhoto[]>(initial?.photos ?? []);
   const [vendorNotices, setVendorNotices] = useState(initial?.vendorNotices ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [mergedReportIds, setMergedReportIds] = useState<string[]>([]);
   const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(
     () => new Set()
+  );
+  // 每筆勾選的回報要把文字併到哪:預設「重要事項」(原行為),也可選「非合約內」/「未簽約」
+  const [reportDest, setReportDest] = useState<Map<string, MergeDest>>(
+    () => new Map()
   );
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -150,7 +175,6 @@ export function NewLogForm({
       if (draft.logDate !== undefined) setLogDate(draft.logDate);
       if (draft.weather !== undefined) setWeather(draft.weather);
       if (draft.todayTotal !== undefined) setTodayTotal(draft.todayTotal);
-      if (draft.accumulatedTotal !== undefined) setAccumulatedTotal(draft.accumulatedTotal);
       if (draft.subcontractors !== undefined) setSubcontractors(draft.subcontractors);
       if (draft.machines !== undefined) setMachines(draft.machines);
       if (draft.picked !== undefined) setPicked(draft.picked);
@@ -176,7 +200,7 @@ export function NewLogForm({
         localStorage.setItem(
           draftKey,
           JSON.stringify({
-            caseId, logDate, weather, todayTotal, accumulatedTotal,
+            caseId, logDate, weather, todayTotal,
             subcontractors, machines, picked, extras, unsigned,
             photos, vendorNotices, notes,
           })
@@ -188,7 +212,7 @@ export function NewLogForm({
     }, 600);
     return () => clearTimeout(t);
   }, [
-    draftKey, hydrated, caseId, logDate, weather, todayTotal, accumulatedTotal,
+    draftKey, hydrated, caseId, logDate, weather, todayTotal,
     subcontractors, machines, picked, extras, unsigned, photos,
     vendorNotices, notes,
   ]);
@@ -199,6 +223,12 @@ export function NewLogForm({
   );
   const items = selectedCase?.workItems ?? [];
   const remainingDays = getRemainingDays(selectedCase?.expectedEnd, logDate);
+
+  // 累計出工人次 = 之前 submitted/approved 日誌的 today_total 加總 + 本日輸入。
+  // 編輯模式下 priorManpowerByCase 已排除自己,不會雙倍計算。
+  const priorManpower = caseId ? priorManpowerByCase?.[caseId] ?? 0 : 0;
+  const todayTotalNum = todayTotal ? Number(todayTotal) : 0;
+  const accumulatedTotalNum = priorManpower + (Number.isFinite(todayTotalNum) ? todayTotalNum : 0);
 
   // 表報編號需要 案件 + 日期 + 當日序號(NN)
   // 編輯模式直接用後端算好的 currentDaySeq;新建模式用 dayLogCounts 算 +1
@@ -244,34 +274,84 @@ export function NewLogForm({
     const picked = availableReports.filter((r) => selectedReportIds.has(r.id));
     if (picked.length === 0) return;
 
-    // 1. note: 每筆回報 prepend 「【MM/DD HH:mm 作者】」前綴後 append 進現有 notes
-    const blocks = picked
-      .map((r) => {
-        const ts = new Date(r.createdAt).toLocaleString("zh-TW", {
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        const lines = [`【${ts} ${r.authorName}】${r.note ?? ""}`.trimEnd()];
-        for (const p of r.photos) {
-          if (p.caption) lines.push(`  · ${p.caption}`);
+    function fmtTs(iso: string) {
+      return new Date(iso).toLocaleString("zh-TW", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function buildBlock(r: PendingFieldReport): string {
+      const lines = [`【${fmtTs(r.createdAt)} ${r.authorName}】${r.note ?? ""}`.trimEnd()];
+      for (const p of r.photos) {
+        if (p.caption) lines.push(`  · ${p.caption}`);
+      }
+      return lines.join("\n");
+    }
+
+    // 1. 文字目的地:重要事項 / 非合約內 / 未簽約 / 只合併照片(捨棄文字)
+    const noteBlocks: string[] = [];
+    const newExtras: DailyLogExtraItem[] = [];
+    const newUnsigned: DailyLogUnsignedItem[] = [];
+    for (const r of picked) {
+      const dest: MergeDest = reportDest.get(r.id) ?? defaultDestFor(r);
+      if (dest === "photos-only") continue; // 只併照片,文字不處理
+      const block = buildBlock(r);
+      if (dest === "notes") {
+        noteBlocks.push(block);
+      } else {
+        const firstLine = (r.note ?? "").split("\n")[0]?.trim() ?? "";
+        const name =
+          firstLine.length > 0
+            ? firstLine.length > 30
+              ? firstLine.slice(0, 30) + "…"
+              : firstLine
+            : `現場回報 ${fmtTs(r.createdAt)}`;
+        if (dest === "extra") {
+          newExtras.push({ name, reason: block });
+        } else {
+          newUnsigned.push({ name, reason: block });
         }
-        return lines.join("\n");
-      })
-      .join("\n\n");
+      }
+    }
 
-    setNotes((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${blocks}` : blocks));
+    if (noteBlocks.length > 0) {
+      const joined = noteBlocks.join("\n\n");
+      setNotes((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${joined}` : joined));
+    }
+    if (newExtras.length > 0) {
+      setExtras((prev) => [...prev, ...newExtras]);
+    }
+    if (newUnsigned.length > 0) {
+      setUnsigned((prev) => [...prev, ...newUnsigned]);
+    }
 
-    // 2. photos: 直接 push 同樣的 storage path(共用、不複製)
-    const newPaths = picked.flatMap((r) => r.photos.map((p) => p.path));
-    if (newPaths.length) {
-      setPhotos((prev) => [...prev, ...newPaths.filter((p) => !prev.includes(p))]);
+    // 2. photos: 帶上 caption 一起合併,不重覆 path(共用 storage、不複製)
+    const incoming: LogPhoto[] = picked.flatMap((r) =>
+      r.photos.map((p) => ({ path: p.path, caption: p.caption ?? "" }))
+    );
+    if (incoming.length) {
+      setPhotos((prev) => {
+        const existing = new Set(prev.map((p) => p.path));
+        const additions = incoming.filter((p) => !existing.has(p.path));
+        return [...prev, ...additions];
+      });
     }
 
     // 3. 紀錄已合併的 report ids,送出時帶到 server action
     setMergedReportIds((prev) => [...prev, ...picked.map((r) => r.id)]);
     setSelectedReportIds(new Set());
+    setReportDest(new Map());
+  }
+
+  function setDestForReport(id: string, dest: MergeDest) {
+    setReportDest((prev) => {
+      const next = new Map(prev);
+      next.set(id, dest);
+      return next;
+    });
   }
 
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number }>({
@@ -314,14 +394,25 @@ export function NewLogForm({
       if (r.ok && r.path) newPaths.push(r.path);
       else if (!r.ok && !firstError) firstError = r.error;
     }
-    if (newPaths.length) setPhotos((p) => [...p, ...newPaths]);
+    if (newPaths.length) {
+      setPhotos((p) => [
+        ...p,
+        ...newPaths.map<LogPhoto>((path) => ({ path, caption: "" })),
+      ]);
+    }
     if (firstError) setError(firstError);
     setUploading(false);
     setUploadProgress({ done: 0, total: 0 });
   }
 
-  function removePhoto(p: string) {
-    setPhotos((arr) => arr.filter((x) => x !== p));
+  function removePhoto(path: string) {
+    setPhotos((arr) => arr.filter((x) => x.path !== path));
+  }
+
+  function setPhotoCaption(path: string, caption: string) {
+    setPhotos((arr) =>
+      arr.map((p) => (p.path === path ? { ...p, caption } : p))
+    );
   }
 
   function submit(intent: "draft" | "submit") {
@@ -370,7 +461,7 @@ export function NewLogForm({
         weather: serializeWeather(weather) ?? "",
         manpower: {
           today_total: todayTotal ? Number(todayTotal) : undefined,
-          accumulated_total: accumulatedTotal ? Number(accumulatedTotal) : undefined,
+          accumulated_total: todayTotal ? accumulatedTotalNum : undefined,
           subcontractors,
           machines,
         },
@@ -453,37 +544,11 @@ export function NewLogForm({
             目前沒有可用案件。請辦公室助理先開案。
           </p>
         ) : (
-          <div className="space-y-2.5">
-            {cases.map((c) => (
-              <label
-                key={c.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border px-5 py-4 transition-colors ${
-                  caseId === c.id
-                    ? "border-accent bg-[#FAF7F2]"
-                    : "border-[#E0DCD6] hover:border-[#A07850]/40"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="case"
-                  checked={caseId === c.id}
-                  onChange={() => changeCase(c.id)}
-                  className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-muted-foreground">
-                    {c.code ?? "未編號"}
-                  </div>
-                  <div className="text-base font-semibold text-primary md:text-lg">
-                    {c.name}
-                  </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    {c.workItems.length} 個工項可填
-                  </div>
-                </div>
-              </label>
-            ))}
-          </div>
+          <CasePicker
+            cases={cases}
+            value={caseId}
+            onChange={changeCase}
+          />
         )}
       </Section>
 
@@ -500,11 +565,13 @@ export function NewLogForm({
             <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
           </summary>
           <p className="mt-1 mb-4 text-sm text-[#92400E]/80">
-            勾選後按「合併到此日誌」,文字會 append 到備註、照片會加進照片區。被合併的回報會標為「已併入」,不會再出現在這。
+            勾選後選文字要併到哪一節,再按「合併到此日誌」。照片帶 caption 一起進照片區,被合併的回報會標為「已併入」不再出現在這。
           </p>
           <ul className="space-y-2">
             {availableReports.map((r) => {
               const checked = selectedReportIds.has(r.id);
+              const hasText = r.note.trim().length > 0;
+              const dest = reportDest.get(r.id) ?? defaultDestFor(r);
               const ts = new Date(r.createdAt).toLocaleString("zh-TW", {
                 month: "2-digit",
                 day: "2-digit",
@@ -513,58 +580,98 @@ export function NewLogForm({
               });
               return (
                 <li key={r.id}>
-                  <label
-                    className={`flex cursor-pointer items-start gap-3 rounded-md border bg-white px-4 py-3 transition-colors ${
+                  <div
+                    className={`rounded-md border bg-white transition-colors ${
                       checked
                         ? "border-[#A07850] bg-[#FAF7F2]"
                         : "border-[#E0DCD6] hover:border-[#A07850]/40"
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleReportSelection(r.id)}
-                      className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850]"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs text-muted-foreground">
-                        {ts} · {r.authorName}
-                        {r.photos.length > 0 && ` · ${r.photos.length} 張照片`}
-                      </div>
-                      {r.note && (
-                        <p className="mt-1 whitespace-pre-line text-sm text-foreground">
-                          {r.note}
-                        </p>
-                      )}
-                      {r.photos.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {r.photos.slice(0, 6).map((p, idx) => (
-                            <a
-                              key={p.path + idx}
-                              href={p.path}
-                              target="_blank"
-                              rel="noreferrer"
-                              title={p.caption || undefined}
-                              className="block size-14 overflow-hidden rounded border border-[#E0DCD6] bg-[#F5F1EC]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={p.path}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            </a>
-                          ))}
-                          {r.photos.length > 6 && (
-                            <span className="inline-flex size-14 items-center justify-center rounded border border-[#E0DCD6] bg-white text-xs text-muted-foreground">
-                              +{r.photos.length - 6}
-                            </span>
-                          )}
+                    <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleReportSelection(r.id)}
+                        className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs text-muted-foreground">
+                          {ts} · {r.authorName}
+                          {r.photos.length > 0 && ` · ${r.photos.length} 張照片`}
                         </div>
-                      )}
-                    </div>
-                  </label>
+                        {r.note && (
+                          <p className="mt-1 whitespace-pre-line text-sm text-foreground">
+                            {r.note}
+                          </p>
+                        )}
+                        {r.photos.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {r.photos.slice(0, 6).map((p, idx) => (
+                              <a
+                                key={p.path + idx}
+                                href={p.path}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={p.caption || undefined}
+                                className="block size-14 overflow-hidden rounded border border-[#E0DCD6] bg-[#F5F1EC]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={p.path}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              </a>
+                            ))}
+                            {r.photos.length > 6 && (
+                              <span className="inline-flex size-14 items-center justify-center rounded border border-[#E0DCD6] bg-white text-xs text-muted-foreground">
+                                +{r.photos.length - 6}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                    {checked && (
+                      <div className="border-t border-[#E0DCD6]/60 bg-[#FAF7F2]/60 px-4 py-2">
+                        <div
+                          role="radiogroup"
+                          aria-label="文字併到哪一節"
+                          className="flex flex-wrap items-center gap-1.5 text-xs"
+                        >
+                          <span className="text-[#92400E]">文字併到:</span>
+                          {MERGE_DEST_OPTIONS.map((opt) => {
+                            const disabled = opt.requiresText && !hasText;
+                            const active = dest === opt.value;
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                role="radio"
+                                aria-checked={active}
+                                aria-disabled={disabled || undefined}
+                                disabled={disabled}
+                                title={disabled ? "此回報無文字,只能合併照片" : undefined}
+                                onClick={() => {
+                                  if (!disabled) setDestForReport(r.id, opt.value);
+                                }}
+                                className={`rounded-full border px-2.5 py-1 transition-colors ${
+                                  active
+                                    ? "border-[#A07850] bg-[#A07850] text-white"
+                                    : disabled
+                                      ? "cursor-not-allowed border-[#E8E2DA] bg-[#F5F1EC] text-[#B8B0A6]"
+                                      : "border-[#E0DCD6] bg-white text-foreground hover:bg-[#F5F1EC]"
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </li>
               );
             })}
@@ -612,31 +719,24 @@ export function NewLogForm({
       </Section>
 
       <Section title="出工人數">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="today_total">本日出工人數</Label>
-            <Input
-              id="today_total"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={todayTotal}
-              onChange={(e) => setTodayTotal(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="accumulated_total">累計出工人數</Label>
-            <Input
-              id="accumulated_total"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={accumulatedTotal}
-              onChange={(e) => setAccumulatedTotal(e.target.value)}
-              placeholder="0"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="today_total">本日出工人數</Label>
+          <Input
+            id="today_total"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={todayTotal}
+            onChange={(e) => setTodayTotal(e.target.value)}
+            placeholder="0"
+          />
+          <p className="text-xs text-muted-foreground">
+            累計出工人次:
+            <span className="ml-1 font-medium text-primary">{accumulatedTotalNum}</span>
+            <span className="ml-2 text-muted-foreground/80">
+              （此案件之前 {priorManpower} 人次 + 本日 {todayTotalNum || 0} 人,自動加總）
+            </span>
+          </p>
         </div>
       </Section>
 
@@ -748,19 +848,35 @@ export function NewLogForm({
           </div>
         )}
         {photos.length > 0 && (
-          <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
             {photos.map((p) => (
-              <div key={p} className="relative aspect-square overflow-hidden rounded-md border border-[#E0DCD6] bg-[#F5F1EC]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p} alt="" className="h-full w-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => removePhoto(p)}
-                  className="absolute right-1 top-1 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-xs text-white hover:bg-black/80"
-                  aria-label="刪除"
-                >
-                  ×
-                </button>
+              <div
+                key={p.path}
+                className="overflow-hidden rounded-md border border-[#E0DCD6] bg-white"
+              >
+                <div className="relative aspect-square bg-[#F5F1EC]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.path}
+                    alt={p.caption || ""}
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(p.path)}
+                    className="absolute right-1 top-1 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-xs text-white hover:bg-black/80"
+                    aria-label="刪除"
+                  >
+                    ×
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={p.caption}
+                  onChange={(e) => setPhotoCaption(p.path, e.target.value)}
+                  placeholder="說明（選填,例:三樓鋼樑焊接）"
+                  className="block w-full border-t border-[#F0EBE4] bg-white px-2 py-1.5 text-xs outline-none placeholder:text-[#9C9088] focus-visible:bg-[#FAF7F2]"
+                />
               </div>
             ))}
           </div>
@@ -818,8 +934,11 @@ export function NewLogForm({
         「儲存草稿」可以晚點再回來填,只有你看得到。「送出核定」會通知老闆,送出後若要改要等被退回或請主管退回。
       </NextStepHint>
 
-      {/* 動作 — 手機 sticky 在底部 tab bar 上方;桌機自然落地 */}
-      <div className="sticky bottom-[80px] -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:mx-0 md:rounded-md md:border md:bg-card md:px-5">
+      {/* 動作 — 手機 sticky 緊貼底部 tab bar 上緣;桌機自然落地 */}
+      <div
+        className="sticky -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:bottom-auto md:mx-0 md:rounded-md md:border md:bg-card md:px-5"
+        style={{ bottom: "calc(67px + env(safe-area-inset-bottom))" }}
+      >
         <Button asChild variant="ghost" type="button">
           <Link href="/logs">取消</Link>
         </Button>
@@ -843,6 +962,133 @@ export function NewLogForm({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CasePicker({
+  cases,
+  value,
+  onChange,
+}: {
+  cases: CaseOption[];
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const selected = cases.find((c) => c.id === value);
+
+  // 案件多時自動啟用搜尋(>= 6 才顯示搜尋框,免得 3-4 個案件還要先輸入)
+  const showSearch = cases.length >= 6;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return cases;
+    return cases.filter((c) => {
+      const haystack = `${c.code ?? ""} ${c.name} ${c.company} ${c.location ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [cases, query]);
+
+  // 選中後預設收起列表,只顯示已選 + 「換一個」按鈕,省畫面
+  const [browseOpen, setBrowseOpen] = useState(!value);
+  useEffect(() => {
+    // 切換 value 時:選新的就收起來,清掉就展開
+    setBrowseOpen(!value);
+  }, [value]);
+
+  // 點某一列(換 / 不換 都算選定動作)→ 收起列表;只在實際換案時才呼叫 onChange
+  // (避免不換的情況也觸發 changeCase 把已勾的工項重設掉)
+  function handlePick(id: string) {
+    if (id !== value) onChange(id);
+    setBrowseOpen(false);
+  }
+
+  return (
+    <div className="space-y-2">
+      {selected && !browseOpen ? (
+        <div className="flex items-center gap-3 rounded-md border border-accent bg-[#FAF7F2] px-3 py-2.5">
+          <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-[#A07850] bg-white">
+            <span className="size-2.5 rounded-full bg-[#A07850]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="font-mono text-xs text-muted-foreground">
+                {selected.code ?? "未編號"}
+              </span>
+              <span className="break-words text-sm font-semibold text-primary md:text-base">
+                {selected.name}
+              </span>
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {selected.workItems.length} 個工項可填
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBrowseOpen(true)}
+            className="shrink-0 text-xs text-accent hover:underline"
+          >
+            換一個
+          </button>
+        </div>
+      ) : (
+        <>
+          {showSearch && (
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`搜尋案件編號或名稱(共 ${cases.length} 個)`}
+              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+            />
+          )}
+          <div className="max-h-[60vh] divide-y divide-[#F0EBE4] overflow-y-auto rounded-md border border-[#E0DCD6] bg-white">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                找不到符合「{query}」的案件
+              </p>
+            ) : (
+              filtered.map((c) => (
+                <label
+                  key={c.id}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePick(c.id);
+                  }}
+                  className={`flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors ${
+                    value === c.id
+                      ? "bg-[#FAF7F2]"
+                      : "hover:bg-[#F5F1EC]"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="case"
+                    checked={value === c.id}
+                    readOnly
+                    tabIndex={-1}
+                    className="size-4 shrink-0 cursor-pointer accent-[#A07850]"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {c.code ?? "未編號"}
+                      </span>
+                      <span className="break-words text-sm font-medium text-primary">
+                        {c.name}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {c.workItems.length} 個工項可填
+                    </div>
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -874,13 +1120,12 @@ type StoredDraft = {
   logDate?: string;
   weather?: DailyWeather;
   todayTotal?: string;
-  accumulatedTotal?: string;
   subcontractors?: DailyLogSubcontractor[];
   machines?: DailyLogMachine[];
   picked?: PickerValue[];
   extras?: DailyLogExtraItem[];
   unsigned?: DailyLogUnsignedItem[];
-  photos?: string[];
+  photos?: LogPhoto[];
   vendorNotices?: string;
   notes?: string;
 };

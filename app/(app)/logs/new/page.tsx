@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption, type PendingFieldReport } from "./new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
+import { computeManpowerByCase } from "@/lib/daily-log";
 import type { DailyLogWorkItem, FieldReport } from "@/lib/types";
 
 export default async function NewLogPage({
@@ -75,7 +76,7 @@ export default async function NewLogPage({
   const { data: existingLogs } = caseIds.length
     ? await supabase
         .from("daily_logs")
-        .select("id, case_id, log_date, created_at, work_items, status")
+        .select("id, case_id, log_date, created_at, work_items, manpower, status")
         .in("case_id", caseIds)
     : { data: [] };
 
@@ -87,15 +88,23 @@ export default async function NewLogPage({
     dayLogCounts[cid][ld] = (dayLogCounts[cid][ld] ?? 0) + 1;
   }
 
-  const priorLogs = (existingLogs ?? [])
-    .filter((l) => l.status === "submitted" || l.status === "approved")
-    .map((l) => ({
+  const priorRows = (existingLogs ?? []).filter(
+    (l) => l.status === "submitted" || l.status === "approved",
+  );
+  const priorLogs = priorRows.map((l) => ({
+    id: l.id as string,
+    case_id: l.case_id as string,
+    created_at: l.created_at as string,
+    work_items: (l.work_items as DailyLogWorkItem[] | null) ?? [],
+  }));
+  const aggregates = computeWorkItemAggregates(priorLogs);
+  const priorManpowerByCase = computeManpowerByCase(
+    priorRows.map((l) => ({
       id: l.id as string,
       case_id: l.case_id as string,
-      created_at: l.created_at as string,
-      work_items: (l.work_items as DailyLogWorkItem[] | null) ?? [],
-    }));
-  const aggregates = computeWorkItemAggregates(priorLogs);
+      today_total: (l.manpower as { today_total?: number } | null)?.today_total,
+    })),
+  );
 
   // 撈這些案件的 pending 現場回報,主任填日誌時可以勾選整合進來
   const { data: reportRows } = caseIds.length
@@ -132,7 +141,7 @@ export default async function NewLogPage({
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/logs" className="hover:text-accent">
-          我的日誌
+          日誌
         </Link>
         <span className="mx-1.5">／</span>
         <span>新日誌</span>
@@ -145,6 +154,7 @@ export default async function NewLogPage({
         currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
         dayLogCounts={dayLogCounts}
         priorAggregates={aggregates}
+        priorManpowerByCase={priorManpowerByCase}
         pendingReportsByCase={pendingReportsByCase}
       />
     </div>

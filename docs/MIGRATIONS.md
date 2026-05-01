@@ -15,6 +15,7 @@
 | 9 | [`migration-2.5.sql`](migration-2.5.sql) | approval_stage enum 加 'fill'(填表人簽名) | 必跑 |
 | 10 | [`migration-2.6.sql`](migration-2.6.sql) | user_role 加 'field_assistant'(現場助理)+ profiles.is_active 停用旗標 | 必跑 |
 | 11 | [`migration-2.7.sql`](migration-2.7.sql) | field_reports 表(現場回報)+ field_report_status enum + RLS | 必跑 |
+| 12 | [`migration-2.8.sql`](migration-2.8.sql) | daily_logs.photos 從 `string[]` 轉成 `[{path, caption}, ...]`(每張照片可填說明) | 必跑(已有資料時) |
 
 ## 排錯
 

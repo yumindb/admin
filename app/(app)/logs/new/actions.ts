@@ -8,6 +8,7 @@ import type {
   DailyLogWorkItem,
   DailyLogExtraItem,
   DailyLogUnsignedItem,
+  LogPhoto,
 } from "@/lib/types";
 
 type SaveLogPayload = {
@@ -19,7 +20,7 @@ type SaveLogPayload = {
   workItems: DailyLogWorkItem[];
   extraItems: DailyLogExtraItem[];
   unsignedItems: DailyLogUnsignedItem[];
-  photos: string[];      // storage paths
+  photos: LogPhoto[];    // 每張帶 path + caption(caption 可為空字串)
   vendorNotices: string;
   notes: string;
   intent: "draft" | "submit";

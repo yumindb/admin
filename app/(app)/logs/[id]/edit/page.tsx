@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption, type PendingFieldReport } from "../../new/new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
 import type { DailyLog, DailyLogWorkItem, FieldReport } from "@/lib/types";
-import { parseWeather } from "@/lib/daily-log";
+import { parseWeather, computeManpowerByCase, normalizeLogPhotos } from "@/lib/daily-log";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 
 export default async function EditLogPage({
@@ -95,7 +95,7 @@ export default async function EditLogPage({
   const { data: priorRows } = caseIds.length
     ? await supabase
         .from("daily_logs")
-        .select("id, case_id, created_at, work_items, status")
+        .select("id, case_id, created_at, work_items, manpower, status")
         .in("case_id", caseIds)
         .in("status", ["submitted", "approved"])
     : { data: [] };
@@ -106,6 +106,14 @@ export default async function EditLogPage({
     work_items: (r.work_items as DailyLogWorkItem[] | null) ?? [],
   }));
   const aggregates = computeWorkItemAggregates(priorLogs, id);
+  const priorManpowerByCase = computeManpowerByCase(
+    (priorRows ?? []).map((r) => ({
+      id: r.id as string,
+      case_id: r.case_id as string,
+      today_total: (r.manpower as { today_total?: number } | null)?.today_total,
+    })),
+    id,
+  );
 
   // 撈該案件的 pending 現場回報
   const { data: reportRows } = await supabase
@@ -157,19 +165,19 @@ export default async function EditLogPage({
         logId={id}
         currentDaySeq={currentDaySeq}
         priorAggregates={aggregates}
+        priorManpowerByCase={priorManpowerByCase}
         pendingReportsByCase={pendingReportsByCase}
         initial={{
           caseId: l.case_id,
           logDate: l.log_date,
           weather: parseWeather(l.weather),
           manpowerTodayTotal: l.manpower?.today_total ?? 0,
-          manpowerAccumulatedTotal: l.manpower?.accumulated_total ?? 0,
           subcontractors: l.manpower?.subcontractors ?? [],
           machines: l.manpower?.machines ?? [],
           workItems: l.work_items ?? [],
           extraItems: l.extra_items ?? [],
           unsignedItems: l.unsigned_items ?? [],
-          photos: l.photos ?? [],
+          photos: normalizeLogPhotos(l.photos),
           vendorNotices: l.vendor_notices ?? "",
           notes: l.notes ?? "",
         }}

@@ -11,9 +11,11 @@ import { bulkDownloadPdfsAction } from "@/app/(app)/logs/pdf-actions";
 export function BulkPdfDownloadButton({
   logIds,
   label,
+  labelMd,
 }: {
   logIds: string[];
   label?: string;
+  labelMd?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +63,16 @@ export function BulkPdfDownloadButton({
         onClick={onClick}
         disabled={pending || logIds.length === 0}
       >
-        {pending ? "打包中…" : label ?? `下載 ${logIds.length} 份 PDF`}
+        {pending ? (
+          "打包中…"
+        ) : labelMd ? (
+          <>
+            <span className="md:hidden">{label ?? `下載 ${logIds.length} 份 PDF`}</span>
+            <span className="hidden md:inline">{labelMd}</span>
+          </>
+        ) : (
+          label ?? `下載 ${logIds.length} 份 PDF`
+        )}
       </Button>
       {error && <span className="text-[10px] text-[#B91C1C]">{error}</span>}
     </span>

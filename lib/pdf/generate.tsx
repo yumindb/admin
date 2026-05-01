@@ -12,6 +12,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createServiceClient } from "@/lib/supabase/server";
 import { DailyLogPdf, type PdfData, type PdfApproval, type PdfPhoto } from "./daily-log-pdf";
 import type { DailyLog, LogApproval } from "@/lib/types";
+import { normalizeLogPhotos } from "@/lib/daily-log";
 import {
   fetchWorkItemAncestry,
   groupWorkItemsByAncestor,
@@ -145,13 +146,13 @@ export async function generatePdfForLog(logId: string): Promise<
     })
   );
 
-  // 工地照片 → base64 data URL
+  // 工地照片 → base64 data URL。caption 取使用者填的說明,沒填則用「照片 N」。
   const photos: PdfPhoto[] = (
     await Promise.all(
-      (log.photos ?? []).map(async (p, idx) => {
-        const dataUrl = await fetchAsDataUrl(supabase, PHOTOS_BUCKET, p);
+      normalizeLogPhotos(log.photos).map(async (p, idx) => {
+        const dataUrl = await fetchAsDataUrl(supabase, PHOTOS_BUCKET, p.path);
         if (!dataUrl) return null;
-        return { dataUrl, caption: `照片 ${idx + 1}` };
+        return { dataUrl, caption: p.caption.trim() || `照片 ${idx + 1}` };
       })
     )
   ).filter(Boolean) as PdfPhoto[];

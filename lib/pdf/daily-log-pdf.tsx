@@ -22,6 +22,7 @@ import {
   buildReportNumber,
   formatWeatherSummary,
   getWeekdayLabel,
+  isBackfilledLog,
 } from "@/lib/daily-log";
 import type {
   DailyLog,
@@ -262,6 +263,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
     daySeq,
   });
   const dateLabel = `${log.log_date} ${getWeekdayLabel(log.log_date)}`;
+  const isBackfill = isBackfilledLog(log);
 
   return (
     <Document
@@ -280,6 +282,9 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
             <Text style={styles.headerMetaItem}>
               天氣:{formatWeatherSummary(log.weather)}
             </Text>
+            {isBackfill && (
+              <Text style={styles.headerMetaItem}>(補件)</Text>
+            )}
           </View>
         </View>
 
@@ -295,7 +300,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
             label="本日／累計出工"
             value={`${log.manpower?.today_total ?? "—"} 人 / ${
               log.manpower?.accumulated_total ?? "—"
-            } 人`}
+            } 人次`}
           />
         </View>
 

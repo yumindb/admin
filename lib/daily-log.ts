@@ -1,4 +1,39 @@
-import type { DailyWeather } from "./types";
+import type { DailyWeather, LogPhoto } from "./types";
+
+/**
+ * 補件:log_date(實際施工日)跟 created_at(系統建立時間)不在同一個自然日(台灣時區)。
+ * 隔天才補填的日誌會回 true。
+ */
+export function isBackfilledLog(log: {
+  log_date: string;
+  created_at: string;
+}): boolean {
+  // log_date 是 ISO date string("YYYY-MM-DD"),created_at 是 TIMESTAMPTZ。
+  // 把 created_at 轉成台灣時區的 "YYYY-MM-DD" 再比對。
+  const createdLocal = new Date(log.created_at).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Taipei",
+  });
+  return log.log_date !== createdLocal;
+}
+
+/**
+ * Daily log 的 photos 欄位歷史上是 string[](僅 path)。新版改成
+ * { path, caption }[]。讀取時統一過這個函式,UI 與 PDF 都用 LogPhoto。
+ */
+export function normalizeLogPhotos(raw: unknown): LogPhoto[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p): LogPhoto | null => {
+      if (typeof p === "string") return { path: p, caption: "" };
+      if (p && typeof p === "object" && typeof (p as { path?: unknown }).path === "string") {
+        const path = (p as { path: string }).path;
+        const caption = (p as { caption?: unknown }).caption;
+        return { path, caption: typeof caption === "string" ? caption : "" };
+      }
+      return null;
+    })
+    .filter((p): p is LogPhoto => p !== null);
+}
 
 export const WEATHER_OPTIONS = ["晴", "多雲", "陰", "小雨", "大雨", "雨停"] as const;
 
@@ -50,6 +85,29 @@ export function getRemainingDays(
  *   - NN 是該案件當日第幾份日誌（1 開始，2 位數，01..99）
  *   - caseCode null（罕見：案件沒設編號）→ fallback `YM-未編號`
  */
+/**
+ * 從歷史日誌算各案件「之前已累計的出工人次」(本日尚未送出的不算)。
+ * 累計人次定義 = 所有 submitted/approved 日誌 today_total 的總和。
+ *
+ * @param logs       已從 daily_logs 撈出的紀錄(建議只含 submitted/approved)
+ * @param excludeId  編輯模式時當前正在改的 log_id,避免自我重複計算
+ * @returns          caseId → prior_today_total_sum
+ */
+export function computeManpowerByCase(
+  logs: { id: string; case_id: string; today_total: number | null | undefined }[],
+  excludeId?: string,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const l of logs) {
+    if (excludeId && l.id === excludeId) continue;
+    const n = typeof l.today_total === "number" && Number.isFinite(l.today_total)
+      ? l.today_total
+      : 0;
+    result[l.case_id] = (result[l.case_id] ?? 0) + n;
+  }
+  return result;
+}
+
 export function buildReportNumber(opts: {
   caseCode: string | null;
   logDate: string; // "YYYY-MM-DD"

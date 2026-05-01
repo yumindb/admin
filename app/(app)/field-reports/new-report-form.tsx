@@ -188,8 +188,11 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         </p>
       )}
 
-      {/* 4. 送出 — sticky 底部 */}
-      <div className="sticky bottom-[80px] -mx-4 mt-6 border-t border-[#E0DCD6] bg-background px-4 py-4 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] md:bottom-0 md:mx-0 md:rounded-lg md:border-2 md:bg-card md:px-5 md:shadow-none">
+      {/* 4. 送出 — sticky 緊貼底部 tab bar 上緣 */}
+      <div
+        className="sticky -mx-4 mt-6 border-t border-[#E0DCD6] bg-background px-4 py-4 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] md:bottom-0 md:mx-0 md:rounded-lg md:border-2 md:bg-card md:px-5 md:shadow-none"
+        style={{ bottom: "calc(67px + env(safe-area-inset-bottom))" }}
+      >
         <button
           type="button"
           onClick={submit}

@@ -11,6 +11,8 @@ import {
   formatWeatherSummary,
   getRemainingDays,
   getWeekdayLabel,
+  isBackfilledLog,
+  normalizeLogPhotos,
 } from "@/lib/daily-log";
 import type { DailyLog, DailyLogWorkItem, LogApproval } from "@/lib/types";
 import {
@@ -107,6 +109,7 @@ export default async function LogDetailPage({
 
   const s = STATUS[l.status] ?? STATUS.draft;
   const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
+  const logPhotos = normalizeLogPhotos(l.photos);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -123,11 +126,21 @@ export default async function LogDetailPage({
 
       <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <span
-            className={`inline-block rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
-          >
-            {s.label}
-          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`inline-block rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
+            >
+              {s.label}
+            </span>
+            {isBackfilledLog(l) && (
+              <span
+                className="inline-block rounded-full border border-[#FDBA74] bg-[#FFF7ED] px-2.5 py-0.5 text-xs text-[#C2410C]"
+                title="此日誌的施工日期跟實際填寫日期不同(隔天以上補填)"
+              >
+                補件
+              </span>
+            )}
+          </div>
           <h1 className="mt-2 text-2xl font-semibold text-primary md:text-3xl">
             {new Date(l.log_date).toLocaleDateString("zh-TW")} ·{" "}
             {l.cases?.name}
@@ -147,7 +160,7 @@ export default async function LogDetailPage({
               <span>本日出工 {l.manpower.today_total} 人</span>
             )}
             {l.manpower?.accumulated_total !== undefined && (
-              <span>累計出工 {l.manpower.accumulated_total} 人</span>
+              <span>累計出工 {l.manpower.accumulated_total} 人次</span>
             )}
           </div>
         </div>
@@ -371,20 +384,30 @@ export default async function LogDetailPage({
       )}
 
       {/* 照片 */}
-      <Section title={`照片 (${l.photos?.length ?? 0})`}>
-        {!l.photos?.length ? (
+      <Section title={`照片 (${logPhotos.length})`}>
+        {!logPhotos.length ? (
           <p className="text-sm text-muted-foreground">沒有照片</p>
         ) : (
-          <div className="grid grid-cols-3 gap-2 md:grid-cols-4">
-            {l.photos.map((p) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <a key={p} href={p} target="_blank" rel="noreferrer">
-                <img
-                  src={p}
-                  alt=""
-                  className="aspect-square w-full rounded-md border border-[#E0DCD6] object-cover"
-                />
-              </a>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            {logPhotos.map((p, i) => (
+              <figure
+                key={`${p.path}-${i}`}
+                className="overflow-hidden rounded-md border border-[#E0DCD6] bg-white"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <a href={p.path} target="_blank" rel="noreferrer">
+                  <img
+                    src={p.path}
+                    alt={p.caption || ""}
+                    className="aspect-square w-full object-cover"
+                  />
+                </a>
+                {p.caption && (
+                  <figcaption className="border-t border-[#F0EBE4] bg-[#FAF7F2] px-2 py-1.5 text-xs text-foreground">
+                    {p.caption}
+                  </figcaption>
+                )}
+              </figure>
             ))}
           </div>
         )}

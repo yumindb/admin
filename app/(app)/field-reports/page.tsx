@@ -133,19 +133,21 @@ export default async function FieldReportsPage() {
                 open={defaultOpen}
                 className="group/case rounded-lg"
               >
-                <summary className="sticky top-0 z-10 -mx-4 flex cursor-pointer list-none items-center gap-2 border-b-2 border-[#A07850]/30 bg-background/95 px-4 py-3 backdrop-blur transition-colors hover:bg-[#FAF7F2] md:-mx-8 md:px-8 [&::-webkit-details-marker]:hidden">
-                  <span className="line-clamp-2 flex-1 text-base font-bold leading-snug text-primary md:text-lg">
-                    📍 {g.caseName}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {g.reports.length} 筆
+                <summary className="sticky top-0 z-10 -mx-4 cursor-pointer list-none border-b-2 border-[#A07850]/30 bg-background/95 px-4 py-3 backdrop-blur transition-colors hover:bg-[#FAF7F2] md:-mx-8 md:px-8 [&::-webkit-details-marker]:hidden">
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-0 flex-1 break-words text-base font-bold leading-snug text-primary md:text-lg">
+                      📍 {g.caseName}
+                    </span>
+                    <ChevronDown className="mt-1 size-5 shrink-0 text-muted-foreground transition-transform duration-150 group-open/case:rotate-180" />
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span>{g.reports.length} 筆</span>
                     {pendingCount > 0 && (
-                      <span className="ml-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 font-medium text-[#D97706]">
+                      <span className="rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 font-medium text-[#D97706]">
                         {pendingCount} 待整合
                       </span>
                     )}
-                  </span>
-                  <ChevronDown className="size-5 shrink-0 text-muted-foreground transition-transform duration-150 group-open/case:rotate-180" />
+                  </div>
                 </summary>
                 <ul className="mt-3 space-y-4">
                   {g.reports.map((r) => (
@@ -212,7 +214,7 @@ function ReportCard({
       <div className="flex items-start justify-between gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           {!hideCaseName && (
-            <div className="line-clamp-2 text-lg font-semibold leading-snug text-primary">
+            <div className="break-words text-lg font-semibold leading-snug text-primary">
               {r.cases?.name ?? "(已刪除案件)"}
             </div>
           )}

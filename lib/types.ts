@@ -74,6 +74,15 @@ export type DailyLogUnsignedItem = {
   reason?: string;          // 尚未追加/報價事由
 };
 
+/**
+ * 日誌照片(每張可附文字說明)。舊資料是純 string[](僅 path),
+ * 新資料是 LogPhoto[];讀取時用 normalizeLogPhotos 統一處理。
+ */
+export type LogPhoto = {
+  path: string;
+  caption: string;
+};
+
 export type DailyLog = {
   id: string;
   case_id: string;
@@ -84,7 +93,7 @@ export type DailyLog = {
   work_items: DailyLogWorkItem[];
   extra_items: DailyLogExtraItem[];      // 非合約內
   unsigned_items: DailyLogUnsignedItem[]; // 未簽約
-  photos: string[];         // storage path 陣列
+  photos: LogPhoto[];        // 舊資料 jsonb 可能是 string[],讀取時用 normalizeLogPhotos 處理
   vendor_notices: string | null;
   notes: string | null;
   status: LogStatus;

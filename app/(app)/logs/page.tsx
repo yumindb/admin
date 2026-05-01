@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { BulkPdfDownloadButton } from "@/components/bulk-pdf-download-button";
-import { formatWeatherSummary } from "@/lib/daily-log";
+import { formatWeatherSummary, isBackfilledLog } from "@/lib/daily-log";
 import type { DailyLog, LogStatus } from "@/lib/types";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -31,17 +31,18 @@ type CaseGroup = {
   counts: Record<LogStatus, number>;
 };
 
+type Scope = "all" | "mine";
+
 export default async function LogsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ case?: string }>;
+  searchParams: Promise<{ case?: string; scope?: string }>;
 }) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // supervisor 只看自己;office_staff/owner 看全部 (POC RLS allow all but UX 上 supervisor 只想看自己)
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -51,13 +52,23 @@ export default async function LogsPage({
   const sp = await searchParams;
   const caseFilterId = sp.case ?? null;
 
+  const role = profile?.role;
+  const isSupervisor = role === "site_supervisor";
+  const isOfficeStaff = role === "office_staff";
+  const canCreateLog = isSupervisor || role === "owner";
+
+  // 預設 scope:supervisor 看自己的(沿用原 UX),其他角色看全部。
+  const defaultScope: Scope = isSupervisor ? "mine" : "all";
+  const scope: Scope =
+    sp.scope === "all" || sp.scope === "mine" ? (sp.scope as Scope) : defaultScope;
+
   let query = supabase
     .from("daily_logs")
     .select("*, cases(name, code)")
     .order("log_date", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (profile?.role === "site_supervisor") {
+  if (scope === "mine") {
     query = query.eq("supervisor_id", user!.id);
   }
   if (caseFilterId) {
@@ -67,30 +78,39 @@ export default async function LogsPage({
   const { data: logs, error } = await query;
   const list = (logs ?? []) as LogRow[];
 
-  const isSupervisor = profile?.role === "site_supervisor";
-  const isOfficeStaff = profile?.role === "office_staff";
-  const canCreateLog = isSupervisor || profile?.role === "owner";
-
   const groups = groupByCase(list);
   const filteredCaseName =
     caseFilterId && groups.length > 0 ? groups[0].caseName : null;
 
+  const subtitle = isOfficeStaff
+    ? scope === "mine"
+      ? "你個人送出的日誌"
+      : "辦公室助理可查看全部日誌與簽核狀態"
+    : scope === "mine"
+      ? "你個人送出的日誌,依案件分組"
+      : "全公司日誌,依案件分組";
+
+  function tabHref(next: Scope): string {
+    const params = new URLSearchParams();
+    params.set("scope", next);
+    if (caseFilterId) params.set("case", caseFilterId);
+    return `/logs?${params.toString()}`;
+  }
+
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
-            {isSupervisor ? "我的日誌" : isOfficeStaff ? "施工日誌審核總覽" : "施工日誌"}
-          </h1>
-          <p className="mt-1.5 text-base text-muted-foreground">
-            {isSupervisor ? "依案件分組,點開查看每天的日誌" : isOfficeStaff ? "辦公室助理可查看全部日誌與簽核狀態" : "依案件分組,點開查看每天的日誌"}
+      <div className="mb-5 flex items-center justify-between gap-3 md:mb-6">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold text-primary md:text-3xl">日誌</h1>
+          <p className="mt-1 text-sm text-muted-foreground md:text-base">
+            {subtitle}
           </p>
         </div>
-        {/* 桌機:右上角藥丸形按鈕 — 跟手機 FAB 同配色,不浮空 */}
+        {/* 桌機:右上角藥丸形按鈕 */}
         {canCreateLog && (
           <Link
             href="/logs/new"
-            className="hidden h-14 items-center gap-2 rounded-full border border-[#8B6845] bg-[#A07850] py-0 pl-5 pr-6 text-base font-medium tracking-wider text-white shadow-sm transition-all duration-150 hover:bg-[#8B6845] active:scale-[0.97] md:inline-flex"
+            className="hidden h-12 items-center gap-2 rounded-full border border-[#8B6845] bg-[#A07850] py-0 pl-5 pr-6 text-base font-medium tracking-wider text-white shadow-sm transition-all duration-150 hover:bg-[#8B6845] active:scale-[0.97] md:inline-flex"
           >
             <Plus className="size-5" strokeWidth={2.25} aria-hidden />
             <span>新日誌</span>
@@ -98,14 +118,32 @@ export default async function LogsPage({
         )}
       </div>
 
+      {/* 切換:所有日誌 / 我的日誌 */}
+      <div
+        role="tablist"
+        aria-label="日誌範圍"
+        className="mb-4 inline-flex w-full rounded-md border border-[#E0DCD6] bg-card p-1 md:w-auto"
+      >
+        <ScopeTab
+          href={tabHref("all")}
+          active={scope === "all"}
+          label="所有日誌"
+        />
+        <ScopeTab
+          href={tabHref("mine")}
+          active={scope === "mine"}
+          label="我的日誌"
+        />
+      </div>
+
       {caseFilterId && (
-        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-4 py-3 text-sm">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm md:px-4 md:py-3">
           <span className="text-muted-foreground">已篩選案件:</span>
           <span className="font-medium text-foreground">
             {filteredCaseName ?? "(查無對應案件)"}
           </span>
           <Link
-            href="/logs"
+            href={`/logs?scope=${scope}`}
             className="ml-auto text-sm text-accent hover:underline"
           >
             清除篩選
@@ -120,9 +158,9 @@ export default async function LogsPage({
       )}
 
       {!list.length ? (
-        <Empty isSupervisor={isSupervisor} />
+        <Empty scope={scope} canCreateLog={canCreateLog} />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 md:space-y-4">
           {groups.map((g) => {
             const hasActionable = g.counts.draft + g.counts.submitted > 0;
             return (
@@ -131,43 +169,48 @@ export default async function LogsPage({
                 open={hasActionable}
                 className="group rounded-lg border border-[#E0DCD6] bg-card transition-colors hover:border-accent open:border-[#D4CFC8]"
               >
-                <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-5 md:p-6 [&::-webkit-details-marker]:hidden">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{g.caseCode ?? "未編號"}</span>
-                      <span>·</span>
-                      <span>共 {g.logs.length} 筆</span>
-                      <span>·</span>
-                      <span>最後一筆 {new Date(g.latestDate).toLocaleDateString("zh-TW")}</span>
+                <summary className="cursor-pointer list-none p-3.5 md:p-5 [&::-webkit-details-marker]:hidden">
+                  <div className="flex items-start justify-between gap-2.5 md:gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground md:gap-x-2 md:text-xs">
+                        <span>{g.caseCode ?? "未編號"}</span>
+                        <span aria-hidden>·</span>
+                        <span>共 {g.logs.length} 筆</span>
+                        <span aria-hidden>·</span>
+                        <span>
+                          最後 {new Date(g.latestDate).toLocaleDateString("zh-TW")}
+                        </span>
+                      </div>
+                      <h3 className="break-words text-[15px] font-semibold leading-snug text-primary md:text-lg">
+                        {g.caseName}
+                      </h3>
                     </div>
-                    <h3 className="truncate text-lg font-semibold text-primary md:text-xl">
-                      {g.caseName}
-                    </h3>
-                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    <span className="mt-1 shrink-0 text-muted-foreground transition-transform group-open:rotate-180">
+                      <ChevronDown />
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 md:mt-2">
+                    <div className="flex flex-wrap gap-1 md:gap-1.5">
                       {(["draft", "submitted", "approved", "rejected"] as LogStatus[])
                         .filter((s) => g.counts[s] > 0)
                         .map((s) => (
                           <span
                             key={s}
-                            className={`rounded-full border px-2 py-0.5 text-xs ${STATUS[s].cls}`}
+                            className={`rounded-full border px-1.5 py-0.5 text-[10px] md:px-2 md:text-xs ${STATUS[s].cls}`}
                           >
                             {STATUS[s].label} {g.counts[s]}
                           </span>
                         ))}
                     </div>
-                  </div>
-                  <div className="mt-1 flex shrink-0 items-start gap-3">
                     {g.counts.approved > 0 && (
                       <BulkPdfDownloadButton
                         logIds={g.logs
                           .filter((l) => l.status === "approved")
                           .map((l) => l.id)}
-                        label={`下載 ${g.counts.approved} 份 PDF`}
+                        label={`PDF×${g.counts.approved}`}
+                        labelMd={`下載 ${g.counts.approved} 份 PDF`}
                       />
                     )}
-                    <span className="text-muted-foreground transition-transform group-open:rotate-180">
-                      <ChevronDown />
-                    </span>
                   </div>
                 </summary>
                 <div className="border-t border-[#E0DCD6]">
@@ -178,31 +221,38 @@ export default async function LogsPage({
                         <li key={l.id}>
                           <Link
                             href={`/logs/${l.id}`}
-                            className={`flex items-start justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-[#F5F1EC] md:px-6 ${
+                            className={`flex items-start justify-between gap-2 px-3.5 py-2.5 transition-colors hover:bg-[#F5F1EC] md:gap-3 md:px-5 md:py-3 ${
                               idx > 0 ? "border-t border-[#F0EBE4]" : ""
                             }`}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 text-sm text-foreground">
+                              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-foreground">
                                 <span className="font-medium">
                                   {new Date(l.log_date).toLocaleDateString("zh-TW")}
                                 </span>
+                                {isBackfilledLog(l) && (
+                                  <span className="rounded-full border border-[#FDBA74] bg-[#FFF7ED] px-1.5 py-0 text-[10px] text-[#C2410C]">
+                                    補件
+                                  </span>
+                                )}
                                 {l.weather && (
-                                  <span className="text-xs text-muted-foreground">
-                                    · {formatWeatherSummary(l.weather)}
+                                  <span className="text-[11px] text-muted-foreground md:text-xs">
+                                    {formatWeatherSummary(l.weather)}
                                   </span>
                                 )}
                               </div>
-                              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground md:mt-1 md:gap-x-4 md:text-xs">
                                 <span>{l.work_items?.length ?? 0} 工項</span>
                                 <span>{l.photos?.length ?? 0} 照片</span>
                                 {l.notes && (
-                                  <span className="line-clamp-1 max-w-[20rem]">📝 {l.notes}</span>
+                                  <span className="line-clamp-1 max-w-[14rem] md:max-w-[20rem]">
+                                    📝 {l.notes}
+                                  </span>
                                 )}
                               </div>
                             </div>
                             <span
-                              className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${s.cls}`}
+                              className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] md:px-2 md:text-xs ${s.cls}`}
                             >
                               {s.label}
                               {l.status === "submitted" && l.current_stage
@@ -221,9 +271,7 @@ export default async function LogsPage({
         </div>
       )}
 
-      {/* 手機 extended FAB:浮在右下,坐在底部 tab bar 上方。
-          兩個會建日誌的角色(site_supervisor / owner)都有底部 tab,
-          所以 FAB 都要 fixed 並設 bottom 含 safe-area。 */}
+      {/* 手機 extended FAB */}
       {canCreateLog && (
         <Link
           href="/logs/new"
@@ -240,6 +288,31 @@ export default async function LogsPage({
         </Link>
       )}
     </div>
+  );
+}
+
+function ScopeTab({
+  href,
+  active,
+  label,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      role="tab"
+      aria-selected={active}
+      className={`flex-1 rounded-[5px] px-3 py-1.5 text-center text-sm font-medium transition-colors md:flex-none md:px-5 ${
+        active
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-[#F5F1EC] hover:text-foreground"
+      }`}
+    >
+      {label}
+    </Link>
   );
 }
 
@@ -284,19 +357,26 @@ function ChevronDown() {
   );
 }
 
-function Empty({ isSupervisor }: { isSupervisor: boolean }) {
+function Empty({
+  scope,
+  canCreateLog,
+}: {
+  scope: Scope;
+  canCreateLog: boolean;
+}) {
+  const isMine = scope === "mine";
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center md:py-20">
       <div className="mb-3 text-5xl text-[#E0DCD6]">📋</div>
       <p className="mb-1.5 text-base text-foreground">
-        {isSupervisor ? "你還沒建任何日誌" : "目前還沒有任何日誌"}
+        {isMine ? "你還沒送出任何日誌" : "目前還沒有任何日誌"}
       </p>
       <p className="mb-6 text-sm text-muted-foreground">
-        {isSupervisor
+        {isMine
           ? "選一個案件開新日誌,填工項數量、加照片、送出給老闆核定"
           : "工地主任送出日誌後會出現在這裡"}
       </p>
-      {isSupervisor && (
+      {canCreateLog && (
         <Button
           asChild
           size="lg"
