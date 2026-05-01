@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
@@ -97,10 +98,14 @@ export default async function FieldReportsPage() {
         <Link
           href="/field-reports/new"
           aria-label="新增回報"
-          className="fixed right-4 z-30 inline-flex h-16 items-center gap-2 rounded-full bg-[#A07850] px-6 text-lg font-bold text-white shadow-xl ring-2 ring-white transition-transform active:scale-95 md:hidden"
-          style={{ bottom: "calc(84px + env(safe-area-inset-bottom))" }}
+          className="fixed right-4 z-30 inline-flex h-14 items-center gap-2 rounded-full border border-[#8B6845] bg-[#A07850] py-0 pl-4 pr-5 text-base font-medium tracking-wider text-white transition-all duration-150 active:scale-[0.97] md:hidden"
+          style={{
+            bottom: "calc(84px + env(safe-area-inset-bottom))",
+            boxShadow:
+              "0 10px 24px -6px rgba(120, 84, 48, 0.45), 0 2px 6px rgba(0, 0, 0, 0.08)",
+          }}
         >
-          <span className="text-3xl leading-none">＋</span>
+          <Plus className="size-5" strokeWidth={2.25} aria-hidden />
           <span>新回報</span>
         </Link>
       )}
