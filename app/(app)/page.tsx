@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 // 角色導向首頁:
 //   site_supervisor → /logs
 //   owner          → /approvals(待核定)
+//   field_assistant → /field-reports(現場回報清單)
 //   office_staff   → /cases(案件總覽)
 //   未登入或未知   → /cases(案件總覽,layout 已擋未登入)
 export default async function HomePage() {
@@ -19,6 +20,7 @@ export default async function HomePage() {
       .maybeSingle();
     if (profile?.role === "site_supervisor") redirect("/logs");
     if (profile?.role === "owner") redirect("/approvals");
+    if (profile?.role === "field_assistant") redirect("/field-reports");
   }
   redirect("/cases");
 }

@@ -40,6 +40,7 @@ export default async function AppLayout({
       ? [
           { href: "/logs", label: "我的日誌" },
           { href: "/approvals", label: "待複核" },
+          { href: "/field-reports", label: "現場回報" },
           { href: "/cases", label: "案件總覽" },
         ]
       : profile?.role === "owner"
@@ -47,12 +48,13 @@ export default async function AppLayout({
             { href: "/approvals", label: "待核定" },
             { href: "/cases", label: "案件總覽" },
             { href: "/logs", label: "施工日誌" },
+            { href: "/field-reports", label: "現場回報" },
             { href: "/staff", label: "人員管理" },
           ]
         : profile?.role === "field_assistant"
           ? [
-              { href: "/logs/new", label: "新增日誌" },
-              { href: "/logs", label: "施工日誌" },
+              { href: "/field-reports", label: "我的回報" },
+              { href: "/field-reports/new", label: "新增回報" },
             ]
           : [
               { href: "/cases", label: "案件總覽" },
