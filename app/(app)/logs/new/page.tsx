@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { NewLogForm, type CaseOption } from "./new-log-form";
+import { NewLogForm, type CaseOption, type PendingFieldReport } from "./new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
-import type { DailyLogWorkItem } from "@/lib/types";
+import type { DailyLogWorkItem, FieldReport } from "@/lib/types";
 
 export default async function NewLogPage({
   searchParams,
@@ -21,7 +21,9 @@ export default async function NewLogPage({
     .select("full_name, role")
     .eq("id", user!.id)
     .maybeSingle();
-  if (profile?.role !== "site_supervisor") redirect("/logs");
+  if (profile?.role !== "site_supervisor" && profile?.role !== "owner") {
+    redirect("/logs");
+  }
 
   const { data: cases } = await supabase
     .from("cases")
@@ -95,6 +97,37 @@ export default async function NewLogPage({
     }));
   const aggregates = computeWorkItemAggregates(priorLogs);
 
+  // 撈這些案件的 pending 現場回報,主任填日誌時可以勾選整合進來
+  const { data: reportRows } = caseIds.length
+    ? await supabase
+        .from("field_reports")
+        .select("id, case_id, note, photos, created_at, author:profiles!author_id(full_name)")
+        .in("case_id", caseIds)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
+  type ReportRowWithAuthor = Pick<
+    FieldReport,
+    "id" | "case_id" | "note" | "photos" | "created_at"
+  > & {
+    author: { full_name: string | null } | { full_name: string | null }[] | null;
+  };
+  const pendingReportsByCase: Record<string, PendingFieldReport[]> = {};
+  for (const row of (reportRows ?? []) as unknown as ReportRowWithAuthor[]) {
+    const author = Array.isArray(row.author) ? row.author[0] : row.author;
+    const list = pendingReportsByCase[row.case_id] ?? [];
+    list.push({
+      id: row.id,
+      caseId: row.case_id,
+      note: row.note ?? "",
+      photos: row.photos ?? [],
+      authorName: author?.full_name ?? "未命名",
+      createdAt: row.created_at,
+    });
+    pendingReportsByCase[row.case_id] = list;
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -112,6 +145,7 @@ export default async function NewLogPage({
         currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
         dayLogCounts={dayLogCounts}
         priorAggregates={aggregates}
+        pendingReportsByCase={pendingReportsByCase}
       />
     </div>
   );

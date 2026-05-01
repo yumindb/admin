@@ -24,6 +24,7 @@ type SaveLogPayload = {
   notes: string;
   intent: "draft" | "submit";
   fillSignatureUrl?: string;  // 送出時必帶 — 填表人手寫簽名
+  mergedReportIds?: string[]; // 整合的現場回報 ids,送出時翻 merged
 };
 
 export async function saveLogAction(payload: SaveLogPayload) {
@@ -37,8 +38,8 @@ export async function saveLogAction(payload: SaveLogPayload) {
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  if (profile?.role !== "site_supervisor") {
-    return { ok: false, error: "只有工地主任可以填寫日誌" };
+  if (profile?.role !== "site_supervisor" && profile?.role !== "owner") {
+    return { ok: false, error: "只有工地主任或老闆可以填寫日誌" };
   }
 
   if (!payload.caseId) return { ok: false, error: "請選案件" };
@@ -127,6 +128,29 @@ export async function saveLogAction(payload: SaveLogPayload) {
     if (sigErr) return { ok: false, error: "簽名儲存失敗:" + sigErr.message };
   }
 
+  // 把整合進來的現場回報翻成 merged。只翻仍是 pending 的 — 防止重複整合或競態。
+  if (payload.mergedReportIds && payload.mergedReportIds.length > 0 && logId) {
+    const { error: mergeErr } = await supabase
+      .from("field_reports")
+      .update({
+        status: "merged",
+        merged_into_log_id: logId,
+        merged_by: user.id,
+        merged_at: new Date().toISOString(),
+      })
+      .in("id", payload.mergedReportIds)
+      .eq("status", "pending");
+    if (mergeErr) {
+      // 不擋整體儲存,但回 warning
+      return {
+        ok: true,
+        logId,
+        warning: "日誌已存,但部分現場回報狀態更新失敗:" + mergeErr.message,
+      };
+    }
+    revalidatePath("/field-reports");
+  }
+
   revalidatePath("/logs");
   revalidatePath(`/logs/${logId}`);
   revalidatePath("/approvals");
@@ -147,7 +171,7 @@ export async function deleteLogAction(formData: FormData) {
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  if (profile?.role !== "site_supervisor") return;
+  if (profile?.role !== "site_supervisor" && profile?.role !== "owner") return;
   // 只能刪自己的草稿
   await supabase
     .from("daily_logs")

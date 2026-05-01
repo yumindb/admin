@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { NewLogForm, type CaseOption } from "../../new/new-log-form";
+import { NewLogForm, type CaseOption, type PendingFieldReport } from "../../new/new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
-import type { DailyLog, DailyLogWorkItem } from "@/lib/types";
+import type { DailyLog, DailyLogWorkItem, FieldReport } from "@/lib/types";
 import { parseWeather } from "@/lib/daily-log";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 
@@ -31,7 +31,9 @@ export default async function EditLogPage({
     .select("full_name, role")
     .eq("id", user!.id)
     .maybeSingle();
-  if (profile?.role !== "site_supervisor") redirect("/logs");
+  if (profile?.role !== "site_supervisor" && profile?.role !== "owner") {
+    redirect("/logs");
+  }
   if (l.supervisor_id !== user!.id) redirect(`/logs/${id}`);
   if (l.status !== "draft" && l.status !== "rejected") redirect(`/logs/${id}`);
 
@@ -105,6 +107,35 @@ export default async function EditLogPage({
   }));
   const aggregates = computeWorkItemAggregates(priorLogs, id);
 
+  // 撈該案件的 pending 現場回報
+  const { data: reportRows } = await supabase
+    .from("field_reports")
+    .select("id, case_id, note, photos, created_at, author:profiles!author_id(full_name)")
+    .eq("case_id", l.case_id)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+
+  type ReportRowWithAuthor = Pick<
+    FieldReport,
+    "id" | "case_id" | "note" | "photos" | "created_at"
+  > & {
+    author: { full_name: string | null } | { full_name: string | null }[] | null;
+  };
+  const pendingReportsByCase: Record<string, PendingFieldReport[]> = {};
+  for (const row of (reportRows ?? []) as unknown as ReportRowWithAuthor[]) {
+    const author = Array.isArray(row.author) ? row.author[0] : row.author;
+    const list = pendingReportsByCase[row.case_id] ?? [];
+    list.push({
+      id: row.id,
+      caseId: row.case_id,
+      note: row.note ?? "",
+      photos: row.photos ?? [],
+      authorName: author?.full_name ?? "未命名",
+      createdAt: row.created_at,
+    });
+    pendingReportsByCase[row.case_id] = list;
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -126,6 +157,7 @@ export default async function EditLogPage({
         logId={id}
         currentDaySeq={currentDaySeq}
         priorAggregates={aggregates}
+        pendingReportsByCase={pendingReportsByCase}
         initial={{
           caseId: l.case_id,
           logDate: l.log_date,

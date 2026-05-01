@@ -68,6 +68,7 @@ export default async function LogsPage({
 
   const isSupervisor = profile?.role === "site_supervisor";
   const isOfficeStaff = profile?.role === "office_staff";
+  const canCreateLog = isSupervisor || profile?.role === "owner";
 
   const groups = groupByCase(list);
   const filteredCaseName =
@@ -84,7 +85,7 @@ export default async function LogsPage({
             {isSupervisor ? "依案件分組,點開查看每天的日誌" : isOfficeStaff ? "辦公室助理可查看全部日誌與簽核狀態" : "依案件分組,點開查看每天的日誌"}
           </p>
         </div>
-        {isSupervisor && (
+        {canCreateLog && (
           <Button
             asChild
             size="lg"

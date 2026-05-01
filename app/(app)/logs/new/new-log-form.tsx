@@ -30,6 +30,7 @@ import type {
   DailyLogSubcontractor,
   DailyWeather,
   DailyLogUnsignedItem,
+  FieldReportPhoto,
 } from "@/lib/types";
 
 export type CaseOption = {
@@ -42,6 +43,15 @@ export type CaseOption = {
   workItems: PickerItem[];
 };
 
+export type PendingFieldReport = {
+  id: string;
+  caseId: string;
+  note: string;
+  photos: FieldReportPhoto[];
+  authorName: string;
+  createdAt: string;
+};
+
 export function NewLogForm({
   cases,
   presetCaseId,
@@ -51,6 +61,7 @@ export function NewLogForm({
   dayLogCounts,
   currentDaySeq,
   priorAggregates,
+  pendingReportsByCase,
 }: {
   cases: CaseOption[];
   presetCaseId?: string;
@@ -61,6 +72,8 @@ export function NewLogForm({
   currentDaySeq?: number;
   /** 各案件各工項的歷史累計與鎖定模式(由 server 撈 submitted/approved 日誌算出) */
   priorAggregates?: WorkItemAggregateMap;
+  /** 各案件待整合的現場回報(pending) */
+  pendingReportsByCase?: Record<string, PendingFieldReport[]>;
   initial?: {
     caseId: string;
     logDate: string;
@@ -113,6 +126,10 @@ export function NewLogForm({
   const [photos, setPhotos] = useState<string[]>(initial?.photos ?? []);
   const [vendorNotices, setVendorNotices] = useState(initial?.vendorNotices ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [mergedReportIds, setMergedReportIds] = useState<string[]>([]);
+  const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [autosaved, setAutosaved] = useState(false);
@@ -199,10 +216,62 @@ export function NewLogForm({
       : "—（請先選案件）";
   const weekdayLabel = logDate ? getWeekdayLabel(logDate) : "";
 
-  // 切案件時重設工項勾選
+  // 切案件時重設工項勾選 + 清掉前一個案的回報勾選
   function changeCase(next: string) {
     setCaseId(next);
     setPicked([]);
+    setSelectedReportIds(new Set());
+  }
+
+  // 該案件下未合併過、且使用者本次也還沒勾過合併的回報
+  const availableReports = useMemo<PendingFieldReport[]>(() => {
+    if (!caseId) return [];
+    const list = pendingReportsByCase?.[caseId] ?? [];
+    return list.filter((r) => !mergedReportIds.includes(r.id));
+  }, [caseId, pendingReportsByCase, mergedReportIds]);
+
+  function toggleReportSelection(id: string) {
+    setSelectedReportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function mergeSelectedReports() {
+    if (selectedReportIds.size === 0) return;
+    const picked = availableReports.filter((r) => selectedReportIds.has(r.id));
+    if (picked.length === 0) return;
+
+    // 1. note: 每筆回報 prepend 「【MM/DD HH:mm 作者】」前綴後 append 進現有 notes
+    const blocks = picked
+      .map((r) => {
+        const ts = new Date(r.createdAt).toLocaleString("zh-TW", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const lines = [`【${ts} ${r.authorName}】${r.note ?? ""}`.trimEnd()];
+        for (const p of r.photos) {
+          if (p.caption) lines.push(`  · ${p.caption}`);
+        }
+        return lines.join("\n");
+      })
+      .join("\n\n");
+
+    setNotes((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${blocks}` : blocks));
+
+    // 2. photos: 直接 push 同樣的 storage path(共用、不複製)
+    const newPaths = picked.flatMap((r) => r.photos.map((p) => p.path));
+    if (newPaths.length) {
+      setPhotos((prev) => [...prev, ...newPaths.filter((p) => !prev.includes(p))]);
+    }
+
+    // 3. 紀錄已合併的 report ids,送出時帶到 server action
+    setMergedReportIds((prev) => [...prev, ...picked.map((r) => r.id)]);
+    setSelectedReportIds(new Set());
   }
 
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number }>({
@@ -313,6 +382,7 @@ export function NewLogForm({
         notes,
         intent,
         fillSignatureUrl: signatureUrl,
+        mergedReportIds,
       });
       if (!res.ok) {
         setError(res.error ?? "儲存失敗");
@@ -389,6 +459,101 @@ export function NewLogForm({
           </div>
         )}
       </Section>
+
+      {/* 待整合的現場回報 — 只在選了案件 + 該案有 pending 回報時出現 */}
+      {caseId && availableReports.length > 0 && (
+        <details
+          open
+          className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] p-5 md:p-6"
+        >
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+            <h2 className="text-base font-semibold text-[#92400E] md:text-lg">
+              待整合的現場回報 ({availableReports.length})
+            </h2>
+            <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
+          </summary>
+          <p className="mt-1 mb-4 text-sm text-[#92400E]/80">
+            勾選後按「合併到此日誌」,文字會 append 到備註、照片會加進照片區。被合併的回報會標為「已併入」,不會再出現在這。
+          </p>
+          <ul className="space-y-2">
+            {availableReports.map((r) => {
+              const checked = selectedReportIds.has(r.id);
+              const ts = new Date(r.createdAt).toLocaleString("zh-TW", {
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              return (
+                <li key={r.id}>
+                  <label
+                    className={`flex cursor-pointer items-start gap-3 rounded-md border bg-white px-4 py-3 transition-colors ${
+                      checked
+                        ? "border-[#A07850] bg-[#FAF7F2]"
+                        : "border-[#E0DCD6] hover:border-[#A07850]/40"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleReportSelection(r.id)}
+                      className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-muted-foreground">
+                        {ts} · {r.authorName}
+                        {r.photos.length > 0 && ` · ${r.photos.length} 張照片`}
+                      </div>
+                      {r.note && (
+                        <p className="mt-1 whitespace-pre-line text-sm text-foreground">
+                          {r.note}
+                        </p>
+                      )}
+                      {r.photos.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {r.photos.slice(0, 6).map((p, idx) => (
+                            <a
+                              key={p.path + idx}
+                              href={p.path}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={p.caption || undefined}
+                              className="block size-14 overflow-hidden rounded border border-[#E0DCD6] bg-[#F5F1EC]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={p.path}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            </a>
+                          ))}
+                          {r.photos.length > 6 && (
+                            <span className="inline-flex size-14 items-center justify-center rounded border border-[#E0DCD6] bg-white text-xs text-muted-foreground">
+                              +{r.photos.length - 6}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-4 flex justify-end">
+            <Button
+              type="button"
+              onClick={mergeSelectedReports}
+              disabled={selectedReportIds.size === 0}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              合併到此日誌 ({selectedReportIds.size})
+            </Button>
+          </div>
+        </details>
+      )}
 
       {/* 基本 */}
       <Section title="日期 / 天氣">
