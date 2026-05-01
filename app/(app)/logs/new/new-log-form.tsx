@@ -399,25 +399,45 @@ export function NewLogForm({
   }
 
   return (
-    <div className="space-y-6">
-      <Section title="表頭資料" hint="依照裕民現有施工日誌格式，自動帶入案件與填表資訊">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <InfoCard label="表報編號" value={reportNumber} />
-          <InfoCard label="日期" value={`${logDate} · ${weekdayLabel}`} />
-          <InfoCard label="工程名稱" value={selectedCase?.name ?? "先選案件"} />
-          <InfoCard label="承攬廠商名稱" value={selectedCase?.company ?? "—"} />
-          <InfoCard
-            label="預定完工日期"
-            value={selectedCase?.expectedEnd ?? "—"}
-          />
-          <InfoCard
-            label="剩餘工期"
-            value={remainingDays === null ? "—" : `${remainingDays} 天`}
-          />
-          <InfoCard label="人員姓名" value={currentUserName} />
-          <InfoCard label="施工地點" value={selectedCase?.location ?? "—"} />
+    <div className="space-y-4 md:space-y-6">
+      {/* 表頭 — 手機:壓成一張小卡;桌機:完整 grid */}
+      <div className="rounded-md border border-[#E0DCD6] bg-card px-4 py-3 md:hidden">
+        <div className="flex items-baseline justify-between gap-2 text-sm">
+          <span className="text-xs text-muted-foreground">表報編號</span>
+          <span className="font-mono text-sm font-medium text-primary">
+            {reportNumber}
+          </span>
         </div>
-      </Section>
+        <div className="mt-1.5 text-sm font-medium text-primary">
+          {selectedCase?.name ?? "（先選案件）"}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <span>{logDate || "—"}{weekdayLabel ? ` ${weekdayLabel}` : ""}</span>
+          {selectedCase?.company && <span>· {selectedCase.company}</span>}
+          {remainingDays !== null && <span>· 剩餘 {remainingDays} 天</span>}
+          <span>· 填表 {currentUserName}</span>
+        </div>
+      </div>
+      <div className="hidden md:block">
+        <Section title="表頭資料" hint="依照裕民現有施工日誌格式，自動帶入案件與填表資訊">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <InfoCard label="表報編號" value={reportNumber} />
+            <InfoCard label="日期" value={`${logDate} · ${weekdayLabel}`} />
+            <InfoCard label="工程名稱" value={selectedCase?.name ?? "先選案件"} />
+            <InfoCard label="承攬廠商名稱" value={selectedCase?.company ?? "—"} />
+            <InfoCard
+              label="預定完工日期"
+              value={selectedCase?.expectedEnd ?? "—"}
+            />
+            <InfoCard
+              label="剩餘工期"
+              value={remainingDays === null ? "—" : `${remainingDays} 天`}
+            />
+            <InfoCard label="人員姓名" value={currentUserName} />
+            <InfoCard label="施工地點" value={selectedCase?.location ?? "—"} />
+          </div>
+        </Section>
+      </div>
 
       {/* 案件選擇 */}
       <Section title="案件選擇">
@@ -791,8 +811,8 @@ export function NewLogForm({
         「儲存草稿」可以晚點再回來填,只有你看得到。「送出核定」會通知老闆,送出後若要改要等被退回或請主管退回。
       </NextStepHint>
 
-      {/* 動作 */}
-      <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:mx-0 md:rounded-md md:border md:bg-card md:px-5">
+      {/* 動作 — 手機 sticky 在底部 tab bar 上方;桌機自然落地 */}
+      <div className="sticky bottom-[80px] -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:mx-0 md:rounded-md md:border md:bg-card md:px-5">
         <Button asChild variant="ghost" type="button">
           <Link href="/logs">取消</Link>
         </Button>
@@ -830,10 +850,10 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-[#E0DCD6] bg-card p-5 md:p-6">
+    <section className="rounded-lg border border-[#E0DCD6] bg-card p-4 md:p-6">
       <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">{title}</h2>
-      {hint && <p className="mb-4 text-sm text-muted-foreground">{hint}</p>}
-      {!hint && <div className="mb-4" />}
+      {hint && <p className="mb-3 text-sm text-muted-foreground md:mb-4">{hint}</p>}
+      {!hint && <div className="mb-3 md:mb-4" />}
       {children}
     </section>
   );

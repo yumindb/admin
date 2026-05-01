@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { FieldReportsBottomNav } from "@/components/field-reports-bottom-nav";
+import { BottomTabNav, type BottomTab } from "@/components/bottom-tab-nav";
 import { logoutAction } from "../login/actions";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -11,6 +11,8 @@ const ROLE_LABEL: Record<string, string> = {
   owner: "老闆",
   field_assistant: "現場助理",
 };
+
+type DesktopLink = { href: string; label: string };
 
 export default async function AppLayout({
   children,
@@ -35,32 +37,8 @@ export default async function AppLayout({
   const fullName = profile?.full_name ?? user.email ?? "未命名使用者";
   const roleLabel = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : "—";
   const company = profile?.company ?? "裕民";
-  const isFieldAssistant = profile?.role === "field_assistant";
 
-  const navLinks: { href: string; label: string }[] =
-    profile?.role === "site_supervisor"
-      ? [
-          { href: "/logs", label: "我的日誌" },
-          { href: "/approvals", label: "待複核" },
-          { href: "/field-reports", label: "現場回報" },
-          { href: "/cases", label: "案件總覽" },
-        ]
-      : profile?.role === "owner"
-        ? [
-            { href: "/approvals", label: "待核定" },
-            { href: "/cases", label: "案件總覽" },
-            { href: "/logs", label: "施工日誌" },
-            { href: "/field-reports", label: "現場回報" },
-            { href: "/staff", label: "人員管理" },
-          ]
-        : isFieldAssistant
-          ? [] // 現場助理走底部 tab bar,不用上方 nav
-          : [
-              { href: "/cases", label: "案件總覽" },
-              { href: "/approvals", label: "待審核" },
-              { href: "/logs", label: "施工日誌" },
-              { href: "/staff", label: "人員管理" },
-            ];
+  const { desktopNav, mobileTabs } = navByRole(profile?.role);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -81,9 +59,9 @@ export default async function AppLayout({
               />
               裕民工務 管理系統
             </Link>
-            {navLinks.length > 0 && (
+            {desktopNav.length > 0 && (
               <nav className="hidden items-center gap-6 text-base text-[#E8E4DE] md:flex">
-                {navLinks.map((l) => (
+                {desktopNav.map((l) => (
                   <Link key={l.href} href={l.href} className="hover:text-white">
                     {l.label}
                   </Link>
@@ -109,31 +87,81 @@ export default async function AppLayout({
             </form>
           </div>
         </div>
-
-        {navLinks.length > 0 && (
-          <nav className="flex items-center gap-5 overflow-x-auto border-t border-white/10 px-4 py-2 text-sm text-[#E8E4DE] md:hidden">
-            {navLinks.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                className="whitespace-nowrap hover:text-white"
-              >
-                {l.label}
-              </Link>
-            ))}
-          </nav>
-        )}
       </header>
 
-      <main
-        className={`flex-1 px-4 py-6 md:px-8 md:py-10 lg:px-12 ${
-          isFieldAssistant ? "pb-28" : ""
-        }`}
-      >
+      <main className="flex-1 px-4 pt-6 pb-24 md:px-8 md:py-10 lg:px-12">
         {children}
       </main>
 
-      {isFieldAssistant && <FieldReportsBottomNav />}
+      <BottomTabNav tabs={mobileTabs} />
     </div>
   );
+}
+
+function navByRole(role: string | undefined): {
+  desktopNav: DesktopLink[];
+  mobileTabs: BottomTab[];
+} {
+  switch (role) {
+    case "site_supervisor":
+      return {
+        desktopNav: [
+          { href: "/logs", label: "我的日誌" },
+          { href: "/approvals", label: "待複核" },
+          { href: "/field-reports", label: "現場回報" },
+          { href: "/cases", label: "案件總覽" },
+        ],
+        mobileTabs: [
+          { href: "/logs", label: "日誌", icon: "file" },
+          { href: "/approvals", label: "待複核", icon: "check" },
+          { href: "/field-reports", label: "現場回報", icon: "camera" },
+          { href: "/cases", label: "案件", icon: "folder" },
+        ],
+      };
+    case "owner":
+      return {
+        desktopNav: [
+          { href: "/approvals", label: "待核定" },
+          { href: "/cases", label: "案件總覽" },
+          { href: "/logs", label: "施工日誌" },
+          { href: "/field-reports", label: "現場回報" },
+          { href: "/staff", label: "人員管理" },
+        ],
+        mobileTabs: [
+          { href: "/approvals", label: "待核定", icon: "check" },
+          { href: "/cases", label: "案件", icon: "folder" },
+          { href: "/logs", label: "日誌", icon: "file" },
+          { href: "/field-reports", label: "現場", icon: "camera" },
+          { href: "/staff", label: "人員", icon: "users" },
+        ],
+      };
+    case "field_assistant":
+      return {
+        desktopNav: [
+          { href: "/field-reports", label: "我的回報" },
+          { href: "/field-reports/new", label: "新增回報" },
+        ],
+        mobileTabs: [
+          { href: "/field-reports", label: "我的回報", icon: "list" },
+          { href: "/field-reports/new", label: "新增回報", icon: "plus" },
+        ],
+      };
+    case "office_staff":
+      return {
+        desktopNav: [
+          { href: "/cases", label: "案件總覽" },
+          { href: "/approvals", label: "待審核" },
+          { href: "/logs", label: "施工日誌" },
+          { href: "/staff", label: "人員管理" },
+        ],
+        mobileTabs: [
+          { href: "/cases", label: "案件", icon: "folder" },
+          { href: "/approvals", label: "待審核", icon: "check" },
+          { href: "/logs", label: "日誌", icon: "file" },
+          { href: "/staff", label: "人員", icon: "users" },
+        ],
+      };
+    default:
+      return { desktopNav: [], mobileTabs: [] };
+  }
 }
