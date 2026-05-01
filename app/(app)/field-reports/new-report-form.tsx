@@ -1,21 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { NextStepHint } from "@/components/next-step-hint";
+import { CasePicker, type CasePickerOption } from "@/components/case-picker";
 import { uploadPhotoAction } from "../logs/[id]/photo-actions";
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
 import type { FieldReportPhoto } from "@/lib/types";
 
-export type CaseOption = {
-  id: string;
-  name: string;
-  code: string | null;
-};
+export type CaseOption = CasePickerOption;
 
 type Props = {
   cases: CaseOption[];
@@ -28,6 +20,13 @@ type Props = {
   };
 };
 
+/**
+ * 現場工人填回報用 — 一頁式、大按鈕、極簡步驟。
+ * 1) 選案場 (彈出 sheet)
+ * 2) 寫文字 (大 textarea,可空)
+ * 3) 加照片 (大按鈕;每張可寫一句)
+ * 4) 送出
+ */
 export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props) {
   const router = useRouter();
   const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
@@ -35,13 +34,13 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
   const [photos, setPhotos] = useState<FieldReportPhoto[]>(initial?.photos ?? []);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number }>({
+  const [progress, setProgress] = useState<{ done: number; total: number }>({
     done: 0,
     total: 0,
   });
   const [isPending, startTransition] = useTransition();
 
-  async function onUploadPhoto(files: FileList | null) {
+  async function onPickPhotos(files: FileList | null) {
     if (!files?.length) return;
     const validFiles = Array.from(files).filter((f) => {
       if (!f.type.startsWith("image/")) return false;
@@ -55,7 +54,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
 
     setUploading(true);
     setError(null);
-    setUploadProgress({ done: 0, total: validFiles.length });
+    setProgress({ done: 0, total: validFiles.length });
 
     const prepared = await Promise.all(validFiles.map((f) => compressPhoto(f)));
 
@@ -64,7 +63,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         const fd = new FormData();
         fd.set("file", f);
         const res = await uploadPhotoAction(fd);
-        setUploadProgress((p) => ({ ...p, done: p.done + 1 }));
+        setProgress((p) => ({ ...p, done: p.done + 1 }));
         return res;
       })
     );
@@ -78,7 +77,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     if (newPhotos.length) setPhotos((arr) => [...arr, ...newPhotos]);
     if (firstError) setError(firstError);
     setUploading(false);
-    setUploadProgress({ done: 0, total: 0 });
+    setProgress({ done: 0, total: 0 });
   }
 
   function removePhoto(idx: number) {
@@ -92,11 +91,11 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
   function submit() {
     setError(null);
     if (!caseId) {
-      setError("請選案場");
+      setError("請先選案場");
       return;
     }
     if (!note.trim() && photos.length === 0) {
-      setError("至少要寫文字或加照片");
+      setError("至少寫幾個字或加一張照片");
       return;
     }
 
@@ -106,167 +105,101 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         ? await updateFieldReportAction({ ...payload, reportId })
         : await createFieldReportAction(payload);
       if (!res.ok) {
-        setError(res.error ?? "儲存失敗");
+        setError(res.error ?? "送出失敗");
         return;
       }
       router.push(`/field-reports/${res.reportId}`);
     });
   }
 
+  const canSubmit = !!caseId && (note.trim().length > 0 || photos.length > 0);
+
   return (
-    <div className="space-y-6">
-      <Section title="案場">
-        {cases.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            目前沒有可用案場。請辦公室助理先開案。
-          </p>
-        ) : (
-          <div className="space-y-2.5">
-            {cases.map((c) => (
-              <label
-                key={c.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border px-5 py-4 transition-colors ${
-                  caseId === c.id
-                    ? "border-accent bg-[#FAF7F2]"
-                    : "border-[#E0DCD6] hover:border-[#A07850]/40"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="case"
-                  checked={caseId === c.id}
-                  onChange={() => setCaseId(c.id)}
-                  className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-muted-foreground">
-                    {c.code ?? "未編號"}
-                  </div>
-                  <div className="text-base font-semibold text-primary md:text-lg">
-                    {c.name}
-                  </div>
-                </div>
-              </label>
-            ))}
-          </div>
-        )}
-      </Section>
+    <div className="space-y-5">
+      {/* 1. 案場 */}
+      <CasePicker cases={cases} value={caseId} onChange={setCaseId} />
 
-      <Section title="文字紀錄" hint="描述今天現場的狀況、合約外項目、需要主任處理的事">
-        <textarea
-          rows={5}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="例:屋主臨時要求多打一道牆 / 1F 廁所地磚換款 / 中午下大雨停工 1 小時"
-          className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-        />
-      </Section>
+      {/* 2. 文字 */}
+      <textarea
+        rows={5}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="今天現場有什麼狀況?(選填)&#10;例:屋主要多打一道牆 / 1F 廁所地磚要換款"
+        className="block w-full resize-y rounded-lg border-2 border-[#E0DCD6] bg-white px-4 py-4 text-lg leading-relaxed outline-none focus-visible:border-accent"
+      />
 
-      <Section title={`照片${photos.length > 0 ? ` (${photos.length})` : ""}`} hint="可拍多張,每張下方可寫一句說明">
+      {/* 3. 照片 — 大按鈕 */}
+      <label className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-lg border-2 border-dashed border-[#A07850]/50 bg-[#FAF7F2] px-5 py-6 text-center transition-colors hover:border-[#A07850] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]">
+        <span className="text-3xl" aria-hidden>📷</span>
+        <span className="text-xl font-semibold text-primary">
+          {uploading
+            ? `上傳中… ${progress.done}/${progress.total}`
+            : photos.length > 0
+              ? "再加照片"
+              : "拍照 / 加照片"}
+        </span>
         <input
           type="file"
           accept="image/*"
           multiple
-          capture="environment"
-          onChange={(e) => onUploadPhoto(e.target.files)}
+          onChange={(e) => onPickPhotos(e.target.files)}
           disabled={uploading}
-          className="block w-full rounded-md border border-[#E0DCD6] bg-white p-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+          className="sr-only"
         />
-        {uploading && uploadProgress.total > 0 && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span>
-              上傳中… {uploadProgress.done}/{uploadProgress.total}
-            </span>
-            <div className="h-1.5 w-32 overflow-hidden rounded-full bg-[#E0DCD6]">
-              <div
-                className="h-full bg-accent transition-all"
-                style={{
-                  width: `${(uploadProgress.done / uploadProgress.total) * 100}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-        {photos.length > 0 && (
-          <ul className="mt-3 space-y-3">
-            {photos.map((p, idx) => (
-              <li
-                key={p.path + idx}
-                className="grid grid-cols-[6rem_1fr_auto] items-start gap-3 rounded-md border border-[#E0DCD6] bg-card p-3"
-              >
-                <div className="aspect-square overflow-hidden rounded-md border border-[#E0DCD6] bg-[#F5F1EC]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.path} alt="" className="h-full w-full object-cover" />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor={`caption-${idx}`} className="text-xs text-muted-foreground">
-                    這張的說明(選填)
-                  </Label>
-                  <Input
-                    id={`caption-${idx}`}
-                    value={p.caption}
-                    onChange={(e) => setCaption(idx, e.target.value)}
-                    placeholder="例:屋主指示位置 / 已完成 80%"
-                    className="h-10"
-                  />
-                </div>
+      </label>
+
+      {photos.length > 0 && (
+        <ul className="space-y-3">
+          {photos.map((p, idx) => (
+            <li
+              key={p.path + idx}
+              className="overflow-hidden rounded-lg border-2 border-[#E0DCD6] bg-card"
+            >
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.path}
+                  alt=""
+                  className="block h-56 w-full object-cover"
+                />
                 <button
                   type="button"
                   onClick={() => removePhoto(idx)}
-                  className="inline-flex size-8 items-center justify-center rounded-full border border-[#E0DCD6] bg-white text-sm text-[#B91C1C] hover:bg-[#FEF2F2]"
+                  className="absolute right-2 top-2 inline-flex size-10 items-center justify-center rounded-full bg-black/70 text-2xl text-white shadow-md hover:bg-black/85 active:bg-black"
                   aria-label="刪除這張"
                 >
                   ×
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+              </div>
+              <input
+                value={p.caption}
+                onChange={(e) => setCaption(idx, e.target.value)}
+                placeholder="(選填) 這張照片想說什麼?"
+                className="block w-full border-t-2 border-[#E0DCD6] bg-white px-4 py-3 text-base outline-none focus-visible:border-accent"
+              />
+            </li>
+          ))}
+        </ul>
+      )}
 
       {error && (
-        <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
+        <p className="rounded-lg border-2 border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-base text-[#B91C1C]">
           {error}
         </p>
       )}
 
-      <NextStepHint tone="info">
-        送出後,工地主任填日誌時會看到這筆,可以勾選整合進當日施工日誌。
-      </NextStepHint>
-
-      <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:mx-0 md:rounded-md md:border md:bg-card md:px-5">
-        <Button asChild variant="ghost" type="button">
-          <Link href="/field-reports">取消</Link>
-        </Button>
-        <Button
+      {/* 4. 送出 — sticky 底部 */}
+      <div className="sticky bottom-[80px] -mx-4 mt-6 border-t border-[#E0DCD6] bg-background px-4 py-4 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] md:bottom-0 md:mx-0 md:rounded-lg md:border-2 md:bg-card md:px-5 md:shadow-none">
+        <button
           type="button"
           onClick={submit}
-          disabled={isPending || uploading}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
+          disabled={!canSubmit || isPending || uploading}
+          className="block h-16 w-full rounded-lg bg-primary text-xl font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
         >
           {isPending ? "送出中…" : reportId ? "儲存變更" : "送出回報"}
-        </Button>
+        </button>
       </div>
     </div>
-  );
-}
-
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-[#E0DCD6] bg-card p-5 md:p-6">
-      <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">{title}</h2>
-      {hint && <p className="mb-4 text-sm text-muted-foreground">{hint}</p>}
-      {!hint && <div className="mb-4" />}
-      {children}
-    </section>
   );
 }
 

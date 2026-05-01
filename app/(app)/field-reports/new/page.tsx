@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { NewReportForm, type CaseOption } from "../new-report-form";
@@ -40,16 +39,13 @@ export default async function NewFieldReportPage({
   }));
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/field-reports" className="hover:text-accent">
-          現場回報
-        </Link>
-        <span className="mx-1.5">／</span>
-        <span>新回報</span>
-      </nav>
-      <h1 className="mb-7 text-2xl font-semibold text-primary md:text-3xl">新現場回報</h1>
-
+    <div className="mx-auto max-w-2xl">
+      <h1 className="mb-2 text-2xl font-semibold text-primary md:text-3xl">
+        新增回報
+      </h1>
+      <p className="mb-6 text-base text-muted-foreground">
+        選一個案場、寫幾個字或拍照,送出就好。
+      </p>
       <NewReportForm cases={caseOptions} presetCaseId={presetCaseId} />
     </div>
   );
