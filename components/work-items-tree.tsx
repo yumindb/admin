@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Trash2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -59,6 +59,12 @@ type Props = {
   /** 強制展開/收合所有節點 — 由父層按鈕控制(undefined 維持現狀) */
   expandAllSignal?: number;
   collapseAllSignal?: number;
+  /** 是否顯示編輯 / 刪除 / 加子項 操作 (office_staff / owner) */
+  editable?: boolean;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  /** 從某個 section 旁加子項;parentId 可為 null (root) */
+  onAdd?: (parentId: string | null) => void;
 };
 
 export function WorkItemsTree({
@@ -71,6 +77,10 @@ export function WorkItemsTree({
   filterModes,
   expandAllSignal,
   collapseAllSignal,
+  editable = false,
+  onEdit,
+  onDelete,
+  onAdd,
 }: Props) {
   // 重建樹
   const { roots, byParent, byId } = useMemo(() => {
@@ -230,6 +240,10 @@ export function WorkItemsTree({
               showSkippedToggle={showSkippedToggle}
               progress={progress}
               visibleIds={visibleIds}
+              editable={editable}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onAdd={onAdd}
             />
           ))}
         </tbody>
@@ -255,6 +269,10 @@ function Row({
   showSkippedToggle,
   progress,
   visibleIds,
+  editable,
+  onEdit,
+  onDelete,
+  onAdd,
 }: {
   node: TreeItem;
   byParent: Map<string | null, TreeItem[]>;
@@ -264,6 +282,10 @@ function Row({
   showSkippedToggle: boolean;
   progress?: ProgressMap;
   visibleIds: Set<string> | null;
+  editable?: boolean;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onAdd?: (parentId: string | null) => void;
 }) {
   const allChildren = byParent.get(node.id) ?? [];
   const children = visibleIds
@@ -275,11 +297,16 @@ function Row({
   const isSection = node.itemType === "section";
   const isSpec = node.itemType === "spec";
 
+  // section 不允許編輯;但 section 可以「在底下加子項」
+  const showEdit = editable && !!onEdit && !isSection;
+  const showDelete = editable && !!onDelete;
+  const showAdd = editable && !!onAdd && isSection;
+
   return (
     <>
       <tr
         className={cn(
-          "border-b border-[#E0DCD6] transition-colors hover:bg-[#F5F1EC]",
+          "group border-b border-[#E0DCD6] transition-colors hover:bg-[#F5F1EC]",
           node.skipped && "opacity-50",
           isSection && "bg-[#FAF7F2] font-medium"
         )}
@@ -358,6 +385,42 @@ function Row({
               aria-label={isSection ? "略過此分類及所有子項" : "略過此項"}
               title={isSection ? "略過此分類及所有子項" : "略過此項"}
             />
+          ) : editable ? (
+            <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              {showAdd && (
+                <button
+                  type="button"
+                  onClick={() => onAdd?.(node.id)}
+                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white hover:text-accent"
+                  aria-label="在此分類下新增工項"
+                  title="在此分類下新增工項"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              )}
+              {showEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit?.(node.id)}
+                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white hover:text-accent"
+                  aria-label="編輯工項"
+                  title="編輯"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+              )}
+              {showDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete?.(node.id)}
+                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white hover:text-[#B91C1C]"
+                  aria-label="刪除工項"
+                  title="刪除"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </div>
           ) : null}
         </td>
       </tr>
@@ -374,6 +437,10 @@ function Row({
               showSkippedToggle={showSkippedToggle}
               progress={progress}
               visibleIds={visibleIds}
+              editable={editable}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onAdd={onAdd}
             />
           ))
         : null}

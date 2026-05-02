@@ -8,6 +8,7 @@ import {
   type ProgressMap,
 } from "@/components/work-items-tree";
 import { WorkItemsTreeSection } from "@/components/work-items-tree-section";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
 import { NextStepHint } from "@/components/next-step-hint";
@@ -73,6 +74,9 @@ export default async function CaseDetailPage({
 
   if (caseErr || !caseRow) notFound();
   const c = caseRow as Case;
+  const actor = await tryGetActor();
+  const canEditWorkItems =
+    actor?.role === "office_staff" || actor?.role === "owner";
   const items = (workItems ?? []) as CaseWorkItem[];
   const importsList = (imports ?? []) as TenderImport[];
   const lastImport = importsList[0];
@@ -291,7 +295,12 @@ export default async function CaseDetailPage({
           </Button>
         </div>
       ) : (
-        <WorkItemsTreeSection items={treeItems} progress={progress} />
+        <WorkItemsTreeSection
+          items={treeItems}
+          progress={progress}
+          caseId={c.id}
+          editable={canEditWorkItems}
+        />
       )}
 
       {/* 跨日誌彙整:照片 */}
