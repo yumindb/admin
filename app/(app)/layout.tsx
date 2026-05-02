@@ -14,7 +14,7 @@ const ROLE_LABEL: Record<string, string> = {
   field_assistant: "現場助理",
 };
 
-type DesktopLink = { href: string; label: string };
+type DesktopLink = { href: string; label: string; badge?: number };
 
 export default async function AppLayout({
   children,
@@ -40,7 +40,29 @@ export default async function AppLayout({
   const roleLabel = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : "—";
   const company = profile?.company ?? "裕民";
 
-  const { desktopNav, mobileTabs } = navByRole(profile?.role);
+  // 撈當前使用者角色對應的待簽數量,加在 nav 連結後做 badge
+  let approvalsBadge = 0;
+  const stageForRole: Record<string, "review" | "audit" | "approve" | null> = {
+    site_supervisor: "review",
+    office_staff: "audit",
+    owner: "approve",
+    field_assistant: null,
+  };
+  const stage = profile?.role ? stageForRole[profile.role] ?? null : null;
+  if (stage) {
+    let countQuery = supabase
+      .from("daily_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "submitted")
+      .eq("current_stage", stage);
+    if (profile?.role === "site_supervisor") {
+      countQuery = countQuery.eq("supervisor_id", user.id);
+    }
+    const { count } = await countQuery;
+    approvalsBadge = count ?? 0;
+  }
+
+  const { desktopNav, mobileTabs } = navByRole(profile?.role, approvalsBadge);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -65,8 +87,17 @@ export default async function AppLayout({
             {desktopNav.length > 0 && (
               <nav className="hidden items-center gap-6 text-base text-[#E8E4DE] md:flex">
                 {desktopNav.map((l) => (
-                  <Link key={l.href} href={l.href} className="hover:text-white">
-                    {l.label}
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className="inline-flex items-center gap-1.5 hover:text-white"
+                  >
+                    <span>{l.label}</span>
+                    {l.badge !== undefined && l.badge > 0 && (
+                      <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-[#B91C1C] px-1.5 py-0 text-xs font-semibold tabular-nums leading-5 text-white">
+                        {l.badge}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </nav>
@@ -96,7 +127,10 @@ export default async function AppLayout({
   );
 }
 
-function navByRole(role: string | undefined): {
+function navByRole(
+  role: string | undefined,
+  approvalsBadge: number,
+): {
   desktopNav: DesktopLink[];
   mobileTabs: BottomTab[];
 } {
@@ -105,7 +139,7 @@ function navByRole(role: string | undefined): {
       return {
         desktopNav: [
           { href: "/logs", label: "日誌" },
-          { href: "/approvals", label: "待複核" },
+          { href: "/approvals", label: "待複核", badge: approvalsBadge },
           { href: "/field-reports", label: "現場回報" },
           { href: "/cases", label: "案件總覽" },
         ],
@@ -119,7 +153,7 @@ function navByRole(role: string | undefined): {
     case "owner":
       return {
         desktopNav: [
-          { href: "/approvals", label: "待核定" },
+          { href: "/approvals", label: "待核定", badge: approvalsBadge },
           { href: "/cases", label: "案件總覽" },
           { href: "/logs", label: "日誌" },
           { href: "/field-reports", label: "現場回報" },
@@ -148,7 +182,7 @@ function navByRole(role: string | undefined): {
       return {
         desktopNav: [
           { href: "/cases", label: "案件總覽" },
-          { href: "/approvals", label: "待審核" },
+          { href: "/approvals", label: "待審核", badge: approvalsBadge },
           { href: "/logs", label: "日誌" },
           { href: "/staff", label: "人員管理" },
         ],

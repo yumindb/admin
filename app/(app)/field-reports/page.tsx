@@ -4,6 +4,7 @@ import { ChevronDown, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { formatTW } from "@/lib/datetime";
 import { getSignedUrls } from "@/lib/supabase/storage";
+import { NextStepHint } from "@/components/next-step-hint";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -77,6 +78,7 @@ export default async function FieldReportsPage() {
 
   const { data, error } = await query;
   const list = ((data ?? []) as ReportRow[]) ?? [];
+  const totalPendingCount = list.filter((r) => r.status === "pending").length;
 
   // Storage 已轉 private — 把每筆回報「第一張」縮圖換成 signed URL(5 min)
   const firstPhotoPaths: string[] = [];
@@ -118,6 +120,14 @@ export default async function FieldReportsPage() {
         <p className="mb-4 rounded-lg border-2 border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-base text-[#B91C1C]">
           載入失敗:{error.message}
         </p>
+      )}
+
+      {!isFieldAssistant && totalPendingCount > 0 && (
+        <div className="mb-4">
+          <NextStepHint tone="info">
+            有 {totalPendingCount} 筆待整合 — 工地主任填日誌時可勾選併入。
+          </NextStepHint>
+        </div>
       )}
 
       {!list.length ? (

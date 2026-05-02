@@ -28,9 +28,25 @@ export function ApprovalActions({
   const sigRef = useRef<SignatureCanvas>(null);
   const [mode, setMode] = useState<"approve" | "reject">("approve");
   const [comment, setComment] = useState("");
+  // 退回原因 chip 改成 toggle:每個 chip 可獨立選/取消,送出時與自由文字合併
+  const [selectedChips, setSelectedChips] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  function toggleChip(chip: string) {
+    setSelectedChips((prev) =>
+      prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip],
+    );
+  }
+
+  // chips 與自由文字合併:chips 用「、」串,後接自由文字(若有)
+  function buildRejectComment(): string {
+    const chipPart = selectedChips.join("、");
+    const freeText = comment.trim();
+    if (chipPart && freeText) return `${chipPart}\n${freeText}`;
+    return chipPart || freeText;
+  }
 
   function clearSig() {
     sigRef.current?.clear();
@@ -81,12 +97,13 @@ export function ApprovalActions({
 
   function handleReject() {
     setError(null);
-    if (!comment.trim()) {
+    const finalComment = buildRejectComment();
+    if (!finalComment) {
       setError("退回需要填原因");
       return;
     }
     startTransition(async () => {
-      const res = await rejectStageAction({ logId, comment });
+      const res = await rejectStageAction({ logId, comment: finalComment });
       if (!res.ok) {
         setError(res.error);
         return;
@@ -170,7 +187,7 @@ export function ApprovalActions({
       ) : (
         <div>
           <p className="mb-2 text-sm text-muted-foreground">
-            選一個常用原因,或自由輸入
+            選常用原因（可複選），或自由輸入
           </p>
           <div className="mb-3 flex flex-wrap gap-2">
             {[
@@ -179,31 +196,61 @@ export function ApprovalActions({
               "請補拍照片",
               "工項漏報",
               "備註不清楚",
-            ].map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setComment(r)}
-                className={`min-h-[44px] rounded-md border px-3 text-sm transition-colors ${
-                  comment === r
-                    ? "border-[#B91C1C] bg-[#FEF2F2] text-[#B91C1C]"
-                    : "border-[#E0DCD6] bg-white text-foreground hover:bg-[#FAF7F2]"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
+              "跟我口頭交代不一樣",
+              "天氣對不上",
+              "外包人數對不起來",
+            ].map((r) => {
+              const active = selectedChips.includes(r);
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => toggleChip(r)}
+                  aria-pressed={active}
+                  className={`min-h-[44px] rounded-md border px-3 text-sm transition-colors ${
+                    active
+                      ? "border-[#B91C1C] bg-[#FEF2F2] text-[#B91C1C]"
+                      : "border-[#E0DCD6] bg-white text-foreground hover:bg-[#FAF7F2]"
+                  }`}
+                >
+                  {active ? "✓ " : ""}
+                  {r}
+                </button>
+              );
+            })}
           </div>
+
+          {/* 已選 chip 列在 textarea 上方,點即可移除 */}
+          {selectedChips.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-2 py-2">
+              <span className="self-center text-xs text-muted-foreground">
+                已選原因:
+              </span>
+              {selectedChips.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => toggleChip(r)}
+                  className="inline-flex items-center gap-1 rounded-full border border-[#B91C1C]/40 bg-white px-2 py-0.5 text-xs text-[#B91C1C] hover:bg-[#FEF2F2]"
+                  aria-label={`移除「${r}」`}
+                >
+                  {r}
+                  <span aria-hidden>×</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <textarea
             rows={3}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="或自由輸入退回原因…"
+            placeholder="自由輸入補充說明（與上方 chips 一起送出）…"
             className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
           <Button
             onClick={handleReject}
-            disabled={isPending || !comment.trim()}
+            disabled={isPending || !buildRejectComment()}
             className="mt-4 h-12 w-full bg-[#B91C1C] text-base text-white hover:bg-[#991B1B]"
           >
             {isPending ? "處理中…" : "退回"}

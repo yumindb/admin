@@ -164,6 +164,8 @@ export function NewLogForm({
   const [vendorNotices, setVendorNotices] = useState(initial?.vendorNotices ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [mergedReportIds, setMergedReportIds] = useState<string[]>([]);
+  // post-submission 編輯儲存前的確認 modal
+  const [showPostEditConfirm, setShowPostEditConfirm] = useState(false);
   // 已合併進來的回報快照(含照片) — 用來支援使用者刪掉照片後可以加回來
   const [mergedReportSnapshots, setMergedReportSnapshots] = useState<
     PendingFieldReport[]
@@ -1175,7 +1177,7 @@ export function NewLogForm({
           ) : (
             <Button
               type="button"
-              onClick={() => submit("post_edit")}
+              onClick={() => setShowPostEditConfirm(true)}
               disabled={isPending || uploading}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
@@ -1190,6 +1192,53 @@ export function NewLogForm({
         path={lightboxPath}
         onChange={setLightboxPath}
       />
+
+      {showPostEditConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowPostEditConfirm(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="post-edit-confirm-title"
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-[#E0DCD6] bg-card shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-[#E0DCD6] px-5 py-3">
+              <h2
+                id="post-edit-confirm-title"
+                className="text-base font-semibold text-primary"
+              >
+                確認儲存編輯
+              </h2>
+            </div>
+            <div className="px-5 py-4 text-sm leading-relaxed text-foreground">
+              日誌已被簽核流程走過。儲存的修改不會自動通知簽核者。是否仍要儲存？
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowPostEditConfirm(false)}
+                className="border-[#E0DCD6]"
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowPostEditConfirm(false);
+                  submit("post_edit");
+                }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                仍要儲存
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -78,9 +78,19 @@ export default async function ApprovalsPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-primary md:text-3xl">
-          {copy.title}
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
+            {copy.title}
+          </h1>
+          {list.length > 0 && (
+            <span
+              aria-label={`待簽 ${list.length} 份`}
+              className="inline-flex min-w-[2.5rem] items-center justify-center rounded-full bg-[#B91C1C] px-2.5 py-0.5 text-sm font-semibold tabular-nums text-white"
+            >
+              待簽 {list.length}
+            </span>
+          )}
+        </div>
         <p className="mt-1.5 text-base text-muted-foreground">{copy.subtitle}</p>
       </div>
 
@@ -92,10 +102,17 @@ export default async function ApprovalsPage() {
       </div>
 
       {!list.length ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
-          <div className="mb-3 text-5xl text-[#E0DCD6]">✓</div>
-          <p className="text-base text-foreground">沒有待處理的日誌</p>
-          <p className="mt-1.5 text-sm text-muted-foreground">{copy.emptyHint}</p>
+        <div className="space-y-4">
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
+            <div className="mb-3 text-5xl text-[#E0DCD6]">✓</div>
+            <p className="text-base text-foreground">沒有待處理的日誌</p>
+            <p className="mt-1.5 text-sm text-muted-foreground">{copy.emptyHint}</p>
+          </div>
+          {role === "owner" && (
+            <NextStepHint tone="success">
+              全部簽完，辛苦了。新日誌進來會在 LINE 通知（待開通）。
+            </NextStepHint>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

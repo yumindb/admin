@@ -292,25 +292,10 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
         </div>
       )}
 
-      {/* 瀏覽器 */}
-      <details
-        open={browserOpen || query.trim().length > 0}
-        onToggle={(e) => setBrowserOpen((e.target as HTMLDetailsElement).open)}
-        className="rounded-lg border border-[#E0DCD6] bg-card"
-      >
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-base font-medium text-primary [&::-webkit-details-marker]:hidden">
-          <span>
-            {selectedInOrder.length > 0 ? "+ 加更多工項" : "選擇工項"}
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              （從匯入的工項挑）
-            </span>
-          </span>
-          <span className="shrink-0 text-muted-foreground transition-transform duration-150 [details[open]_&]:rotate-180">
-            <ChevronDown className="size-5" />
-          </span>
-        </summary>
-
-        <div className="border-t border-[#E0DCD6] px-3 py-3">
+      {/* 瀏覽器 — 搜尋框常駐;「瀏覽全部」用 details 折疊。
+          已選 ≥1 後預設收起，但搜尋框永遠在頂部不需要先點才能找工項。 */}
+      <div className="rounded-lg border border-[#E0DCD6] bg-card">
+        <div className="px-3 py-3">
           <input
             type="search"
             value={query}
@@ -319,42 +304,61 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
             className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 md:h-12"
           />
         </div>
-        {/* 手機:資料夾抽屜式 — 一次只看一層,深度不擠 */}
-        <div className="md:hidden">
-          <MobileBrowseView
-            items={items}
-            byParent={byParent}
-            valueMap={valueMap}
-            onToggle={toggle}
-            query={query}
-            renderableIds={renderableIds}
-          />
-        </div>
 
-        {/* 桌機:樹狀展開 — 寬度足夠多層展開不會擠 */}
-        <div className="hidden divide-y divide-[#E0DCD6] md:block">
-          {visibleRoots.length === 0 ? (
-            <div className="px-4 py-8 text-center text-base text-muted-foreground">
-              找不到符合「{query}」的工項
-            </div>
-          ) : (
-            visibleRoots.map((r) => (
-              <BrowseRow
-                key={r.id}
-                node={r}
-                byParent={byParent}
-                collapsed={collapsed}
-                visibleIds={visibleIds}
-                renderableIds={renderableIds}
-                forceExpand={query.trim().length > 0}
-                onToggleExpand={toggleExpand}
-                valueMap={valueMap}
-                onToggle={toggle}
-              />
-            ))
-          )}
-        </div>
-      </details>
+        <details
+          open={browserOpen || query.trim().length > 0}
+          onToggle={(e) => setBrowserOpen((e.target as HTMLDetailsElement).open)}
+          className="border-t border-[#E0DCD6]"
+        >
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-base font-medium text-primary [&::-webkit-details-marker]:hidden">
+            <span>
+              瀏覽全部工項
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                （從匯入的工項挑）
+              </span>
+            </span>
+            <span className="shrink-0 text-muted-foreground transition-transform duration-150 [details[open]_&]:rotate-180">
+              <ChevronDown className="size-5" />
+            </span>
+          </summary>
+
+          {/* 手機:資料夾抽屜式 — 一次只看一層,深度不擠 */}
+          <div className="md:hidden">
+            <MobileBrowseView
+              items={items}
+              byParent={byParent}
+              valueMap={valueMap}
+              onToggle={toggle}
+              query={query}
+              renderableIds={renderableIds}
+            />
+          </div>
+
+          {/* 桌機:樹狀展開 — 寬度足夠多層展開不會擠 */}
+          <div className="hidden divide-y divide-[#E0DCD6] md:block">
+            {visibleRoots.length === 0 ? (
+              <div className="px-4 py-8 text-center text-base text-muted-foreground">
+                找不到符合「{query}」的工項
+              </div>
+            ) : (
+              visibleRoots.map((r) => (
+                <BrowseRow
+                  key={r.id}
+                  node={r}
+                  byParent={byParent}
+                  collapsed={collapsed}
+                  visibleIds={visibleIds}
+                  renderableIds={renderableIds}
+                  forceExpand={query.trim().length > 0}
+                  onToggleExpand={toggleExpand}
+                  valueMap={valueMap}
+                  onToggle={toggle}
+                />
+              ))
+            )}
+          </div>
+        </details>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NextStepHint } from "@/components/next-step-hint";
 import type { UserRole } from "@/lib/types";
 import {
   createStaffAction,
@@ -136,6 +137,12 @@ export function StaffManager({
         >
           <Plus className="size-4" /> 新增帳號
         </Button>
+      </div>
+
+      <div className="mb-4">
+        <NextStepHint tone="muted">
+          停用後該員無法登入，歷史簽核記錄保留。改密碼後請當面／LINE 告知本人。
+        </NextStepHint>
       </div>
 
       {/* 權限階層（可收合） */}
@@ -418,19 +425,12 @@ function StaffTableRow({
   const Icon = role?.icon ?? UserCog;
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirmingToggle, setConfirmingToggle] = useState(false);
 
-  function onToggleActive() {
+  function performToggle() {
     const next = !staff.is_active;
-    if (
-      !confirm(
-        next
-          ? `要重新啟用「${staff.full_name}」的帳號嗎？啟用後可以重新登入。`
-          : `要停用「${staff.full_name}」的帳號嗎？停用後將無法登入，但歷史簽核記錄會保留。`,
-      )
-    ) {
-      return;
-    }
     setError(null);
+    setConfirmingToggle(false);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("user_id", staff.id);
@@ -510,7 +510,7 @@ function StaffTableRow({
             {!isSelf && (
               <button
                 type="button"
-                onClick={onToggleActive}
+                onClick={() => setConfirmingToggle(true)}
                 disabled={isPending}
                 title={staff.is_active ? "停用" : "啟用"}
                 className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50 ${
@@ -524,6 +524,20 @@ function StaffTableRow({
               </button>
             )}
           </div>
+          {confirmingToggle && (
+            <ConfirmDialog
+              title={staff.is_active ? "停用帳號" : "啟用帳號"}
+              message={
+                staff.is_active
+                  ? `要停用「${staff.full_name}」的帳號嗎？停用後將無法登入，但歷史簽核記錄會保留。`
+                  : `要重新啟用「${staff.full_name}」的帳號嗎？啟用後可以重新登入。`
+              }
+              confirmText={staff.is_active ? "停用" : "啟用"}
+              danger={staff.is_active}
+              onConfirm={performToggle}
+              onCancel={() => setConfirmingToggle(false)}
+            />
+          )}
         </td>
       )}
     </tr>
@@ -608,19 +622,12 @@ function StaffCard({
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirmingToggle, setConfirmingToggle] = useState(false);
 
-  function onToggleActive() {
+  function performToggle() {
     const next = !staff.is_active;
-    if (
-      !confirm(
-        next
-          ? `要重新啟用「${staff.full_name}」的帳號嗎？啟用後可以重新登入。`
-          : `要停用「${staff.full_name}」的帳號嗎？停用後將無法登入，但歷史簽核記錄會保留。`,
-      )
-    ) {
-      return;
-    }
     setError(null);
+    setConfirmingToggle(false);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("user_id", staff.id);
@@ -703,7 +710,7 @@ function StaffCard({
           {!isSelf && (
             <button
               type="button"
-              onClick={onToggleActive}
+              onClick={() => setConfirmingToggle(true)}
               disabled={isPending}
               className={`ml-auto inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
                 staff.is_active
@@ -717,6 +724,82 @@ function StaffCard({
           )}
         </div>
       )}
+      {confirmingToggle && (
+        <ConfirmDialog
+          title={staff.is_active ? "停用帳號" : "啟用帳號"}
+          message={
+            staff.is_active
+              ? `要停用「${staff.full_name}」的帳號嗎？停用後將無法登入，但歷史簽核記錄會保留。`
+              : `要重新啟用「${staff.full_name}」的帳號嗎？啟用後可以重新登入。`
+          }
+          confirmText={staff.is_active ? "停用" : "啟用"}
+          danger={staff.is_active}
+          onConfirm={performToggle}
+          onCancel={() => setConfirmingToggle(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Confirm dialog（取代 window.confirm）                                */
+/* ------------------------------------------------------------------ */
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmText,
+  danger = false,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  message: string;
+  confirmText: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-md rounded-lg border border-[#E0DCD6] bg-card shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-[#E0DCD6] px-5 py-3">
+          <h2 className="text-base font-semibold text-primary">{title}</h2>
+        </div>
+        <div className="px-5 py-4 text-sm leading-relaxed text-foreground">
+          {message}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            className="border-[#E0DCD6]"
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            onClick={onConfirm}
+            className={
+              danger
+                ? "bg-[#B91C1C] text-white hover:bg-[#991B1B]"
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
+            }
+          >
+            {confirmText}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -975,19 +1058,35 @@ function ResetModal({
 }) {
   const [state, setState] = useState<StaffActionResult | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
+  // 重設成功後在密碼欄旁邊 inline 顯示新密碼 + 複製按鈕(取代 alert())
+  const [savedPassword, setSavedPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     fd.set("user_id", staff.id);
+    const pw = String(fd.get("password") ?? "");
     startTransition(async () => {
       const res = await resetPasswordAction(undefined, fd);
       setState(res);
       if (res.ok) {
-        alert(`已重設「${staff.full_name}」的密碼，請告知本人。`);
-        onClose();
+        setSavedPassword(pw);
+        setCopied(false);
       }
     });
+  }
+
+  async function copyPassword() {
+    if (!savedPassword) return;
+    try {
+      await navigator.clipboard.writeText(savedPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // 老瀏覽器:做選取 fallback,不報錯
+      setCopied(false);
+    }
   }
 
   return (
@@ -1004,8 +1103,28 @@ function ResetModal({
             type="text"
             required
             minLength={6}
+            disabled={!!savedPassword}
           />
           <FieldError msg={state?.fieldErrors?.password?.[0]} />
+          {savedPassword && (
+            <div className="mt-2 rounded-md border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-2.5 text-sm text-[#4A7C59]">
+              <div className="mb-1 font-medium">
+                已重設「{staff.full_name}」的密碼，請當面或透過 LINE 告知本人。
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <code className="break-all rounded border border-[#A7F3D0] bg-white px-2 py-1 font-mono text-sm text-foreground">
+                  {savedPassword}
+                </code>
+                <button
+                  type="button"
+                  onClick={copyPassword}
+                  className="inline-flex shrink-0 items-center rounded-md border border-[#E0DCD6] bg-white px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent"
+                >
+                  {copied ? "已複製" : "複製"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         {state?.error && (
           <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
@@ -1014,11 +1133,13 @@ function ResetModal({
         )}
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
-            取消
+            {savedPassword ? "關閉" : "取消"}
           </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "更新中…" : "重設密碼"}
-          </Button>
+          {!savedPassword && (
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "更新中…" : "重設密碼"}
+            </Button>
+          )}
         </div>
       </form>
     </ModalShell>

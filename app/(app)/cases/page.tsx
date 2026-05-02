@@ -365,12 +365,17 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
   return (
     <div className="group rounded-lg border border-[#E0DCD6] bg-card p-5 transition-colors hover:border-accent">
       <Link href={`/cases/${c.id}`} className="block">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            {c.code ?? "未編號"}
-          </span>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 rounded-md border border-[#E0DCD6] bg-[#F5F1EC] px-2 py-0.5 text-xs font-medium text-primary">
+              {c.company || "—"}
+            </span>
+            <span className="truncate text-sm text-muted-foreground">
+              {c.code ?? "未編號"}
+            </span>
+          </div>
           <span
-            className={`rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
+            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
           >
             {s.label}
           </span>
@@ -481,7 +486,7 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-[#F0EBE4] pt-3 text-xs text-muted-foreground">
-        <span className="truncate">{c.client || c.company}</span>
+        <span className="truncate">{c.client || "—"}</span>
         <span>
           {c.started_at
             ? `開工 ${formatDateTW(c.started_at)}`

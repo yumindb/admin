@@ -178,6 +178,13 @@ export default async function FieldReportDetailPage({
           </NextStepHint>
         </div>
       )}
+      {r.status === "archived" && (
+        <div className="mb-6">
+          <NextStepHint tone="muted">
+            此回報已封存，不再進日誌整合流程。
+          </NextStepHint>
+        </div>
+      )}
 
       <Section title="文字紀錄">
         {r.note ? (

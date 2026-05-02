@@ -6,6 +6,7 @@ import { CasePicker, type CasePickerOption } from "@/components/case-picker";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions";
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
+import { NextStepHint } from "@/components/next-step-hint";
 import type { FieldReportPhoto } from "@/lib/types";
 
 export type CaseOption = CasePickerOption;
@@ -205,6 +206,12 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         <p className="rounded-lg border-2 border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-base text-[#B91C1C]">
           {error}
         </p>
+      )}
+
+      {!reportId && (
+        <NextStepHint tone="info">
+          送出後工地主任填日誌時會看到，可勾選併入。pending 時還能編輯／刪除。
+        </NextStepHint>
       )}
 
       {/* 4. 送出 — sticky 緊貼底部 tab bar 上緣 */}

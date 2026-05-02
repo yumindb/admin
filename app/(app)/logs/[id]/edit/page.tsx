@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption, type PendingFieldReport } from "../../new/new-log-form";
+import { NextStepHint } from "@/components/next-step-hint";
 import type { PickerItem } from "@/components/work-items-picker";
-import type { DailyLog, DailyLogWorkItem, FieldReport } from "@/lib/types";
+import type { DailyLog, DailyLogWorkItem, FieldReport, LogApproval } from "@/lib/types";
 import {
   parseWeather,
   computeManpowerByCase,
@@ -11,7 +12,7 @@ import {
   computeMachineTotalsByCase,
   normalizeLogPhotos,
 } from "@/lib/daily-log";
-import { formatDateTW } from "@/lib/datetime";
+import { formatTW, formatDateTW } from "@/lib/datetime";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 import { getSignedUrls } from "@/lib/supabase/storage";
 
@@ -161,6 +162,36 @@ export default async function EditLogPage({
     id,
   );
 
+  // 若 log 為 rejected，撈最新一筆退回的 approval (含 approver 名稱) 用於頂部 banner
+  type RejectionRow = LogApproval & {
+    approver: { full_name: string | null } | { full_name: string | null }[] | null;
+  };
+  let latestRejection: {
+    comment: string;
+    at: string;
+    approverName: string;
+  } | null = null;
+  if (l.status === "rejected") {
+    const { data: rejRows } = await supabase
+      .from("log_approvals")
+      .select(
+        "id, log_id, stage, approver_id, decision, comment, signature_url, created_at, approver:profiles!approver_id(full_name)"
+      )
+      .eq("log_id", id)
+      .eq("decision", "rejected")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const r = (rejRows ?? [])[0] as RejectionRow | undefined;
+    if (r) {
+      const approver = Array.isArray(r.approver) ? r.approver[0] : r.approver;
+      latestRejection = {
+        comment: r.comment ?? "(沒有填寫原因)",
+        at: r.created_at,
+        approverName: approver?.full_name ?? "審核人",
+      };
+    }
+  }
+
   // 撈該案件的 pending 現場回報
   const { data: reportRows } = await supabase
     .from("field_reports")
@@ -229,6 +260,18 @@ export default async function EditLogPage({
         <span>編輯</span>
       </nav>
       <h1 className="mb-2 text-2xl font-semibold text-primary md:text-3xl">編輯日誌</h1>
+      {latestRejection && (
+        <div className="mb-5 mt-3">
+          <NextStepHint tone="warning" title="退回原因">
+            <p className="whitespace-pre-line text-sm leading-relaxed">
+              {latestRejection.comment}
+            </p>
+            <p className="mt-2 text-xs opacity-80">
+              {latestRejection.approverName} ・ {formatTW(latestRejection.at)} 退回
+            </p>
+          </NextStepHint>
+        </div>
+      )}
       {editMode === "post-submission" && (
         <p className="mb-7 text-sm text-muted-foreground">
           此日誌已送出({l.status === "rejected" ? "已退回" : "簽核中"}),這次的編輯會記錄誰在何時改了哪些欄位,但不會重啟簽核流程也不需要重新簽名。已核定的日誌不開放編輯。

@@ -172,6 +172,12 @@ export default async function CaseDetailPage({
           <div className="text-sm text-muted-foreground">{c.code ?? "未編號"}</div>
           <h1 className="mt-1.5 text-2xl font-semibold text-primary md:text-3xl">{c.name}</h1>
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 text-base text-muted-foreground">
+            <span>
+              公司：
+              <span className="ml-0.5 font-medium text-foreground">
+                {c.company || "—"}
+              </span>
+            </span>
             <span>地點：{c.location || "—"}</span>
             <span>業主：{c.client || "—"}</span>
             <span>
