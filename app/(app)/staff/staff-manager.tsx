@@ -102,17 +102,43 @@ export function StaffManager({
   const [modal, setModal] = useState<ModalMode>(null);
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const totalStaff = Object.values(staffByRole).reduce(
+  const [companyFilter, setCompanyFilter] = useState<string>("all");
+
+  // 動態撈 distinct company(避免 hardcode);保留出現順序
+  const allStaffRaw = ROLES.flatMap((r) => staffByRole[r.key] ?? []);
+  const companies = (() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const s of allStaffRaw) {
+      const v = (s.company ?? "").trim();
+      if (!v) continue;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+    }
+    return out;
+  })();
+
+  // 套 company filter:重組 staffByRole 與 allStaff
+  const matchCompany = (s: StaffRow) =>
+    companyFilter === "all" ? true : (s.company ?? "") === companyFilter;
+  const filteredStaffByRole = Object.fromEntries(
+    (Object.entries(staffByRole) as [UserRole, StaffRow[]][]).map(
+      ([k, list]) => [k, (list ?? []).filter(matchCompany)],
+    ),
+  ) as Record<UserRole, StaffRow[]>;
+
+  const totalStaff = Object.values(filteredStaffByRole).reduce(
     (sum, list) => sum + (list?.length ?? 0),
     0,
   );
-  const activeStaff = Object.values(staffByRole).reduce(
+  const activeStaff = Object.values(filteredStaffByRole).reduce(
     (sum, list) => sum + (list?.filter((s) => s.is_active).length ?? 0),
     0,
   );
 
   // 攤平所有人員，依角色階層排序，給表格模式用
-  const allStaff = ROLES.flatMap((r) => staffByRole[r.key] ?? []);
+  const allStaff = ROLES.flatMap((r) => filteredStaffByRole[r.key] ?? []);
 
   const canManage =
     currentUserRole === "owner" || currentUserRole === "office_staff";
@@ -144,6 +170,35 @@ export function StaffManager({
           停用後該員無法登入，歷史簽核記錄保留。改密碼後請當面／LINE 告知本人。
         </NextStepHint>
       </div>
+
+      {/* 公司 tab(動態;空時隱藏) */}
+      {companies.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[#E0DCD6] bg-card px-4 py-3">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground">
+            公司
+          </span>
+          <CompanyTab
+            label="全部"
+            count={allStaffRaw.length}
+            active={companyFilter === "all"}
+            onClick={() => setCompanyFilter("all")}
+          />
+          {companies.map((co) => {
+            const count = allStaffRaw.filter(
+              (s) => (s.company ?? "") === co,
+            ).length;
+            return (
+              <CompanyTab
+                key={co}
+                label={co}
+                count={count}
+                active={companyFilter === co}
+                onClick={() => setCompanyFilter(co)}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {/* 權限階層（可收合） */}
       <HierarchyOverview
@@ -186,7 +241,7 @@ export function StaffManager({
               <RoleSection
                 key={role.key}
                 role={role}
-                staff={staffByRole[role.key] ?? []}
+                staff={filteredStaffByRole[role.key] ?? []}
                 currentUserId={currentUserId}
                 currentUserRole={currentUserRole}
                 onEdit={(s) => setModal({ kind: "edit", staff: s })}
@@ -208,6 +263,39 @@ export function StaffManager({
         <ResetModal staff={modal.staff} onClose={() => setModal(null)} />
       )}
     </div>
+  );
+}
+
+function CompanyTab({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors ${
+        active
+          ? "border-accent bg-[#F5F1EC] text-primary"
+          : "border-[#E0DCD6] bg-white text-foreground hover:border-accent"
+      }`}
+    >
+      <span>{label}</span>
+      <span
+        className={`tabular-nums ${
+          active ? "text-primary/80" : "text-muted-foreground"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 

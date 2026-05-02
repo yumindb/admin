@@ -4,10 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import {
-  WorkItemsTree,
   type TreeItem,
   type ProgressMap,
 } from "@/components/work-items-tree";
+import { WorkItemsTreeSection } from "@/components/work-items-tree-section";
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
 import { NextStepHint } from "@/components/next-step-hint";
@@ -291,7 +291,7 @@ export default async function CaseDetailPage({
           </Button>
         </div>
       ) : (
-        <WorkItemsTree items={treeItems} progress={progress} />
+        <WorkItemsTreeSection items={treeItems} progress={progress} />
       )}
 
       {/* 跨日誌彙整:照片 */}

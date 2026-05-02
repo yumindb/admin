@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,12 +37,28 @@ export type TreeItem = {
  */
 export type ProgressMap = Map<string, number>;
 
+/**
+ * 篩選模式 — case detail 頁工項樹的多選 filter pills 用。
+ *   - all:全部顯示(預設)
+ *   - completed:有任何累計完成量(progress > 0)
+ *   - over100:累計完成超過 100%(超量,需要警示)
+ * 「未勾」(unselected)是日誌新建表單情境(picker),這裡不支援。
+ */
+export type TreeFilterMode = "all" | "completed" | "over100";
+
 type Props = {
   items: TreeItem[];                // 扁平陣列，但有 parentId
   defaultExpandSpecs?: boolean;     // 預設展開 spec 子項
   onToggleSkipped?: (id: string, next: boolean) => void;
   showSkippedToggle?: boolean;
   progress?: ProgressMap;
+  /** 文字搜尋(包含 tender_code / name / unit;不分大小寫) */
+  query?: string;
+  /** 篩選模式集合;空 set 或包含 "all" 等同不篩 */
+  filterModes?: Set<TreeFilterMode>;
+  /** 強制展開/收合所有節點 — 由父層按鈕控制(undefined 維持現狀) */
+  expandAllSignal?: number;
+  collapseAllSignal?: number;
 };
 
 export function WorkItemsTree({
@@ -51,17 +67,76 @@ export function WorkItemsTree({
   onToggleSkipped,
   showSkippedToggle = false,
   progress,
+  query,
+  filterModes,
+  expandAllSignal,
+  collapseAllSignal,
 }: Props) {
   // 重建樹
-  const { roots, byParent } = useMemo(() => {
+  const { roots, byParent, byId } = useMemo(() => {
     const byParent = new Map<string | null, TreeItem[]>();
+    const byId = new Map<string, TreeItem>();
     for (const it of items) {
       const arr = byParent.get(it.parentId) ?? [];
       arr.push(it);
       byParent.set(it.parentId, arr);
+      byId.set(it.id, it);
     }
-    return { roots: byParent.get(null) ?? [], byParent };
+    return { roots: byParent.get(null) ?? [], byParent, byId };
   }, [items]);
+
+  // visibleIds:套用 query + filterModes 後仍要顯示的 node id 集合(包含 ancestor 鏈)
+  // 沒有 filter 時為 null,代表全部顯示
+  const visibleIds = useMemo<Set<string> | null>(() => {
+    const q = (query ?? "").trim().toLowerCase();
+    const modes = filterModes && filterModes.size > 0 ? filterModes : null;
+    const hasQuery = q.length > 0;
+    const hasModes = !!modes && !modes.has("all");
+    if (!hasQuery && !hasModes) return null;
+
+    const visible = new Set<string>();
+
+    function addAncestors(id: string) {
+      let cur = byId.get(id);
+      while (cur?.parentId) {
+        visible.add(cur.parentId);
+        cur = byId.get(cur.parentId);
+      }
+    }
+    function addDescendants(id: string) {
+      const kids = byParent.get(id) ?? [];
+      for (const k of kids) {
+        visible.add(k.id);
+        addDescendants(k.id);
+      }
+    }
+
+    for (const item of items) {
+      // section 不單獨匹配,只透過 ancestor 鏈帶入(避免整節展開造成沒意義的 hit)
+      if (item.itemType === "section") continue;
+
+      if (hasQuery) {
+        const haystack = `${item.tenderCode ?? ""} ${item.name} ${item.unit ?? ""}`.toLowerCase();
+        if (!haystack.includes(q)) continue;
+      }
+      if (hasModes && modes) {
+        const done = progress?.get(item.id) ?? 0;
+        const total = item.quantity ?? 0;
+        const pct = total > 0 ? done / total : done > 0 ? 1 : 0;
+        const checks: boolean[] = [];
+        if (modes.has("completed")) checks.push(done > 0);
+        if (modes.has("over100")) checks.push(pct > 1);
+        if (checks.length > 0 && !checks.some(Boolean)) continue;
+      }
+
+      visible.add(item.id);
+      addAncestors(item.id);
+      // descendants 不自動加(避免「進度」filter 帶出根本沒進度的子節點),
+      // 但 spec 子節點通常是工項說明的延伸 → 也跟著顯示比較合理
+      if (item.itemType !== "spec") addDescendants(item.id);
+    }
+    return visible;
+  }, [byId, byParent, items, query, filterModes, progress]);
 
   // 預設展開狀態：section / item 展開；spec 看 prop
   const initialExpanded = useMemo(() => {
@@ -82,6 +157,27 @@ export function WorkItemsTree({
       return n;
     });
 
+  // 父層觸發「展開全部」/「收合全部」— 透過 signal 計數變化辨識
+  useEffect(() => {
+    if (expandAllSignal === undefined) return;
+    setExpanded(new Set(items.map((x) => x.id)));
+  }, [expandAllSignal, items]);
+  useEffect(() => {
+    if (collapseAllSignal === undefined) return;
+    // 收合到只剩 root section 仍可見;乾脆 set 為空,使用者要看時自己點
+    setExpanded(new Set());
+  }, [collapseAllSignal]);
+
+  // 篩選有結果時自動展開命中節點的 ancestors,讓使用者直接看到符合的列
+  useEffect(() => {
+    if (!visibleIds) return;
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      for (const id of visibleIds) n.add(id);
+      return n;
+    });
+  }, [visibleIds]);
+
   if (!items.length) {
     return (
       <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center text-base text-muted-foreground">
@@ -91,6 +187,17 @@ export function WorkItemsTree({
   }
 
   const showProgress = !!progress;
+  const visibleRoots = visibleIds
+    ? roots.filter((r) => visibleIds.has(r.id))
+    : roots;
+
+  if (visibleIds && visibleRoots.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-12 text-center text-sm text-muted-foreground">
+        沒有符合的工項
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
@@ -112,7 +219,7 @@ export function WorkItemsTree({
           </tr>
         </thead>
         <tbody>
-          {roots.map((r) => (
+          {visibleRoots.map((r) => (
             <Row
               key={r.id}
               node={r}
@@ -122,6 +229,7 @@ export function WorkItemsTree({
               onToggleSkipped={onToggleSkipped}
               showSkippedToggle={showSkippedToggle}
               progress={progress}
+              visibleIds={visibleIds}
             />
           ))}
         </tbody>
@@ -146,6 +254,7 @@ function Row({
   onToggleSkipped,
   showSkippedToggle,
   progress,
+  visibleIds,
 }: {
   node: TreeItem;
   byParent: Map<string | null, TreeItem[]>;
@@ -154,8 +263,12 @@ function Row({
   onToggleSkipped?: (id: string, next: boolean) => void;
   showSkippedToggle: boolean;
   progress?: ProgressMap;
+  visibleIds: Set<string> | null;
 }) {
-  const children = byParent.get(node.id) ?? [];
+  const allChildren = byParent.get(node.id) ?? [];
+  const children = visibleIds
+    ? allChildren.filter((c) => visibleIds.has(c.id))
+    : allChildren;
   const hasChildren = children.length > 0;
   const isOpen = expanded.has(node.id);
 
@@ -260,6 +373,7 @@ function Row({
               onToggleSkipped={onToggleSkipped}
               showSkippedToggle={showSkippedToggle}
               progress={progress}
+              visibleIds={visibleIds}
             />
           ))
         : null}
