@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/require-role";
+import { wrapDbError } from "@/lib/db/wrap-error";
 import type { CaseFormState } from "@/components/case-form";
 
 const EditCaseSchema = z.object({
@@ -21,6 +23,8 @@ export async function updateCaseAction(
   _prev: CaseFormState,
   formData: FormData
 ): Promise<CaseFormState> {
+  await requireRole(["office_staff", "owner"]);
+
   const parsed = EditCaseSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return {
@@ -43,25 +47,35 @@ export async function updateCaseAction(
     })
     .eq("id", caseId);
 
-  if (error) return { error: "儲存失敗:" + error.message };
+  if (error) {
+    throw wrapDbError(error, "儲存失敗");
+  }
 
   revalidatePath("/cases");
   revalidatePath(`/cases/${caseId}`);
   redirect(`/cases/${caseId}`);
 }
 
+const DeleteCaseSchema = z.object({
+  caseId: z.string().uuid(),
+});
+
 export async function deleteCaseAction(formData: FormData) {
-  const caseId = String(formData.get("caseId") ?? "");
-  if (!caseId) return;
+  await requireRole(["office_staff", "owner"]);
+
+  const parsed = DeleteCaseSchema.safeParse({
+    caseId: String(formData.get("caseId") ?? ""),
+  });
+  if (!parsed.success) return;
+  const { caseId } = parsed.data;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   // case_work_items / tender_imports 透過 ON DELETE CASCADE 自動清掉
-  await supabase.from("cases").delete().eq("id", caseId);
+  const { error } = await supabase.from("cases").delete().eq("id", caseId);
+  if (error) {
+    throw wrapDbError(error, "刪除失敗");
+  }
 
   revalidatePath("/cases");
   redirect("/cases");

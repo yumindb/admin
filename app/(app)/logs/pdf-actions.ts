@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import JSZip from "jszip";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/require-role";
 import { generatePdfForLog } from "@/lib/pdf/generate";
+
+const PDF_VIEWERS = ["site_supervisor", "office_staff", "owner"] as const;
 
 /**
  * 取得該日誌 PDF 的 signed URL(60 秒有效,給瀏覽器下載用)。
@@ -12,11 +15,8 @@ import { generatePdfForLog } from "@/lib/pdf/generate";
 export async function getPdfDownloadUrlAction(
   logId: string
 ): Promise<{ ok: true; url: string; fileName: string } | { ok: false; error: string }> {
+  await requireRole([...PDF_VIEWERS]);
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "未登入" };
 
   const { data: log } = await supabase
     .from("daily_logs")
@@ -54,11 +54,8 @@ export async function getPdfDownloadUrlAction(
 export async function regeneratePdfAction(
   logId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireRole([...PDF_VIEWERS]);
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "未登入" };
 
   const { data: log } = await supabase
     .from("daily_logs")
@@ -86,14 +83,12 @@ export async function bulkDownloadPdfsAction(logIds: string[]): Promise<
   | { ok: true; zipBase64: string; fileName: string; included: number; skipped: number }
   | { ok: false; error: string }
 > {
+  await requireRole([...PDF_VIEWERS]);
+
   if (logIds.length === 0) return { ok: false, error: "未選任何日誌" };
   if (logIds.length > 100) return { ok: false, error: "一次最多 100 份" };
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "未登入" };
 
   const { data: logs } = await supabase
     .from("daily_logs")

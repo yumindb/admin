@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { ExtraItemsTable } from "@/components/extra-items-table";
@@ -81,6 +82,14 @@ export default async function LogDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  // 角色守則:field_assistant 一律不能看 log 詳細頁;
+  //   site_supervisor 只能看自己 supervisor_id 的 log;
+  //   office_staff / owner 都能看。
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  if (actor.role === "field_assistant") redirect("/");
+
   const supabase = await createClient();
 
   const { data: log } = await supabase
@@ -100,16 +109,14 @@ export default async function LogDetailPage({
     } | null;
   };
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user!.id)
-    .maybeSingle();
-  const isOwnerOfLog = l.supervisor_id === user!.id;
-  const role = profile?.role ?? null;
+  if (actor.role === "site_supervisor" && l.supervisor_id !== actor.id) {
+    redirect("/");
+  }
+
+  const user = { id: actor.id };
+  const profile = { role: actor.role };
+  const isOwnerOfLog = l.supervisor_id === actor.id;
+  const role = actor.role;
 
   // 編輯權限:
   //   - draft → 只 supervisor 本人(原規則,走主流程編輯)

@@ -2,8 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/require-role";
 import type { ParsedNode } from "@/lib/tender-parser";
+
+const UuidSchema = z.string().uuid();
 
 /**
  * 確認匯入：把 client 傳上來的扁平化節點寫進 case_work_items + tender_imports。
@@ -43,11 +47,14 @@ type ConfirmPayload = {
 };
 
 export async function confirmImportAction(payload: ConfirmPayload) {
+  const me = await requireRole(["office_staff", "owner"]);
+
+  const parsedCaseId = UuidSchema.safeParse(payload.caseId);
+  if (!parsedCaseId.success) {
+    return { ok: false, error: "案件編號格式錯誤" };
+  }
+
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "未登入" };
 
   // 1) 寫 tender_imports
   const { data: imp, error: impErr } = await supabase
@@ -58,7 +65,7 @@ export async function confirmImportAction(payload: ConfirmPayload) {
       status: "imported",
       parse_stats: payload.stats,
       warnings: payload.warnings,
-      imported_by: user.id,
+      imported_by: me.id,
     })
     .select("id")
     .single();
@@ -176,15 +183,17 @@ export async function redirectAfterImport(caseId: string) {
  * 已被使用者修改過的項目保留（避免誤刪手動調整）。tender_imports 那筆 row 也刪掉。
  */
 export async function undoImportAction(formData: FormData) {
-  const caseId = String(formData.get("caseId") ?? "");
-  const importId = String(formData.get("importId") ?? "");
-  if (!caseId || !importId) return;
+  await requireRole(["office_staff", "owner"]);
+
+  const caseIdRaw = String(formData.get("caseId") ?? "");
+  const importIdRaw = String(formData.get("importId") ?? "");
+  const caseIdParse = UuidSchema.safeParse(caseIdRaw);
+  const importIdParse = UuidSchema.safeParse(importIdRaw);
+  if (!caseIdParse.success || !importIdParse.success) return;
+  const caseId = caseIdParse.data;
+  const importId = importIdParse.data;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   await supabase
     .from("case_work_items")

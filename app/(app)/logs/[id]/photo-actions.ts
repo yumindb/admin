@@ -1,6 +1,8 @@
 "use server";
 
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/require-role";
 
 const BUCKET = "daily-photos";
 
@@ -9,6 +11,13 @@ const BUCKET = "daily-photos";
  * POC:bucket 設為 public,方便直接顯示。正式版改 private + signed URL。
  */
 export async function uploadPhotoAction(formData: FormData) {
+  await requireRole([
+    "site_supervisor",
+    "office_staff",
+    "owner",
+    "field_assistant",
+  ]);
+
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false as const, error: "未提供檔案" };
   if (!file.type.startsWith("image/")) {
@@ -79,11 +88,30 @@ export async function deletePhotoAction(publicUrl: string) {
 
 const SIG_BUCKET = "signatures";
 
+const SignatureDataUrlSchema = z
+  .string()
+  .regex(
+    /^data:image\/(png|jpeg);base64,/,
+    "簽名格式錯誤"
+  );
+
 /** 老闆簽名圖上傳(dataURL → png) */
 export async function uploadSignatureAction(formData: FormData) {
+  await requireRole(["site_supervisor", "office_staff", "owner"]);
+
   const dataUrl = String(formData.get("dataUrl") ?? "");
-  if (!dataUrl.startsWith("data:image/")) {
+  const parsed = SignatureDataUrlSchema.safeParse(dataUrl);
+  if (!parsed.success) {
     return { ok: false as const, error: "簽名格式錯誤" };
+  }
+
+  const m = dataUrl.match(/^data:(image\/(?:png|jpeg));base64,(.+)$/);
+  if (!m) return { ok: false as const, error: "解析失敗" };
+  const contentType = m[1];
+
+  // base64 length cap — 避免有人塞 5MB 的 dataURL 進來爆 storage / DB row
+  if (m[2].length > 200_000) {
+    return { ok: false as const, error: "簽名圖過大" };
   }
 
   const supabase = await createClient();
@@ -92,9 +120,6 @@ export async function uploadSignatureAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, error: "未登入" };
 
-  const m = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
-  if (!m) return { ok: false as const, error: "解析失敗" };
-  const contentType = m[1];
   const buf = Buffer.from(m[2], "base64");
 
   const path = `${user.id}/${Date.now()}.png`;
