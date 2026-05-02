@@ -8,16 +8,18 @@ import {
   computeManpowerByCase,
   computeSubcontractorTotalsByCase,
   computeMachineTotalsByCase,
+  parseWeather,
 } from "@/lib/daily-log";
-import type { DailyLogWorkItem, FieldReport } from "@/lib/types";
+import { formatDateTW } from "@/lib/datetime";
+import type { DailyLog, DailyLogWorkItem, FieldReport } from "@/lib/types";
 import { getSignedUrls } from "@/lib/supabase/storage";
 
 export default async function NewLogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ case?: string }>;
+  searchParams: Promise<{ case?: string; from?: string }>;
 }) {
-  const { case: presetCaseId } = await searchParams;
+  const { case: presetCaseId, from: fromLogId } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -182,6 +184,48 @@ export default async function NewLogPage({
     }
   }
 
+  // 「複製日誌」:當帶 ?from=<id> 時撈來源 log,預填工項 / 外包 / 機具 / 天氣 / 案件,
+  // 但不複製照片 / 備註 / 簽名;日期帶今天。RLS 自動擋越權讀取(讀不到就視為沒這份)。
+  let prefilledFrom: { sourceLogDate: string } | null = null;
+  let cloneInitial:
+    | NonNullable<Parameters<typeof NewLogForm>[0]["initial"]>
+    | undefined = undefined;
+  if (fromLogId) {
+    const { data: src } = await supabase
+      .from("daily_logs")
+      .select("*")
+      .eq("id", fromLogId)
+      .maybeSingle();
+    if (src) {
+      const s = src as DailyLog;
+      prefilledFrom = { sourceLogDate: s.log_date };
+      const today = new Date().toISOString().slice(0, 10);
+      cloneInitial = {
+        caseId: s.case_id,
+        logDate: today,
+        weather: parseWeather(s.weather),
+        manpowerTodayTotal: 0,
+        // 工別 / 機具:保留 trade / name,但「本日」清空(累計由 priorXxxByCase 自動算)
+        subcontractors: (s.manpower?.subcontractors ?? []).map((x) => ({
+          trade: x.trade,
+        })),
+        machines: (s.manpower?.machines ?? []).map((x) => ({ name: x.name })),
+        // 工項:整份 picked(含 qty / qty_mode)複製過來,user 自己 stepper 改
+        workItems: (s.work_items ?? []).map((w: DailyLogWorkItem) => ({
+          work_item_id: w.work_item_id,
+          qty: w.qty,
+          qty_mode: w.qty_mode ?? "absolute",
+          note: w.note ?? "",
+        })),
+        extraItems: [],
+        unsignedItems: [],
+        photos: [],
+        vendorNotices: "",
+        notes: "",
+      };
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -189,9 +233,20 @@ export default async function NewLogPage({
           日誌
         </Link>
         <span className="mx-1.5">／</span>
-        <span>新日誌</span>
+        <span>{prefilledFrom ? "複製日誌" : "新日誌"}</span>
       </nav>
-      <h1 className="mb-7 text-2xl font-semibold text-primary md:text-3xl">新日誌</h1>
+      <h1 className="mb-3 text-2xl font-semibold text-primary md:text-3xl">
+        {prefilledFrom ? "複製日誌" : "新日誌"}
+      </h1>
+
+      {prefilledFrom && (
+        <div className="mb-7 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-sm text-[#92400E] md:px-4 md:py-3">
+          從 {formatDateTW(prefilledFrom.sourceLogDate)} 的日誌複製。
+          請檢查工項數量與外包人員後再送出。
+          照片、備註、簽名不會帶過來,日期已帶今天。
+        </div>
+      )}
+      {!prefilledFrom && <div className="mb-7" />}
 
       <NewLogForm
         cases={caseOptions}
@@ -203,6 +258,8 @@ export default async function NewLogPage({
         priorSubcontractorByCase={priorSubcontractorByCase}
         priorMachineByCase={priorMachineByCase}
         pendingReportsByCase={pendingReportsByCase}
+        initial={cloneInitial}
+        skipDraftRestore={!!prefilledFrom}
       />
     </div>
   );

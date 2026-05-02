@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { formatWeatherSummary } from "@/lib/daily-log";
-import { formatDateTW } from "@/lib/datetime";
 import { NextStepHint } from "@/components/next-step-hint";
+import { BatchApprovalsList } from "./batch-actions";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 
 type LogRow = DailyLog & {
@@ -115,35 +113,7 @@ export default async function ApprovalsPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {list.map((l) => (
-            <Link
-              key={l.id}
-              href={`/approvals/${l.id}`}
-              className="block rounded-lg border border-[#E0DCD6] bg-card p-5 transition-colors hover:border-accent md:p-6"
-            >
-              <div className="mb-1 flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-sm text-muted-foreground">
-                    {l.cases?.code ?? "未編號"}
-                  </div>
-                  <h3 className="text-lg font-semibold text-primary md:text-xl">
-                    {l.cases?.name ?? "(已刪除案件)"}
-                  </h3>
-                </div>
-                <div className="text-right text-sm text-muted-foreground">
-                  <div>{formatDateTW(l.log_date)}</div>
-                  <div>{l.profiles?.full_name ?? "未知主任"}</div>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
-                <span>{l.work_items?.length ?? 0} 個工項</span>
-                <span>{l.photos?.length ?? 0} 張照片</span>
-                {l.weather && <span>{formatWeatherSummary(l.weather)}</span>}
-              </div>
-            </Link>
-          ))}
-        </div>
+        <BatchApprovalsList logs={list} stage={stage} />
       )}
     </div>
   );

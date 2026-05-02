@@ -320,6 +320,15 @@ export default async function LogDetailPage({
               pdfError={l.pdf_error}
             />
           )}
+          {(role === "site_supervisor" || role === "owner") && (
+            <Button
+              asChild
+              variant="outline"
+              className="border-[#E0DCD6]"
+            >
+              <Link href={`/logs/new?from=${id}`}>複製為新日誌</Link>
+            </Button>
+          )}
         </div>
       </div>
 

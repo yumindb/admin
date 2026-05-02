@@ -219,12 +219,15 @@ export default async function LogsPage({
                     {g.logs.map((l, idx) => {
                       const s = STATUS[l.status] ?? STATUS.draft;
                       return (
-                        <li key={l.id}>
+                        <li
+                          key={l.id}
+                          className={`relative ${
+                            idx > 0 ? "border-t border-[#F0EBE4]" : ""
+                          }`}
+                        >
                           <Link
                             href={`/logs/${l.id}`}
-                            className={`flex items-start justify-between gap-2 px-3.5 py-2.5 transition-colors hover:bg-[#F5F1EC] md:gap-3 md:px-5 md:py-3 ${
-                              idx > 0 ? "border-t border-[#F0EBE4]" : ""
-                            }`}
+                            className="flex items-start justify-between gap-2 px-3.5 py-2.5 transition-colors hover:bg-[#F5F1EC] md:gap-3 md:px-5 md:py-3"
                           >
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-foreground">
@@ -252,15 +255,28 @@ export default async function LogsPage({
                                 )}
                               </div>
                             </div>
-                            <span
-                              className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] md:px-2 md:text-xs ${s.cls}`}
-                            >
-                              {s.label}
-                              {l.status === "submitted" && l.current_stage
-                                ? `:${STAGE_LABEL_SHORT[l.current_stage]}`
-                                : ""}
-                            </span>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <span
+                                className={`rounded-full border px-1.5 py-0.5 text-[10px] md:px-2 md:text-xs ${s.cls}`}
+                              >
+                                {s.label}
+                                {l.status === "submitted" && l.current_stage
+                                  ? `:${STAGE_LABEL_SHORT[l.current_stage]}`
+                                  : ""}
+                              </span>
+                            </div>
                           </Link>
+                          {canCreateLog && (
+                            <Link
+                              href={`/logs/new?from=${l.id}`}
+                              aria-label={`複製 ${formatDateTW(l.log_date)} 的日誌為新日誌`}
+                              title="複製為新日誌"
+                              className="absolute right-1.5 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-[#E0DCD6] hover:bg-white hover:text-accent md:right-3"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <CopyIcon />
+                            </Link>
+                          )}
                         </li>
                       );
                     })}
@@ -338,6 +354,25 @@ function groupByCase(list: LogRow[]): CaseGroup[] {
     g.counts[log.status] = (g.counts[log.status] ?? 0) + 1;
   }
   return [...map.values()].sort((a, b) => b.latestDate.localeCompare(a.latestDate));
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
 }
 
 function ChevronDown() {

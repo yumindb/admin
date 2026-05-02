@@ -93,6 +93,7 @@ export function NewLogForm({
   priorSubcontractorByCase,
   priorMachineByCase,
   pendingReportsByCase,
+  skipDraftRestore = false,
 }: {
   cases: CaseOption[];
   presetCaseId?: string;
@@ -100,6 +101,8 @@ export function NewLogForm({
   /** "classic" = 草稿/退回的工地主任流程(會重新送出 + 簽名);
    *  "post-submission" = 已送出後的 silent edit(audit-only,不重啟簽核也不重簽) */
   editMode?: "classic" | "post-submission";
+  /** 「複製日誌」場景:不還原 / 也不寫 localStorage 草稿,以免覆蓋 prefill 內容 */
+  skipDraftRestore?: boolean;
   /** 開新日誌用：每案件每日的既有日誌筆數,用來算「當日第 NN 份」 */
   dayLogCounts?: Record<string, Record<string, number>>;
   /** 編輯既有日誌用：直接傳該日誌在當日的 seq(1-based) */
@@ -137,7 +140,9 @@ export function NewLogForm({
   //   client hydrate 拿得到 → 不同值,React hydration mismatch。
   //   改在 useEffect on-mount 拿,用 setters 覆寫初始值。
   // v2:photos schema 從 string[] 改為 { path, caption }[],舊草稿不相容直接捨棄
-  const draftKey = logId ? null : "yumin-newlog-draft-v2";
+  // 「複製日誌」場景:傳 skipDraftRestore,直接不讀 / 不寫 localStorage,
+  //   讓 server 端傳的 initial 完全當主。
+  const draftKey = logId || skipDraftRestore ? null : "yumin-newlog-draft-v2";
 
   const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
   // logDate 也不能用 new Date() 當初值(server/client 跨午夜 UTC 會不同),

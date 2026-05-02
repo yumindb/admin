@@ -232,6 +232,71 @@ export async function rejectStageAction(payload: ActPayload) {
 }
 
 /**
+ * 批簽:對多個 logId 套用同一張簽名(signatureUrl)逐筆呼叫單筆 approve 邏輯。
+ * 每筆都走原本的 conditional update 守 race condition,逐筆紀錄成功 / 失敗。
+ *
+ * 注意:
+ *  - signatureUrl 由 client 先呼叫 uploadSignatureAction 上傳一次後拿到的 signed URL。
+ *    每筆 log_approvals 共用同一張(URL 內含 storage path,getSignedUrls 會抽 path 重新籤)。
+ *  - 4-concurrency 限流,避免同時打 DB 太多 / cancellable PDF after() 累積過多。
+ *  - 任一筆失敗不中斷其他筆,失敗逐筆收集回傳。
+ *  - 老闆關卡(approve)若有筆通過,各自會排背景 PDF 任務(after()),這部分由
+ *    單筆 approveStageAction 處理。
+ */
+export async function batchApproveAction(payload: {
+  logIds: string[];
+  signatureUrl: string;
+  comment?: string;
+}): Promise<{
+  ok: string[];
+  failed: { logId: string; reason: string }[];
+}> {
+  const { logIds, signatureUrl, comment } = payload;
+  const okList: string[] = [];
+  const failed: { logId: string; reason: string }[] = [];
+
+  if (!Array.isArray(logIds) || logIds.length === 0) {
+    return { ok: okList, failed };
+  }
+  if (!signatureUrl) {
+    // 整批拒絕:沒簽名
+    return {
+      ok: okList,
+      failed: logIds.map((id) => ({ logId: id, reason: "缺簽名" })),
+    };
+  }
+
+  // 4-concurrency worker pool(W4-1 同模式)
+  const concurrency = Math.min(4, logIds.length);
+  let cursor = 0;
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= logIds.length) return;
+      const id = logIds[i];
+      try {
+        const res = await approveStageAction({
+          logId: id,
+          signatureUrl,
+          comment,
+        });
+        if (res.ok) {
+          okList.push(id);
+        } else {
+          failed.push({ logId: id, reason: res.error });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        failed.push({ logId: id, reason: msg });
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  return { ok: okList, failed };
+}
+
+/**
  * 簽完一份後跳到下一份「同 stage 由我負責」的待簽核。
  * 沒下一份就回 /approvals 列表。
  */
