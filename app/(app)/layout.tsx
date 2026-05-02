@@ -143,6 +143,7 @@ function navByRole(
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/field-reports", label: "現場回報" },
           { href: "/cases", label: "案件總覽" },
+          { href: "/reports", label: "報表" },
         ],
         mobileTabs: [
           { href: "/logs", label: "日誌", icon: "file" },
@@ -159,6 +160,7 @@ function navByRole(
           { href: "/cases", label: "案件總覽" },
           { href: "/logs", label: "日誌" },
           { href: "/field-reports", label: "現場回報" },
+          { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
         ],
         mobileTabs: [
@@ -187,6 +189,7 @@ function navByRole(
           { href: "/approvals", label: "待審核", badge: approvalsBadge },
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/logs", label: "日誌" },
+          { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
         ],
         mobileTabs: [

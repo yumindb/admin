@@ -11,6 +11,10 @@ import { WorkItemsTreeSection } from "@/components/work-items-tree-section";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
+import {
+  WorkItemsXlsxButton,
+  MonthlyReportXlsxButton,
+} from "./case-excel-buttons";
 import { NextStepHint } from "@/components/next-step-hint";
 import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
 import { normalizeLogPhotos } from "@/lib/daily-log";
@@ -276,8 +280,16 @@ export default async function CaseDetailPage({
         </NextStepHint>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-primary md:text-xl">工項清單</h2>
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-end gap-3">
+            <WorkItemsXlsxButton caseId={c.id} />
+            {(actor?.role === "office_staff" || actor?.role === "owner") && (
+              <MonthlyReportXlsxButton caseId={c.id} />
+            )}
+          </div>
+        )}
       </div>
 
       {items.length === 0 ? (

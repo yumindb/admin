@@ -1,0 +1,171 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
+import type {
+  Case,
+  CaseWorkItem,
+  DailyLog,
+  DailyLogWorkItem,
+} from "@/lib/types";
+import { CasesOverviewReportClient, type CaseOverviewRow } from "./client";
+
+/**
+ * /reports/cases-overview — 案件進度總覽表(報表版)。
+ *
+ * 與 /cases 不同點:
+ *  - 整齊表格(可排序),不是卡片
+ *  - 內含落後標記、累計日誌數
+ *  - 以 PDF / Excel 為導向設計欄位
+ *
+ * 角色:office_staff / owner / site_supervisor(只看自己有送過 daily_logs 的案件)。
+ *      field_assistant 擋掉。
+ */
+export default async function CasesOverviewReportPage() {
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  if (actor.role === "field_assistant") redirect("/");
+
+  const supabase = await createClient();
+  const { data: allCases } = await supabase.from("cases").select("*");
+  let cases = (allCases ?? []) as Case[];
+
+  if (actor.role === "site_supervisor") {
+    const { data: myLogs } = await supabase
+      .from("daily_logs")
+      .select("case_id")
+      .eq("supervisor_id", actor.id);
+    const allowed = new Set<string>(
+      (myLogs ?? []).map((l: { case_id: string }) => l.case_id),
+    );
+    cases = cases.filter((c) => allowed.has(c.id));
+  }
+
+  if (cases.length === 0) {
+    return (
+      <div className="mx-auto max-w-6xl">
+        <Header />
+        <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center text-sm text-muted-foreground">
+          目前沒有可顯示的案件
+        </div>
+      </div>
+    );
+  }
+
+  const caseIds = cases.map((c) => c.id);
+  const [{ data: workItems }, { data: logs }] = await Promise.all([
+    supabase
+      .from("case_work_items")
+      .select("id, case_id, item_type, quantity")
+      .in("case_id", caseIds),
+    supabase
+      .from("daily_logs")
+      .select("case_id, work_items, log_date, status")
+      .in("case_id", caseIds)
+      .in("status", ["submitted", "approved"]),
+  ]);
+
+  const items = (workItems ?? []) as Pick<
+    CaseWorkItem,
+    "id" | "case_id" | "item_type" | "quantity"
+  >[];
+  const allLogs = (logs ?? []) as Pick<
+    DailyLog,
+    "case_id" | "work_items" | "log_date" | "status"
+  >[];
+
+  // 累計每個工項的完成量
+  const itemMeta = new Map<string, (typeof items)[number]>();
+  for (const it of items) itemMeta.set(it.id, it);
+  const doneByItem = new Map<string, number>();
+  const logCountByCase = new Map<string, number>();
+  for (const log of allLogs) {
+    if (log.case_id) {
+      logCountByCase.set(
+        log.case_id,
+        (logCountByCase.get(log.case_id) ?? 0) + 1,
+      );
+    }
+    for (const w of (log.work_items ?? []) as DailyLogWorkItem[]) {
+      const meta = itemMeta.get(w.work_item_id);
+      const total = meta?.quantity ?? null;
+      const inc =
+        w.qty_mode === "percent" ? (total ?? 0) * w.qty : w.qty;
+      doneByItem.set(
+        w.work_item_id,
+        (doneByItem.get(w.work_item_id) ?? 0) + inc,
+      );
+    }
+  }
+
+  // 算每案進度 %
+  const pctSum = new Map<string, number>();
+  const pctCount = new Map<string, number>();
+  for (const it of items) {
+    if (it.item_type !== "item" && it.item_type !== "spec") continue;
+    const total = it.quantity ?? 0;
+    const done = doneByItem.get(it.id) ?? 0;
+    const pct = total > 0 ? Math.min(1, done / total) : done > 0 ? 1 : 0;
+    pctSum.set(it.case_id, (pctSum.get(it.case_id) ?? 0) + pct);
+    pctCount.set(it.case_id, (pctCount.get(it.case_id) ?? 0) + 1);
+  }
+
+  const today = new Date();
+  const rows: CaseOverviewRow[] = cases.map((c) => {
+    const sum = pctSum.get(c.id) ?? 0;
+    const cnt = pctCount.get(c.id) ?? 0;
+    const progressPct = cnt > 0 ? Math.round((sum / cnt) * 1000) / 10 : null;
+    let startedDaysAgo: number | null = null;
+    if (c.started_at) {
+      const dt = new Date(c.started_at);
+      if (!Number.isNaN(dt.getTime())) {
+        startedDaysAgo = Math.floor(
+          (today.getTime() - dt.getTime()) / (1000 * 60 * 60 * 24),
+        );
+      }
+    }
+    const behind =
+      progressPct !== null &&
+      startedDaysAgo !== null &&
+      progressPct < 30 &&
+      startedDaysAgo > 60;
+    return {
+      caseId: c.id,
+      caseName: c.name,
+      caseCode: c.code,
+      company: c.company,
+      status: c.status,
+      startedAt: c.started_at,
+      progressPct,
+      logCount: logCountByCase.get(c.id) ?? 0,
+      behind,
+    };
+  });
+
+  return (
+    <div className="mx-auto max-w-6xl">
+      <Header />
+      <CasesOverviewReportClient rows={rows} />
+    </div>
+  );
+}
+
+function Header() {
+  return (
+    <div className="mb-5">
+      <nav className="mb-2 text-sm text-muted-foreground">
+        <Link href="/reports" className="hover:text-accent">
+          報表
+        </Link>
+        <span className="mx-1.5">／</span>
+        <span>案件進度總覽</span>
+      </nav>
+      <h1 className="text-2xl font-semibold text-primary md:text-3xl">
+        案件進度總覽
+      </h1>
+      <p className="mt-1.5 text-base text-muted-foreground">
+        所有案件的進度、累計日誌數與落後標記。可依進度、開工日期或落後狀況排序
+      </p>
+    </div>
+  );
+}

@@ -60,7 +60,7 @@ export function CasesKpiBar({ kpis }: { kpis: CasesKpis }) {
         label="本月超工筆數"
         value={kpis.monthOvertimeCount}
         icon={<FileWarning className="size-4" />}
-        href="/logs?period=month&kind=overtime"
+        href="/reports/unsigned?period=month"
         hint="點工 + 變更追加"
       />
     </div>
