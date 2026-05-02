@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CasePicker, type CasePickerOption } from "@/components/case-picker";
-import { uploadPhotoAction } from "../logs/[id]/photo-actions";
+import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions";
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
 import type { FieldReportPhoto } from "@/lib/types";
 
@@ -39,6 +39,8 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     total: 0,
   });
   const [isPending, startTransition] = useTransition();
+  // 本次階段上傳到 Storage 的 path,使用者按 × 時要連 Storage 一起刪。
+  const sessionUploadsRef = useRef<Set<string>>(new Set());
 
   async function onPickPhotos(files: FileList | null) {
     if (!files?.length) return;
@@ -74,14 +76,22 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
       if (r.ok && r.path) newPhotos.push({ path: r.path, caption: "" });
       else if (!r.ok && !firstError) firstError = r.error;
     }
-    if (newPhotos.length) setPhotos((arr) => [...arr, ...newPhotos]);
+    if (newPhotos.length) {
+      for (const p of newPhotos) sessionUploadsRef.current.add(p.path);
+      setPhotos((arr) => [...arr, ...newPhotos]);
+    }
     if (firstError) setError(firstError);
     setUploading(false);
     setProgress({ done: 0, total: 0 });
   }
 
   function removePhoto(idx: number) {
+    const target = photos[idx];
     setPhotos((arr) => arr.filter((_, i) => i !== idx));
+    if (target && sessionUploadsRef.current.has(target.path)) {
+      sessionUploadsRef.current.delete(target.path);
+      void deletePhotoAction(target.path);
+    }
   }
 
   function setCaption(idx: number, caption: string) {

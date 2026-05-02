@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,11 @@ import type { WorkItemAggregateMap } from "@/lib/work-item-aggregates";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
 import { NextStepHint } from "@/components/next-step-hint";
 import { saveLogAction } from "./actions";
-import { uploadPhotoAction, uploadSignatureAction } from "../[id]/photo-actions";
+import {
+  deletePhotoAction,
+  uploadPhotoAction,
+  uploadSignatureAction,
+} from "../[id]/photo-actions";
 import {
   buildReportNumber,
   getRemainingDays,
@@ -161,6 +164,11 @@ export function NewLogForm({
   const [hydrated, setHydrated] = useState(false);
   const [isPending, startTransition] = useTransition();
   const sigRef = useRef<SignatureCanvas>(null);
+  // 追蹤本次工作階段「在這個表單內上傳」的照片 path,
+  // 供使用者按 × 或「取消」時清掉 Storage 內的暫存檔(避免孤兒檔累積)。
+  // 不含 initial.photos(那些是已送出記錄、不可亂刪),
+  // 也不含從現場回報合併進來的照片(那些是別張表單的 own data)。
+  const sessionUploadsRef = useRef<Set<string>>(new Set());
 
   function clearSig() {
     sigRef.current?.clear();
@@ -395,6 +403,7 @@ export function NewLogForm({
       else if (!r.ok && !firstError) firstError = r.error;
     }
     if (newPaths.length) {
+      for (const p of newPaths) sessionUploadsRef.current.add(p);
       setPhotos((p) => [
         ...p,
         ...newPaths.map<LogPhoto>((path) => ({ path, caption: "" })),
@@ -407,12 +416,31 @@ export function NewLogForm({
 
   function removePhoto(path: string) {
     setPhotos((arr) => arr.filter((x) => x.path !== path));
+    // 只刪本次階段上傳的(initial 或合併進來的不能動)。fire-and-forget,不卡 UI。
+    if (sessionUploadsRef.current.has(path)) {
+      sessionUploadsRef.current.delete(path);
+      void deletePhotoAction(path);
+    }
   }
 
   function setPhotoCaption(path: string, caption: string) {
     setPhotos((arr) =>
       arr.map((p) => (p.path === path ? { ...p, caption } : p))
     );
+  }
+
+  function cancel() {
+    // 放棄本次表單:把這個工作階段上傳的暫存照片從 Storage 清掉,順便清 localStorage 草稿。
+    // 不動 initial.photos(可能是編輯中既有日誌的照片)和合併進來的回報照片(那些有自己的記錄)。
+    const toDelete = Array.from(sessionUploadsRef.current);
+    sessionUploadsRef.current.clear();
+    for (const p of toDelete) void deletePhotoAction(p);
+    if (draftKey) {
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {}
+    }
+    router.push("/logs");
   }
 
   function submit(intent: "draft" | "submit") {
@@ -939,8 +967,13 @@ export function NewLogForm({
         className="sticky -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:bottom-auto md:mx-0 md:rounded-md md:border md:bg-card md:px-5"
         style={{ bottom: "calc(67px + env(safe-area-inset-bottom))" }}
       >
-        <Button asChild variant="ghost" type="button">
-          <Link href="/logs">取消</Link>
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={cancel}
+          disabled={isPending || uploading}
+        >
+          取消
         </Button>
         <div className="flex flex-wrap gap-3">
           <Button

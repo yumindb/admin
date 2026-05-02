@@ -42,6 +42,41 @@ export async function uploadPhotoAction(formData: FormData) {
   return { ok: true as const, path: data.publicUrl };
 }
 
+/**
+ * 刪除一張尚未送出的暫存照片。傳入 uploadPhotoAction 回傳的 public URL,
+ * 反推出 storage path 後從 bucket 移除。
+ *
+ * 安全:只允許刪自己 user folder 底下的檔(path 第一段必須等於 user.id)。
+ * 用途:使用者按 × 移除照片、或按「取消」放棄表單時清掉本次階段的上傳。
+ */
+export async function deletePhotoAction(publicUrl: string) {
+  if (typeof publicUrl !== "string" || !publicUrl) {
+    return { ok: false as const, error: "未提供路徑" };
+  }
+
+  const marker = `/object/public/${BUCKET}/`;
+  const idx = publicUrl.indexOf(marker);
+  if (idx === -1) return { ok: false as const, error: "URL 格式不符" };
+  const path = publicUrl.slice(idx + marker.length);
+  if (!path) return { ok: false as const, error: "URL 缺少路徑" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "未登入" };
+
+  // 路徑格式為 `{userId}/{filename}`,只允許刪自己的
+  const ownerId = path.split("/")[0];
+  if (ownerId !== user.id) {
+    return { ok: false as const, error: "無權限刪除此檔" };
+  }
+
+  const { error } = await supabase.storage.from(BUCKET).remove([path]);
+  if (error) return { ok: false as const, error: "刪除失敗:" + error.message };
+  return { ok: true as const };
+}
+
 const SIG_BUCKET = "signatures";
 
 /** 老闆簽名圖上傳(dataURL → png) */

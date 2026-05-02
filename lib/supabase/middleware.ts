@@ -34,6 +34,8 @@ export async function updateSession(request: NextRequest) {
     pathname === "/login" ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
+    // Cron 用 CRON_SECRET bearer 守門,middleware 不擋(否則 Vercel Cron 會被重導到 /login)
+    pathname.startsWith("/api/cron/") ||
     pathname === "/favicon.ico";
 
   if (!user && !isPublic) {
