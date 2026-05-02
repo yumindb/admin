@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTW } from "@/lib/datetime";
 import { ApprovalActions } from "./approval-actions";
 import { ExtraItemsTable } from "@/components/extra-items-table";
 import { NextStepHint } from "@/components/next-step-hint";
@@ -120,7 +121,7 @@ export default async function ApprovalDetailPage({
         </Link>
         <span className="mx-1.5">／</span>
         <span>
-          {l.cases?.name} · {new Date(l.log_date).toLocaleDateString("zh-TW")}
+          {l.cases?.name} · {formatDateTW(l.log_date)}
         </span>
       </nav>
 
@@ -140,7 +141,7 @@ export default async function ApprovalDetailPage({
           {l.cases?.name}
         </h1>
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
-          <span>日期:{new Date(l.log_date).toLocaleDateString("zh-TW")}</span>
+          <span>日期:{formatDateTW(l.log_date)}</span>
           <span>{getWeekdayLabel(l.log_date)}</span>
           <span>
             表報編號:

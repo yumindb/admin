@@ -8,7 +8,10 @@ import type {
   DailyLogWorkItem,
   DailyLogExtraItem,
   DailyLogUnsignedItem,
+  DailyLogEditableField,
+  DailyLogSnapshot,
   LogPhoto,
+  UserRole,
 } from "@/lib/types";
 
 type SaveLogPayload = {
@@ -23,10 +26,23 @@ type SaveLogPayload = {
   photos: LogPhoto[];    // 每張帶 path + caption(caption 可為空字串)
   vendorNotices: string;
   notes: string;
-  intent: "draft" | "submit";
-  fillSignatureUrl?: string;  // 送出時必帶 — 填表人手寫簽名
+  intent: "draft" | "submit" | "post_edit";
+  fillSignatureUrl?: string;  // submit 時必帶 — 填表人手寫簽名;post_edit 不需要
   mergedReportIds?: string[]; // 整合的現場回報 ids,送出時翻 merged
+  editReason?: string;        // post_edit 用,目前 UI 暫不收集,預留欄位
 };
+
+const EDITABLE_FIELDS: DailyLogEditableField[] = [
+  "log_date",
+  "weather",
+  "manpower",
+  "work_items",
+  "extra_items",
+  "unsigned_items",
+  "photos",
+  "vendor_notices",
+  "notes",
+];
 
 export async function saveLogAction(payload: SaveLogPayload) {
   const supabase = await createClient();
@@ -39,8 +55,26 @@ export async function saveLogAction(payload: SaveLogPayload) {
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  if (profile?.role !== "site_supervisor" && profile?.role !== "owner") {
-    return { ok: false, error: "只有工地主任或老闆可以填寫日誌" };
+  const role = (profile?.role ?? null) as UserRole | null;
+
+  // ----- 角色守則 -----
+  // draft / submit:工地主任、老闆(原本就有,owner 為了測試流程也保留)
+  // post_edit:    工地主任本人、辦公室助理、老闆
+  if (payload.intent === "draft" || payload.intent === "submit") {
+    if (role !== "site_supervisor" && role !== "owner") {
+      return { ok: false, error: "只有工地主任或老闆可以填寫日誌" };
+    }
+  } else if (payload.intent === "post_edit") {
+    if (
+      role !== "site_supervisor" &&
+      role !== "office_staff" &&
+      role !== "owner"
+    ) {
+      return { ok: false, error: "你的角色無法編輯日誌" };
+    }
+    if (!payload.logId) {
+      return { ok: false, error: "缺少 logId" };
+    }
   }
 
   if (!payload.caseId) return { ok: false, error: "請選案件" };
@@ -59,6 +93,107 @@ export async function saveLogAction(payload: SaveLogPayload) {
     return { ok: false, error: "送出前請先簽名" };
   }
 
+  // ============================================================
+  // post_edit 分支:送出後的編輯,寫 audit + 更新欄位,不動 status
+  // ============================================================
+  if (payload.intent === "post_edit") {
+    const logId = payload.logId!;
+    const { data: existing, error: loadErr } = await supabase
+      .from("daily_logs")
+      .select(
+        "id, supervisor_id, status, log_date, weather, manpower, work_items, extra_items, unsigned_items, photos, vendor_notices, notes"
+      )
+      .eq("id", logId)
+      .maybeSingle();
+    if (loadErr || !existing) return { ok: false, error: "找不到日誌" };
+
+    if (existing.status === "approved") {
+      return { ok: false, error: "已核定的日誌不可編輯" };
+    }
+    if (existing.status === "draft") {
+      return { ok: false, error: "草稿請從草稿編輯流程進入" };
+    }
+    // submitted 或 rejected 才允許 post_edit。
+    // site_supervisor 只能編輯自己掛名的日誌;office_staff / owner 不限。
+    if (
+      role === "site_supervisor" &&
+      existing.supervisor_id !== user.id
+    ) {
+      return { ok: false, error: "只有此日誌的工地主任本人或助理 / 老闆可以編輯" };
+    }
+
+    const snapshot: DailyLogSnapshot = {
+      log_date: existing.log_date as string,
+      weather: (existing.weather as string | null) ?? null,
+      manpower: (existing.manpower as DailyLogManpower) ?? {},
+      work_items: (existing.work_items as DailyLogWorkItem[]) ?? [],
+      extra_items: (existing.extra_items as DailyLogExtraItem[]) ?? [],
+      unsigned_items:
+        (existing.unsigned_items as DailyLogUnsignedItem[]) ?? [],
+      photos: (existing.photos as LogPhoto[]) ?? [],
+      vendor_notices: (existing.vendor_notices as string | null) ?? null,
+      notes: (existing.notes as string | null) ?? null,
+    };
+
+    const next = {
+      log_date: payload.logDate,
+      weather: payload.weather || null,
+      manpower: payload.manpower,
+      work_items: payload.workItems,
+      extra_items: payload.extraItems,
+      unsigned_items: payload.unsignedItems,
+      photos: payload.photos,
+      vendor_notices: payload.vendorNotices || null,
+      notes: payload.notes || null,
+    };
+
+    const changed: DailyLogEditableField[] = [];
+    for (const k of EDITABLE_FIELDS) {
+      const before = JSON.stringify(snapshot[k] ?? null);
+      const after = JSON.stringify(
+        (next as Record<string, unknown>)[k] ?? null
+      );
+      if (before !== after) changed.push(k);
+    }
+
+    if (changed.length === 0) {
+      // 沒有改動就直接放行,不寫 revision
+      return { ok: true, logId, unchanged: true };
+    }
+
+    // 先寫 revision,再 update。失敗就 reject 整個操作。
+    const { error: revErr } = await supabase
+      .from("daily_log_revisions")
+      .insert({
+        log_id: logId,
+        editor_id: user.id,
+        editor_role: role,
+        log_status_at_edit: existing.status,
+        snapshot,
+        changed_fields: changed,
+        reason: payload.editReason?.trim() || null,
+      });
+    if (revErr) {
+      return { ok: false, error: "寫入編輯紀錄失敗:" + revErr.message };
+    }
+
+    const { error: updErr } = await supabase
+      .from("daily_logs")
+      .update(next)
+      .eq("id", logId);
+    if (updErr) {
+      return { ok: false, error: "儲存失敗:" + updErr.message };
+    }
+
+    revalidatePath("/logs");
+    revalidatePath(`/logs/${logId}`);
+    revalidatePath("/approvals");
+    return { ok: true, logId };
+  }
+
+  // ============================================================
+  // draft / submit 分支(原邏輯)
+  // ============================================================
   // 四關正式流程:submit 時 status='submitted' + current_stage='review'(第一關)。
   // draft 時兩個欄位都 null。
   // 重送被退回的日誌(rejected → submit)也會回到 review 起點。

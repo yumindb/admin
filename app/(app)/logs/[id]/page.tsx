@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { ExtraItemsTable } from "@/components/extra-items-table";
 import { NextStepHint } from "@/components/next-step-hint";
+import { PhotoGallery } from "@/components/photo-gallery";
 import { PdfDownloadButton } from "@/components/pdf-download-button";
 import { deleteLogAction } from "../new/actions";
 import {
@@ -14,7 +16,12 @@ import {
   isBackfilledLog,
   normalizeLogPhotos,
 } from "@/lib/daily-log";
-import type { DailyLog, DailyLogWorkItem, LogApproval } from "@/lib/types";
+import type {
+  DailyLog,
+  DailyLogEditableField,
+  DailyLogWorkItem,
+  LogApproval,
+} from "@/lib/types";
 import {
   fetchWorkItemAncestry,
   groupWorkItemsByAncestor,
@@ -33,6 +40,32 @@ const STAGE_LABEL: Record<string, string> = {
   review: "複核(工地主任)",
   audit: "審核(辦公室助理)",
   approve: "核定(老闆)",
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  site_supervisor: "工地主任",
+  office_staff: "辦公室助理",
+  owner: "老闆",
+  field_assistant: "現場助理",
+};
+
+const STATUS_AT_EDIT_LABEL: Record<string, string> = {
+  draft: "草稿",
+  submitted: "簽核中",
+  approved: "已核定",
+  rejected: "已退回",
+};
+
+const FIELD_LABEL: Record<DailyLogEditableField, string> = {
+  log_date: "日期",
+  weather: "天氣",
+  manpower: "出工/外包/機具",
+  work_items: "施工工項",
+  extra_items: "非合約內項目",
+  unsigned_items: "未簽約項目",
+  photos: "照片",
+  vendor_notices: "通知協力廠商事項",
+  notes: "重要事項紀錄",
 };
 
 type WorkItemRow = {
@@ -76,8 +109,21 @@ export default async function LogDetailPage({
     .eq("id", user!.id)
     .maybeSingle();
   const isOwnerOfLog = l.supervisor_id === user!.id;
+  const role = profile?.role ?? null;
+
+  // 編輯權限:
+  //   - draft → 只 supervisor 本人(原規則,走主流程編輯)
+  //   - rejected → supervisor 本人(主流程,重新送出);office_staff/owner(silent edit)
+  //   - submitted → supervisor 本人 / office_staff / owner(silent edit)
+  //   - approved → 一律不可
   const canEdit =
-    isOwnerOfLog && (l.status === "draft" || l.status === "rejected");
+    l.status === "draft"
+      ? isOwnerOfLog && role === "site_supervisor"
+      : l.status === "rejected" || l.status === "submitted"
+        ? (role === "site_supervisor" && isOwnerOfLog) ||
+          role === "office_staff" ||
+          role === "owner"
+        : false;
 
   // 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
   const { count: dayCount } = await supabase
@@ -107,6 +153,37 @@ export default async function LogDetailPage({
     .order("created_at", { ascending: true });
   const apList = (approvals ?? []) as LogApproval[];
 
+  // 送出後編輯軌跡(post-submission edits) — 連 editor 名稱一起撈
+  const { data: revisionRows } = await supabase
+    .from("daily_log_revisions")
+    .select(
+      "id, log_id, editor_id, editor_role, edited_at, log_status_at_edit, changed_fields, reason, editor:profiles!editor_id(full_name)"
+    )
+    .eq("log_id", id)
+    .order("edited_at", { ascending: false });
+  type RevisionRow = {
+    id: string;
+    editor_id: string | null;
+    editor_role: string;
+    edited_at: string;
+    log_status_at_edit: string;
+    changed_fields: DailyLogEditableField[];
+    reason: string | null;
+    editor: { full_name: string | null } | { full_name: string | null }[] | null;
+  };
+  const revisions = ((revisionRows ?? []) as unknown as RevisionRow[]).map((r) => {
+    const editor = Array.isArray(r.editor) ? r.editor[0] : r.editor;
+    return {
+      id: r.id,
+      editorName: editor?.full_name ?? "(已離職 / 未命名)",
+      editorRole: r.editor_role,
+      editedAt: r.edited_at,
+      logStatusAtEdit: r.log_status_at_edit,
+      changedFields: r.changed_fields ?? [],
+      reason: r.reason,
+    };
+  });
+
   const s = STATUS[l.status] ?? STATUS.draft;
   const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
   const logPhotos = normalizeLogPhotos(l.photos);
@@ -120,7 +197,7 @@ export default async function LogDetailPage({
         <span className="mx-1.5">／</span>
         <span>
           {l.cases?.name ?? "(已刪除)"} ·{" "}
-          {new Date(l.log_date).toLocaleDateString("zh-TW")}
+          {formatDateTW(l.log_date)}
         </span>
       </nav>
 
@@ -142,7 +219,7 @@ export default async function LogDetailPage({
             )}
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-primary md:text-3xl">
-            {new Date(l.log_date).toLocaleDateString("zh-TW")} ·{" "}
+            {formatDateTW(l.log_date)} ·{" "}
             {l.cases?.name}
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
@@ -174,7 +251,7 @@ export default async function LogDetailPage({
               <Link href={`/logs/${id}/edit`}>編輯</Link>
             </Button>
           )}
-          {canEdit && l.status === "draft" && (
+          {canEdit && l.status === "draft" && isOwnerOfLog && (
             <form action={deleteLogAction}>
               <input type="hidden" name="logId" value={id} />
               <button
@@ -388,28 +465,7 @@ export default async function LogDetailPage({
         {!logPhotos.length ? (
           <p className="text-sm text-muted-foreground">沒有照片</p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            {logPhotos.map((p, i) => (
-              <figure
-                key={`${p.path}-${i}`}
-                className="overflow-hidden rounded-md border border-[#E0DCD6] bg-white"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <a href={p.path} target="_blank" rel="noreferrer">
-                  <img
-                    src={p.path}
-                    alt={p.caption || ""}
-                    className="aspect-square w-full object-cover"
-                  />
-                </a>
-                {p.caption && (
-                  <figcaption className="border-t border-[#F0EBE4] bg-[#FAF7F2] px-2 py-1.5 text-xs text-foreground">
-                    {p.caption}
-                  </figcaption>
-                )}
-              </figure>
-            ))}
-          </div>
+          <PhotoGallery photos={logPhotos} layout="grid" />
         )}
       </Section>
 
@@ -417,6 +473,53 @@ export default async function LogDetailPage({
       {l.notes && (
         <Section title="六、重要事項紀錄">
           <p className="whitespace-pre-line text-sm">{l.notes}</p>
+        </Section>
+      )}
+
+      {/* 送出後編輯軌跡 — 只在有編輯時顯示 */}
+      {revisions.length > 0 && (
+        <Section title={`編輯軌跡 (${revisions.length})`}>
+          <ul className="space-y-2">
+            {revisions.map((r) => (
+              <li
+                key={r.id}
+                className="rounded-md border border-[#E0DCD6] bg-card px-3 py-2 text-sm"
+              >
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-medium text-primary">
+                    {r.editorName}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {ROLE_LABEL[r.editorRole] ?? r.editorRole}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    編輯時狀態：
+                    {STATUS_AT_EDIT_LABEL[r.logStatusAtEdit] ?? r.logStatusAtEdit}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {formatTW(r.editedAt)}
+                  </span>
+                </div>
+                {r.changedFields.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {r.changedFields.map((f) => (
+                      <span
+                        key={f}
+                        className="inline-block rounded-full border border-[#E0DCD6] bg-[#FAF7F2] px-2 py-0.5 text-xs text-muted-foreground"
+                      >
+                        {FIELD_LABEL[f] ?? f}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {r.reason && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    備註:{r.reason}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
         </Section>
       )}
 
@@ -444,7 +547,7 @@ export default async function LogDetailPage({
                   {a.decision === "approved" ? "通過" : "退回"}
                 </span>
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {new Date(a.created_at).toLocaleString("zh-TW")}
+                  {formatTW(a.created_at)}
                 </span>
                 {a.comment && (
                   <p className="basis-full text-xs text-muted-foreground">

@@ -31,10 +31,10 @@ export default async function ImportPage({
           {c.name}
         </Link>
         <span className="mx-1.5">／</span>
-        <span>匯入標單</span>
+        <span>匯入工項</span>
       </nav>
 
-      <h1 className="mb-1.5 text-2xl font-semibold text-primary md:text-3xl">匯入標單</h1>
+      <h1 className="mb-1.5 text-2xl font-semibold text-primary md:text-3xl">匯入工項</h1>
       <p className="mb-7 text-base text-muted-foreground">
         {c.code ? `${c.code} · ` : ""}
         {c.name}

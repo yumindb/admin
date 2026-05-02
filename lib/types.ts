@@ -104,6 +104,47 @@ export type DailyLog = {
   updated_at: string;
 };
 
+/**
+ * 施工日誌送出後的編輯軌跡。每次 post-submission edit 寫一筆,
+ * 紀錄誰、何時、改了哪些欄位、編輯前的完整快照。approved 之後不再開放編輯。
+ */
+export type DailyLogRevision = {
+  id: string;
+  log_id: string;
+  editor_id: string | null;
+  editor_role: UserRole;
+  edited_at: string;
+  log_status_at_edit: LogStatus;
+  snapshot: DailyLogSnapshot;
+  changed_fields: DailyLogEditableField[];
+  reason: string | null;
+};
+
+/** 可被 post-submission edit 改動的欄位 key */
+export type DailyLogEditableField =
+  | "log_date"
+  | "weather"
+  | "manpower"
+  | "work_items"
+  | "extra_items"
+  | "unsigned_items"
+  | "photos"
+  | "vendor_notices"
+  | "notes";
+
+/** 編輯前可還原的 daily_log 快照(只含可改欄位) */
+export type DailyLogSnapshot = {
+  log_date: string;
+  weather: string | null;
+  manpower: DailyLogManpower;
+  work_items: DailyLogWorkItem[];
+  extra_items: DailyLogExtraItem[];
+  unsigned_items: DailyLogUnsignedItem[];
+  photos: LogPhoto[];
+  vendor_notices: string | null;
+  notes: string | null;
+};
+
 export type LogApproval = {
   id: string;
   log_id: string;

@@ -14,6 +14,7 @@ import {
 import type { WorkItemAggregateMap } from "@/lib/work-item-aggregates";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
 import { NextStepHint } from "@/components/next-step-hint";
+import { PhotoLightbox } from "@/components/photo-lightbox";
 import { saveLogAction } from "./actions";
 import {
   deletePhotoAction,
@@ -26,7 +27,9 @@ import {
   getWeekdayLabel,
   serializeWeather,
   WEATHER_OPTIONS,
+  subcontractorKey,
 } from "@/lib/daily-log";
+import { formatTW } from "@/lib/datetime";
 import type {
   DailyLogExtraItem,
   DailyLogMachine,
@@ -82,15 +85,21 @@ export function NewLogForm({
   currentUserName,
   initial,
   logId,
+  editMode = "classic",
   dayLogCounts,
   currentDaySeq,
   priorAggregates,
   priorManpowerByCase,
+  priorSubcontractorByCase,
+  priorMachineByCase,
   pendingReportsByCase,
 }: {
   cases: CaseOption[];
   presetCaseId?: string;
   currentUserName: string;
+  /** "classic" = 草稿/退回的工地主任流程(會重新送出 + 簽名);
+   *  "post-submission" = 已送出後的 silent edit(audit-only,不重啟簽核也不重簽) */
+  editMode?: "classic" | "post-submission";
   /** 開新日誌用：每案件每日的既有日誌筆數,用來算「當日第 NN 份」 */
   dayLogCounts?: Record<string, Record<string, number>>;
   /** 編輯既有日誌用：直接傳該日誌在當日的 seq(1-based) */
@@ -99,6 +108,10 @@ export function NewLogForm({
   priorAggregates?: WorkItemAggregateMap;
   /** 各案件之前已累計的出工人次(submitted/approved 日誌 today_total 加總,編輯時排除自己) */
   priorManpowerByCase?: Record<string, number>;
+  /** 各案件 → 工別正規化名 → 之前累計人次(submitted/approved 日誌的 today 加總) */
+  priorSubcontractorByCase?: Record<string, Record<string, number>>;
+  /** 各案件 → 機具正規化名 → 之前累計使用數量 */
+  priorMachineByCase?: Record<string, Record<string, number>>;
   /** 各案件待整合的現場回報(pending) */
   pendingReportsByCase?: Record<string, PendingFieldReport[]>;
   initial?: {
@@ -151,6 +164,10 @@ export function NewLogForm({
   const [vendorNotices, setVendorNotices] = useState(initial?.vendorNotices ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [mergedReportIds, setMergedReportIds] = useState<string[]>([]);
+  // 已合併進來的回報快照(含照片) — 用來支援使用者刪掉照片後可以加回來
+  const [mergedReportSnapshots, setMergedReportSnapshots] = useState<
+    PendingFieldReport[]
+  >([]);
   const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -160,6 +177,8 @@ export function NewLogForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // 點照片放大檢視用 — 為 null 時不顯示;設成 path 時開啟 lightbox 顯示該張
+  const [lightboxPath, setLightboxPath] = useState<string | null>(null);
   const [autosaved, setAutosaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -191,6 +210,9 @@ export function NewLogForm({
       if (draft.photos !== undefined) setPhotos(draft.photos);
       if (draft.vendorNotices !== undefined) setVendorNotices(draft.vendorNotices);
       if (draft.notes !== undefined) setNotes(draft.notes);
+      if (draft.mergedReportIds !== undefined) setMergedReportIds(draft.mergedReportIds);
+      if (draft.mergedReportSnapshots !== undefined)
+        setMergedReportSnapshots(draft.mergedReportSnapshots);
       setAutosaved(true);
     } else if (!initial?.logDate) {
       // 沒草稿、也沒帶初始值 → logDate 設為今天
@@ -211,6 +233,7 @@ export function NewLogForm({
             caseId, logDate, weather, todayTotal,
             subcontractors, machines, picked, extras, unsigned,
             photos, vendorNotices, notes,
+            mergedReportIds, mergedReportSnapshots,
           })
         );
         setAutosaved(true);
@@ -222,7 +245,7 @@ export function NewLogForm({
   }, [
     draftKey, hydrated, caseId, logDate, weather, todayTotal,
     subcontractors, machines, picked, extras, unsigned, photos,
-    vendorNotices, notes,
+    vendorNotices, notes, mergedReportIds, mergedReportSnapshots,
   ]);
 
   const selectedCase = useMemo(
@@ -237,6 +260,79 @@ export function NewLogForm({
   const priorManpower = caseId ? priorManpowerByCase?.[caseId] ?? 0 : 0;
   const todayTotalNum = todayTotal ? Number(todayTotal) : 0;
   const accumulatedTotalNum = priorManpower + (Number.isFinite(todayTotalNum) ? todayTotalNum : 0);
+
+  // 工別 / 機具 名稱 → 之前累計(目前案件)
+  const priorSubMap = caseId ? priorSubcontractorByCase?.[caseId] : undefined;
+  const priorMachineMap = caseId ? priorMachineByCase?.[caseId] : undefined;
+
+  // 算「之前 N」+「本日 M」= 累計值。空白 trade 視為 0。
+  const accumulatedSubcontractor = (s: DailyLogSubcontractor) => {
+    const k = subcontractorKey(s.trade);
+    const prior = k ? priorSubMap?.[k] ?? 0 : 0;
+    const today =
+      typeof s.today === "number" && Number.isFinite(s.today) ? s.today : 0;
+    return { prior, today, total: prior + today };
+  };
+  const accumulatedMachine = (m: DailyLogMachine) => {
+    const k = subcontractorKey(m.name);
+    const prior = k ? priorMachineMap?.[k] ?? 0 : 0;
+    const today =
+      typeof m.today === "number" && Number.isFinite(m.today) ? m.today : 0;
+    return { prior, today, total: prior + today };
+  };
+
+  const subcontractorCols = useMemo<ColumnDef<DailyLogSubcontractor>[]>(
+    () => [
+      { key: "trade", label: "工別", required: true, placeholder: "例:泥作" },
+      { key: "today", label: "本日人數", type: "number", inputMode: "numeric" },
+      {
+        key: "accumulated",
+        label: "累計人數",
+        compute: (row) => {
+          const k = subcontractorKey(row.trade);
+          if (!k) return null;
+          return accumulatedSubcontractor(row).total;
+        },
+        computeHint: (row) => {
+          const k = subcontractorKey(row.trade);
+          if (!k) return "輸入工別後自動加總";
+          const { prior, today } = accumulatedSubcontractor(row);
+          return `之前 ${prior} 人次 + 本日 ${today}`;
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [priorSubMap],
+  );
+
+  const machineCols = useMemo<ColumnDef<DailyLogMachine>[]>(
+    () => [
+      { key: "name", label: "機具名稱", required: true, placeholder: "例:切割機" },
+      {
+        key: "today",
+        label: "本日使用數量",
+        type: "number",
+        inputMode: "numeric",
+      },
+      {
+        key: "accumulated",
+        label: "累計使用數量",
+        compute: (row) => {
+          const k = subcontractorKey(row.name);
+          if (!k) return null;
+          return accumulatedMachine(row).total;
+        },
+        computeHint: (row) => {
+          const k = subcontractorKey(row.name);
+          if (!k) return "輸入機具名稱後自動加總";
+          const { prior, today } = accumulatedMachine(row);
+          return `之前 ${prior} + 本日 ${today}`;
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [priorMachineMap],
+  );
 
   // 表報編號需要 案件 + 日期 + 當日序號(NN)
   // 編輯模式直接用後端算好的 currentDaySeq;新建模式用 dayLogCounts 算 +1
@@ -261,6 +357,24 @@ export function NewLogForm({
     setSelectedReportIds(new Set());
   }
 
+  // 從已合併進來的現場回報中,挑出「曾被併入但目前不在 photos 裡」的照片;
+  // 給使用者一個「加回來」的退路(避免不小心刪掉就再也找不到)
+  const missingMergedPhotos = useMemo(() => {
+    if (mergedReportSnapshots.length === 0) return [];
+    const havePaths = new Set(photos.map((p) => p.path));
+    const seen = new Set<string>();
+    const out: { path: string; caption: string }[] = [];
+    for (const r of mergedReportSnapshots) {
+      for (const p of r.photos) {
+        if (havePaths.has(p.path)) continue;
+        if (seen.has(p.path)) continue;
+        seen.add(p.path);
+        out.push({ path: p.path, caption: p.caption ?? "" });
+      }
+    }
+    return out;
+  }, [mergedReportSnapshots, photos]);
+
   // 該案件下未合併過、且使用者本次也還沒勾過合併的回報
   const availableReports = useMemo<PendingFieldReport[]>(() => {
     if (!caseId) return [];
@@ -283,7 +397,7 @@ export function NewLogForm({
     if (picked.length === 0) return;
 
     function fmtTs(iso: string) {
-      return new Date(iso).toLocaleString("zh-TW", {
+      return formatTW(iso, {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -350,6 +464,7 @@ export function NewLogForm({
 
     // 3. 紀錄已合併的 report ids,送出時帶到 server action
     setMergedReportIds((prev) => [...prev, ...picked.map((r) => r.id)]);
+    setMergedReportSnapshots((prev) => [...prev, ...picked]);
     setSelectedReportIds(new Set());
     setReportDest(new Map());
   }
@@ -440,10 +555,10 @@ export function NewLogForm({
         localStorage.removeItem(draftKey);
       } catch {}
     }
-    router.push("/logs");
+    router.push(logId ? `/logs/${logId}` : "/logs");
   }
 
-  function submit(intent: "draft" | "submit") {
+  function submit(intent: "draft" | "submit" | "post_edit") {
     setError(null);
     if (!caseId) {
       setError("請選擇案件");
@@ -482,6 +597,16 @@ export function NewLogForm({
         setError((e as Error).message);
         return;
       }
+      // 把計算出的累計值寫進 row,讓存進 DB / 報表 / PDF 看的都是自動加總
+      const subcontractorsToSave = subcontractors.map((s) => ({
+        ...s,
+        accumulated: accumulatedSubcontractor(s).total,
+      }));
+      const machinesToSave = machines.map((m) => ({
+        ...m,
+        accumulated: accumulatedMachine(m).total,
+      }));
+
       const res = await saveLogAction({
         logId,
         caseId,
@@ -490,8 +615,8 @@ export function NewLogForm({
         manpower: {
           today_total: todayTotal ? Number(todayTotal) : undefined,
           accumulated_total: todayTotal ? accumulatedTotalNum : undefined,
-          subcontractors,
-          machines,
+          subcontractors: subcontractorsToSave,
+          machines: machinesToSave,
         },
         workItems: picked,
         extraItems: extras,
@@ -600,7 +725,7 @@ export function NewLogForm({
               const checked = selectedReportIds.has(r.id);
               const hasText = r.note.trim().length > 0;
               const dest = reportDest.get(r.id) ?? defaultDestFor(r);
-              const ts = new Date(r.createdAt).toLocaleString("zh-TW", {
+              const ts = formatTW(r.createdAt, {
                 month: "2-digit",
                 day: "2-digit",
                 hour: "2-digit",
@@ -793,7 +918,7 @@ export function NewLogForm({
             rows={subcontractors}
             onChange={setSubcontractors}
             empty={EMPTY_SUBCONTRACTOR}
-            columns={SUBCONTRACTOR_COLS}
+            columns={subcontractorCols}
             addLabel="+ 新增工別"
             emptyHint="今天沒有外包工別就先留空"
           />
@@ -801,7 +926,7 @@ export function NewLogForm({
             rows={machines}
             onChange={setMachines}
             empty={EMPTY_MACHINE}
-            columns={MACHINE_COLS}
+            columns={machineCols}
             addLabel="+ 新增機具"
             emptyHint="今天沒有機具使用就先留空"
           />
@@ -876,23 +1001,32 @@ export function NewLogForm({
           </div>
         )}
         {photos.length > 0 && (
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
             {photos.map((p) => (
               <div
                 key={p.path}
                 className="overflow-hidden rounded-md border border-[#E0DCD6] bg-white"
               >
-                <div className="relative aspect-square bg-[#F5F1EC]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.path}
-                    alt={p.caption || ""}
-                    className="h-full w-full object-cover"
-                  />
+                {/* 手機:固定 160px 高、object-contain 不裁切(跟現場回報一樣) */}
+                {/* 桌機:維持 1:1 grid 整齊感,object-cover 填滿 */}
+                <div className="relative h-40 bg-[#F5F1EC] md:aspect-square md:h-auto">
+                  <button
+                    type="button"
+                    onClick={() => setLightboxPath(p.path)}
+                    className="block h-full w-full cursor-zoom-in"
+                    aria-label="放大檢視"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.path}
+                      alt={p.caption || ""}
+                      className="block h-full w-full object-contain md:object-cover"
+                    />
+                  </button>
                   <button
                     type="button"
                     onClick={() => removePhoto(p.path)}
-                    className="absolute right-1 top-1 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-xs text-white hover:bg-black/80"
+                    className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-full bg-black/60 text-base text-white hover:bg-black/80"
                     aria-label="刪除"
                   >
                     ×
@@ -909,6 +1043,44 @@ export function NewLogForm({
             ))}
           </div>
         )}
+
+        {/* 從合併進來的現場回報但被刪掉的照片 — 給「不小心刪掉、想加回來」的退路 */}
+        {missingMergedPhotos.length > 0 && (
+          <div className="mt-4 rounded-md border border-dashed border-[#FDE68A] bg-[#FFFBEB] p-3">
+            <div className="mb-2 text-xs text-[#92400E]">
+              從合併進來的現場回報移除過的照片 ({missingMergedPhotos.length}) — 不小心刪掉的可以再加回來
+            </div>
+            <ul className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {missingMergedPhotos.map((p) => (
+                <li
+                  key={p.path}
+                  className="overflow-hidden rounded-md border border-[#E8DFD3] bg-white"
+                >
+                  <div className="relative h-24 bg-[#F5F1EC]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.path}
+                      alt={p.caption}
+                      className="h-full w-full object-cover opacity-70"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPhotos((prev) => [
+                        ...prev,
+                        { path: p.path, caption: p.caption },
+                      ])
+                    }
+                    className="block w-full border-t border-[#F0EBE4] bg-white px-2 py-1.5 text-xs font-medium text-accent hover:bg-[#FAF7F2]"
+                  >
+                    + 加回來
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Section>
 
       <Section title="六、重要事項紀錄">
@@ -921,30 +1093,32 @@ export function NewLogForm({
         />
       </Section>
 
-      <Section title="填表人簽名" hint={`填表人:${currentUserName}。送出核定前請在下方手寫簽名;只儲存草稿可不簽。`}>
-        <div
-          className="rounded-md border border-[#E0DCD6] bg-white"
-          style={{ touchAction: "none" }}
-        >
-          <SignatureCanvas
-            ref={sigRef}
-            penColor="#003153"
-            canvasProps={{
-              className: "w-full",
-              style: { width: "100%", height: "220px", touchAction: "none" },
-            }}
-          />
-        </div>
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={clearSig}
-            className="text-xs text-muted-foreground hover:text-accent"
+      {editMode === "classic" && (
+        <Section title="填表人簽名" hint={`填表人:${currentUserName}。送出核定前請在下方手寫簽名;只儲存草稿可不簽。`}>
+          <div
+            className="rounded-md border border-[#E0DCD6] bg-white"
+            style={{ touchAction: "none" }}
           >
-            清除重簽
-          </button>
-        </div>
-      </Section>
+            <SignatureCanvas
+              ref={sigRef}
+              penColor="#003153"
+              canvasProps={{
+                className: "w-full",
+                style: { width: "100%", height: "220px", touchAction: "none" },
+              }}
+            />
+          </div>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={clearSig}
+              className="text-xs text-muted-foreground hover:text-accent"
+            >
+              清除重簽
+            </button>
+          </div>
+        </Section>
+      )}
 
       {error && (
         <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
@@ -959,7 +1133,9 @@ export function NewLogForm({
       )}
 
       <NextStepHint tone="info">
-        「儲存草稿」可以晚點再回來填,只有你看得到。「送出核定」會通知老闆,送出後若要改要等被退回或請主管退回。
+        {editMode === "post-submission"
+          ? "這份日誌已送出,你的編輯會記錄一筆軌跡(誰、何時、改了哪些欄位),不會重啟簽核流程也不需要重新簽名。"
+          : "「儲存草稿」可以晚點再回來填,只有你看得到。「送出核定」會通知老闆,送出後若要改要等被退回或請主管退回。"}
       </NextStepHint>
 
       {/* 動作 — 手機 sticky 緊貼底部 tab bar 上緣;桌機自然落地 */}
@@ -976,25 +1152,44 @@ export function NewLogForm({
           取消
         </Button>
         <div className="flex flex-wrap gap-3">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => submit("draft")}
-            disabled={isPending || uploading}
-            className="border-[#E0DCD6]"
-          >
-            {isPending ? "儲存中…" : "儲存草稿"}
-          </Button>
-          <Button
-            type="button"
-            onClick={() => submit("submit")}
-            disabled={isPending || uploading}
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            {isPending ? "送出中…" : "送出核定"}
-          </Button>
+          {editMode === "classic" ? (
+            <>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => submit("draft")}
+                disabled={isPending || uploading}
+                className="border-[#E0DCD6]"
+              >
+                {isPending ? "儲存中…" : "儲存草稿"}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => submit("submit")}
+                disabled={isPending || uploading}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                {isPending ? "送出中…" : "送出核定"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => submit("post_edit")}
+              disabled={isPending || uploading}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isPending ? "儲存中…" : "儲存編輯"}
+            </Button>
+          )}
         </div>
       </div>
+
+      <PhotoLightbox
+        photos={photos.map((p) => p.path)}
+        path={lightboxPath}
+        onChange={setLightboxPath}
+      />
     </div>
   );
 }
@@ -1161,6 +1356,8 @@ type StoredDraft = {
   photos?: LogPhoto[];
   vendorNotices?: string;
   notes?: string;
+  mergedReportIds?: string[];
+  mergedReportSnapshots?: PendingFieldReport[];
 };
 
 function readStoredDraft(draftKey: string | null): StoredDraft | null {
@@ -1307,14 +1504,3 @@ const UNSIGNED_COLS: ColumnDef<DailyLogUnsignedItem>[] = [
 const EMPTY_SUBCONTRACTOR: DailyLogSubcontractor = { trade: "" };
 const EMPTY_MACHINE: DailyLogMachine = { name: "" };
 
-const SUBCONTRACTOR_COLS: ColumnDef<DailyLogSubcontractor>[] = [
-  { key: "trade", label: "工別", required: true, placeholder: "例:泥作" },
-  { key: "today", label: "本日人數", type: "number", inputMode: "numeric" },
-  { key: "accumulated", label: "累計人數", type: "number", inputMode: "numeric" },
-];
-
-const MACHINE_COLS: ColumnDef<DailyLogMachine>[] = [
-  { key: "name", label: "機具名稱", required: true, placeholder: "例:切割機" },
-  { key: "today", label: "本日使用數量", type: "number", inputMode: "numeric" },
-  { key: "accumulated", label: "累計使用數量", type: "number", inputMode: "numeric" },
-];

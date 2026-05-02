@@ -16,6 +16,7 @@ export type CaseFormDefaults = {
   location?: string | null;
   client?: string | null;
   started_at?: string | null;
+  expected_end?: string | null;
   notes?: string | null;
 };
 
@@ -42,7 +43,7 @@ export function CaseFormFields({
         />
       </Field>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         <Field label="案件編號" htmlFor="code" error={fieldErrors?.code?.[0]}>
           <Input
             id="code"
@@ -57,6 +58,18 @@ export function CaseFormFields({
             name="started_at"
             type="date"
             defaultValue={defaults.started_at ?? ""}
+          />
+        </Field>
+        <Field
+          label="預計完工日期"
+          htmlFor="expected_end"
+          error={fieldErrors?.expected_end?.[0]}
+        >
+          <Input
+            id="expected_end"
+            name="expected_end"
+            type="date"
+            defaultValue={defaults.expected_end ?? ""}
           />
         </Field>
       </div>

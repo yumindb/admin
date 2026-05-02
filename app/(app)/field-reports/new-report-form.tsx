@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CasePicker, type CasePickerOption } from "@/components/case-picker";
+import { PhotoLightbox } from "@/components/photo-lightbox";
 import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions";
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
 import type { FieldReportPhoto } from "@/lib/types";
@@ -39,6 +40,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     total: 0,
   });
   const [isPending, startTransition] = useTransition();
+  const [lightboxPath, setLightboxPath] = useState<string | null>(null);
   // 本次階段上傳到 Storage 的 path,使用者按 × 時要連 Storage 一起刪。
   const sessionUploadsRef = useRef<Set<string>>(new Set());
 
@@ -166,12 +168,19 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
               className="overflow-hidden rounded-lg border-2 border-[#E0DCD6] bg-card"
             >
               <div className="relative bg-[#F5F1EC]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={p.path}
-                  alt=""
-                  className="mx-auto block h-40 w-full object-contain"
-                />
+                <button
+                  type="button"
+                  onClick={() => setLightboxPath(p.path)}
+                  className="block h-40 w-full cursor-zoom-in"
+                  aria-label="放大檢視"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.path}
+                    alt=""
+                    className="mx-auto block h-40 w-full object-contain"
+                  />
+                </button>
                 <button
                   type="button"
                   onClick={() => removePhoto(idx)}
@@ -212,6 +221,12 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
           {isPending ? "送出中…" : reportId ? "儲存變更" : "送出回報"}
         </button>
       </div>
+
+      <PhotoLightbox
+        photos={photos.map((p) => p.path)}
+        path={lightboxPath}
+        onChange={setLightboxPath}
+      />
     </div>
   );
 }

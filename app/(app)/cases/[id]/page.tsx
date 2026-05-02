@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import {
   WorkItemsTree,
@@ -10,13 +11,27 @@ import {
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
 import { NextStepHint } from "@/components/next-step-hint";
+import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
+import { normalizeLogPhotos } from "@/lib/daily-log";
 import type {
   Case,
   CaseWorkItem,
   TenderImport,
   DailyLog,
   DailyLogWorkItem,
+  DailyLogExtraItem,
+  DailyLogUnsignedItem,
 } from "@/lib/types";
+
+type ExtraRow = DailyLogExtraItem & {
+  log_id: string;
+  log_date: string;
+};
+
+type UnsignedRow = DailyLogUnsignedItem & {
+  log_id: string;
+  log_date: string;
+};
 
 export default async function CaseDetailPage({
   params,
@@ -47,9 +62,12 @@ export default async function CaseDetailPage({
     // 抓所有送出後或核定的日誌(草稿不計進度)
     supabase
       .from("daily_logs")
-      .select("work_items, status")
+      .select(
+        "id, log_date, work_items, status, extra_items, unsigned_items, photos",
+      )
       .eq("case_id", id)
-      .in("status", ["submitted", "approved"]),
+      .in("status", ["submitted", "approved"])
+      .order("log_date", { ascending: false }),
   ]);
 
   if (caseErr || !caseRow) notFound();
@@ -58,11 +76,23 @@ export default async function CaseDetailPage({
   const importsList = (imports ?? []) as TenderImport[];
   const lastImport = importsList[0];
 
+  type LogForCase = Pick<
+    DailyLog,
+    | "id"
+    | "log_date"
+    | "work_items"
+    | "status"
+    | "extra_items"
+    | "unsigned_items"
+    | "photos"
+  >;
+  const allLogs = (logs ?? []) as LogForCase[];
+
   // 計算每個 work_item 的累計完成量
   // qty_mode = "percent" 時 qty 是 0-1 fraction,要乘上「契約數量」換成絕對值再 sum
   const itemMeta = new Map(items.map((x) => [x.id, x]));
   const progress: ProgressMap = new Map();
-  for (const log of (logs ?? []) as Pick<DailyLog, "work_items" | "status">[]) {
+  for (const log of allLogs) {
     for (const w of (log.work_items ?? []) as DailyLogWorkItem[]) {
       const meta = itemMeta.get(w.work_item_id);
       const total = meta?.quantity ?? null;
@@ -74,6 +104,29 @@ export default async function CaseDetailPage({
         w.work_item_id,
         (progress.get(w.work_item_id) ?? 0) + inc
       );
+    }
+  }
+
+  // 彙整跨所有日誌的「合約外」與「未簽約」項目,附上來源日誌
+  const extraRows: ExtraRow[] = [];
+  const unsignedRows: UnsignedRow[] = [];
+  // 跨所有日誌的照片,日期前綴附在 caption 上,給 PhotoGallery+Lightbox 用
+  const allPhotos: GalleryPhoto[] = [];
+  for (const log of allLogs) {
+    for (const e of (log.extra_items ?? []) as DailyLogExtraItem[]) {
+      extraRows.push({ ...e, log_id: log.id, log_date: log.log_date });
+    }
+    for (const u of (log.unsigned_items ?? []) as DailyLogUnsignedItem[]) {
+      unsignedRows.push({ ...u, log_id: log.id, log_date: log.log_date });
+    }
+    const datePrefix = formatDateTW(log.log_date);
+    for (const p of normalizeLogPhotos(log.photos)) {
+      allPhotos.push({
+        path: p.path,
+        caption: p.caption
+          ? `${datePrefix}・${p.caption}`
+          : datePrefix,
+      });
     }
   }
 
@@ -113,7 +166,13 @@ export default async function CaseDetailPage({
             <span>
               開工：
               {c.started_at
-                ? new Date(c.started_at).toLocaleDateString("zh-TW")
+                ? formatDateTW(c.started_at)
+                : "—"}
+            </span>
+            <span>
+              預計完工：
+              {c.expected_end
+                ? formatDateTW(c.expected_end)
                 : "—"}
             </span>
           </div>
@@ -137,7 +196,7 @@ export default async function CaseDetailPage({
             size="lg"
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
-            <Link href={`/cases/${id}/import`}>上傳標單</Link>
+            <Link href={`/cases/${id}/import`}>匯入工項</Link>
           </Button>
         </div>
       </div>
@@ -151,8 +210,8 @@ export default async function CaseDetailPage({
         />
         <Stat
           label="已登記日誌"
-          value={(logs ?? []).length}
-          accent={(logs ?? []).length > 0}
+          value={allLogs.length}
+          accent={allLogs.length > 0}
         />
         <Stat
           label="分類層"
@@ -170,7 +229,7 @@ export default async function CaseDetailPage({
             最後匯入：
             <span className="ml-1 text-foreground">{lastImport.file_name}</span>
             <span className="ml-3 text-sm">
-              {new Date(lastImport.created_at).toLocaleString("zh-TW")}
+              {formatTW(lastImport.created_at)}
             </span>
             <span className="ml-3 text-sm">
               （新增 {lastImport.imported_count} 項，略過 {lastImport.skipped_count} 項）
@@ -190,7 +249,7 @@ export default async function CaseDetailPage({
       )}
 
       {/* 下一步提示 — 看當前狀態給不同訊息 */}
-      {items.length > 0 && (logs ?? []).length === 0 && (
+      {items.length > 0 && allLogs.length === 0 && (
         <NextStepHint tone="info" className="mb-5">
           工項已建立。請工地主任登入後到「我的日誌」填日誌,送出核定後「累計完成」欄會自動累計。
         </NextStepHint>
@@ -202,21 +261,86 @@ export default async function CaseDetailPage({
 
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
-          <p className="mb-1.5 text-base text-foreground">尚未匯入標單</p>
+          <p className="mb-1.5 text-base text-foreground">尚未匯入工項</p>
           <p className="mb-6 text-sm text-muted-foreground">
-            上傳 .xlsx 標單後，工項會自動建立並依項次階層排列
+            上傳 .xlsx（標單／報價單）後，工項會自動建立並依項次階層排列
           </p>
           <Button
             asChild
             size="lg"
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
-            <Link href={`/cases/${id}/import`}>上傳標單</Link>
+            <Link href={`/cases/${id}/import`}>匯入工項</Link>
           </Button>
         </div>
       ) : (
         <WorkItemsTree items={treeItems} progress={progress} />
       )}
+
+      {/* 跨日誌彙整:照片 */}
+      <div className="mt-10 mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">
+          施工日誌照片
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            共 {allPhotos.length} 張
+          </span>
+        </h2>
+      </div>
+      {allPhotos.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+          目前沒有日誌照片
+        </div>
+      ) : (
+        <PhotoGallery photos={allPhotos} layout="grid" />
+      )}
+
+      {/* 跨日誌彙整:合約外項目 */}
+      <div className="mt-10 mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">
+          合約外項目（非合約內施工）
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            共 {extraRows.length} 筆
+          </span>
+        </h2>
+      </div>
+      <ExtraItemsAggregateTable
+        rows={extraRows}
+        emptyHint="目前沒有日誌登記合約外項目"
+        cols={[
+          { key: "log_date", label: "日期" },
+          { key: "name", label: "施工項目" },
+          { key: "unit", label: "單位" },
+          { key: "qty", label: "數量", align: "right" },
+          { key: "headcount", label: "人數", align: "right" },
+          { key: "location", label: "位置" },
+          { key: "requested_by", label: "甲方交辦" },
+          { key: "reason", label: "事由" },
+        ]}
+      />
+
+      {/* 跨日誌彙整:未簽約項目 */}
+      <div className="mt-10 mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">
+          未簽約施工內容
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            共 {unsignedRows.length} 筆
+          </span>
+        </h2>
+      </div>
+      <ExtraItemsAggregateTable
+        rows={unsignedRows}
+        emptyHint="目前沒有日誌登記未簽約項目"
+        cols={[
+          { key: "log_date", label: "日期" },
+          { key: "name", label: "施工項目" },
+          { key: "unit", label: "單位" },
+          { key: "qty", label: "數量", align: "right" },
+          { key: "headcount", label: "人數", align: "right" },
+          { key: "category", label: "類別" },
+          { key: "quote_amount", label: "報價金額", align: "right" },
+          { key: "reason", label: "事由" },
+        ]}
+      />
 
       {c.notes && (
         <div className="mt-8 rounded-lg border border-[#E0DCD6] bg-card p-6">
@@ -249,6 +373,88 @@ function Stat({
       >
         {value}
       </div>
+    </div>
+  );
+}
+
+type AggregateCol<T> = {
+  key: keyof T & string;
+  label: string;
+  align?: "left" | "right";
+};
+
+function ExtraItemsAggregateTable<
+  T extends { log_id: string; log_date: string },
+>({
+  rows,
+  cols,
+  emptyHint,
+}: {
+  rows: T[];
+  cols: AggregateCol<T>[];
+  emptyHint: string;
+}) {
+  if (!rows.length) {
+    return (
+      <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+        {emptyHint}
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
+      <table className="min-w-full text-base">
+        <thead>
+          <tr className="bg-primary text-primary-foreground">
+            {cols.map((c) => (
+              <th
+                key={c.key}
+                className={`h-12 px-4 text-sm font-medium tracking-wider ${
+                  c.align === "right" ? "text-right" : "text-left"
+                }`}
+              >
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b border-[#E0DCD6]">
+              {cols.map((c) => {
+                const v = row[c.key];
+                const display =
+                  v === undefined || v === null || v === ""
+                    ? "—"
+                    : c.key === "log_date"
+                    ? formatDateTW(String(v))
+                    : String(v);
+                return (
+                  <td
+                    key={c.key}
+                    className={`h-14 px-4 align-top ${
+                      c.align === "right"
+                        ? "text-right tabular-nums"
+                        : ""
+                    }`}
+                  >
+                    {c.key === "log_date" ? (
+                      <Link
+                        href={`/logs/${row.log_id}`}
+                        className="text-accent underline-offset-2 hover:underline"
+                      >
+                        {display}
+                      </Link>
+                    ) : (
+                      display
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

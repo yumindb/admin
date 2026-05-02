@@ -24,6 +24,7 @@ import {
   getWeekdayLabel,
   isBackfilledLog,
 } from "@/lib/daily-log";
+import { formatTW } from "@/lib/datetime";
 import type {
   DailyLog,
   DailyLogExtraItem,
@@ -427,7 +428,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
                 </Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.approvalValue}>
-                    {ap.approverName ?? "—"} · {ap.created_at.slice(0, 19).replace("T", " ")}
+                    {ap.approverName ?? "—"} · {formatTW(ap.created_at)}
                   </Text>
                   {ap.comment && (
                     <Text style={[styles.approvalValue, { color: COLORS.muted }]}>

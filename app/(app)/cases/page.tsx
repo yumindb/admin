@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTW } from "@/lib/datetime";
+import { normalizeLogPhotos } from "@/lib/daily-log";
 import { Button } from "@/components/ui/button";
 import type {
   Case,
@@ -10,7 +11,10 @@ import type {
   DailyLogExtraItem,
   DailyLogUnsignedItem,
   DailyLogWorkItem,
+  LogPhoto,
 } from "@/lib/types";
+
+const PHOTO_PREVIEW_MAX = 4;
 
 type StatusFilter = CaseStatus | "all";
 type SortKey = "recent" | "oldest" | "name" | "started";
@@ -41,6 +45,8 @@ type CaseStats = {
   progressPct: number | null;
   extraCount: number;
   unsignedCount: number;
+  photos: LogPhoto[];        // 最近的照片(供 card 顯示縮圖)
+  photoTotal: number;        // 該案件所有照片總數
 };
 
 export default async function CasesOverviewPage({
@@ -49,21 +55,6 @@ export default async function CasesOverviewPage({
   searchParams: Promise<{ status?: string; sort?: string }>;
 }) {
   const supabase = await createClient();
-
-  // 角色導向:supervisor → /logs,owner → /approvals(老闆首頁仍是核定);
-  // office_staff 留在這裡看案件總覽
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (profile?.role === "site_supervisor") redirect("/logs");
-  }
-
   const sp = await searchParams;
   const statusFilter: StatusFilter =
     sp.status === "active" ||
@@ -85,21 +76,31 @@ export default async function CasesOverviewPage({
     supabase.from("cases").select("*"),
     supabase
       .from("case_work_items")
-      .select("id, case_id, item_type, quantity, unit_price, total_price"),
+      .select("id, case_id, item_type, quantity"),
     supabase
       .from("daily_logs")
-      .select("case_id, status, work_items, extra_items, unsigned_items")
-      .in("status", ["submitted", "approved"]),
+      .select(
+        "case_id, status, work_items, extra_items, unsigned_items, photos, log_date",
+      )
+      .in("status", ["submitted", "approved"])
+      .order("log_date", { ascending: false })
+      .order("created_at", { ascending: false }),
   ]);
 
   const allCases = (cases ?? []) as Case[];
   const allItems = (workItems ?? []) as Pick<
     CaseWorkItem,
-    "id" | "case_id" | "item_type" | "quantity" | "unit_price" | "total_price"
+    "id" | "case_id" | "item_type" | "quantity"
   >[];
   const allLogs = (logs ?? []) as Pick<
     DailyLog,
-    "case_id" | "status" | "work_items" | "extra_items" | "unsigned_items"
+    | "case_id"
+    | "status"
+    | "work_items"
+    | "extra_items"
+    | "unsigned_items"
+    | "photos"
+    | "log_date"
   >[];
 
   const itemMetaById = new Map<string, (typeof allItems)[number]>();
@@ -114,26 +115,22 @@ export default async function CasesOverviewPage({
       progressPct: null,
       extraCount: 0,
       unsignedCount: 0,
+      photos: [],
+      photoTotal: 0,
     });
   }
 
-  // 工項數 + 合約總值(僅葉節點:item / spec)
-  const contractValueByCase = new Map<string, number>();
+  // 工項數(僅葉節點:item / spec)
   for (const it of allItems) {
     const s = statsByCase.get(it.case_id);
     if (!s) continue;
     if (it.item_type === "item" || it.item_type === "spec") {
       s.itemCount += 1;
-      const v = it.total_price ?? 0;
-      contractValueByCase.set(
-        it.case_id,
-        (contractValueByCase.get(it.case_id) ?? 0) + v,
-      );
     }
   }
 
-  // 日誌數 / 已登記合約外 / 未簽約 / 已完成價值
-  const doneValueByCase = new Map<string, number>();
+  // 日誌數 / 已登記合約外 / 未簽約 / 累計完成數量(per work item)
+  const doneQtyByItem = new Map<string, number>();
   for (const log of allLogs) {
     if (!log.case_id) continue;
     const s = statsByCase.get(log.case_id);
@@ -142,31 +139,56 @@ export default async function CasesOverviewPage({
     s.extraCount += ((log.extra_items ?? []) as DailyLogExtraItem[]).length;
     s.unsignedCount += ((log.unsigned_items ?? []) as DailyLogUnsignedItem[]).length;
 
+    // 收集照片(logs 已按 log_date desc 排序,photos 自然是新→舊)
+    const photos = normalizeLogPhotos(log.photos);
+    if (photos.length > 0) {
+      s.photoTotal += photos.length;
+      if (s.photos.length < PHOTO_PREVIEW_MAX) {
+        for (const p of photos) {
+          if (s.photos.length >= PHOTO_PREVIEW_MAX) break;
+          s.photos.push(p);
+        }
+      }
+    }
+
     for (const w of (log.work_items ?? []) as DailyLogWorkItem[]) {
       const meta = itemMetaById.get(w.work_item_id);
       if (!meta) continue;
-      const unitPrice = meta.unit_price ?? 0;
-      const totalPrice = meta.total_price ?? 0;
-      // percent mode 下 qty 是 0-1 fraction,直接乘 total_price
-      // absolute mode 下 qty 是自然單位數量,乘 unit_price
-      const value =
-        w.qty_mode === "percent" ? totalPrice * w.qty : unitPrice * w.qty;
-      doneValueByCase.set(
-        log.case_id,
-        (doneValueByCase.get(log.case_id) ?? 0) + value,
+      const total = meta.quantity ?? 0;
+      // percent mode → 還原為絕對量;absolute mode → 直接累加
+      const inc = w.qty_mode === "percent" ? total * w.qty : w.qty;
+      doneQtyByItem.set(
+        w.work_item_id,
+        (doneQtyByItem.get(w.work_item_id) ?? 0) + inc,
       );
     }
   }
 
+  // 進度 = 各葉節點工項完成比例的平均
+  //   - 有契約數量 → min(已完成 / 契約, 1)
+  //   - 沒有契約數量 → 有任何登記算 100%,否則 0%
+  const pctSumByCase = new Map<string, number>();
+  const pctCountByCase = new Map<string, number>();
+  for (const it of allItems) {
+    if (it.item_type !== "item" && it.item_type !== "spec") continue;
+    const total = it.quantity ?? 0;
+    const done = doneQtyByItem.get(it.id) ?? 0;
+    const pct =
+      total > 0 ? Math.min(1, done / total) : done > 0 ? 1 : 0;
+    pctSumByCase.set(it.case_id, (pctSumByCase.get(it.case_id) ?? 0) + pct);
+    pctCountByCase.set(
+      it.case_id,
+      (pctCountByCase.get(it.case_id) ?? 0) + 1,
+    );
+  }
+
   for (const [caseId, s] of statsByCase) {
-    const total = contractValueByCase.get(caseId) ?? 0;
-    const done = doneValueByCase.get(caseId) ?? 0;
-    if (total > 0) {
-      s.progressPct = Math.min(100, Math.round((done / total) * 1000) / 10);
-    } else if (s.itemCount === 0) {
-      s.progressPct = null;
+    const sum = pctSumByCase.get(caseId) ?? 0;
+    const count = pctCountByCase.get(caseId) ?? 0;
+    if (count > 0) {
+      s.progressPct = Math.round((sum / count) * 1000) / 10;
     } else {
-      s.progressPct = 0;
+      s.progressPct = null;
     }
   }
 
@@ -297,6 +319,8 @@ export default async function CasesOverviewPage({
               progressPct: null,
               extraCount: 0,
               unsignedCount: 0,
+              photos: [],
+              photoTotal: 0,
             };
             return <CaseCard key={c.id} c={c} stats={stats} />;
           })}
@@ -358,6 +382,39 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
         </div>
       </div>
 
+      {/* 日誌照片縮圖 — 顯示最近的幾張,點任一張或「+N」進案件頁可看完整 */}
+      {stats.photos.length > 0 && (
+        <Link
+          href={`/logs?case=${c.id}`}
+          className="mt-4 block"
+          title={`此案件目前共 ${stats.photoTotal} 張日誌照片`}
+        >
+          <div className="grid grid-cols-4 gap-1.5">
+            {stats.photos.map((p, i) => (
+              <div
+                key={`${p.path}-${i}`}
+                className="relative aspect-square overflow-hidden rounded-md border border-[#E0DCD6] bg-[#F5F1EC]"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.path}
+                  alt={p.caption || ""}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+                {/* 在最後一格、且還有更多照片時,疊一個 +N 提示 */}
+                {i === stats.photos.length - 1 &&
+                  stats.photoTotal > stats.photos.length && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/55 text-sm font-medium text-white">
+                      +{stats.photoTotal - stats.photos.length}
+                    </div>
+                  )}
+              </div>
+            ))}
+          </div>
+        </Link>
+      )}
+
       {/* 統計列 */}
       <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
         <Link
@@ -410,7 +467,7 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
         <span className="truncate">{c.client || c.company}</span>
         <span>
           {c.started_at
-            ? `開工 ${new Date(c.started_at).toLocaleDateString("zh-TW")}`
+            ? `開工 ${formatDateTW(c.started_at)}`
             : "尚未開工"}
         </span>
       </div>
@@ -424,7 +481,7 @@ function EmptyState() {
       <div className="mb-3 text-5xl text-[#E0DCD6]">＋</div>
       <p className="mb-1.5 text-base text-foreground">還沒有任何案件</p>
       <p className="mb-6 text-sm text-muted-foreground">
-        點下方按鈕開新案,接著上傳標單 .xlsx 自動建立工項
+        點下方按鈕開新案,接著上傳 .xlsx 自動建立工項
       </p>
       <Button
         asChild

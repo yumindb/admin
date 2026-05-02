@@ -227,7 +227,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
       {parsed && (
         <section className="rounded-md border border-[#E0DCD6] bg-card p-4 md:p-5">
           <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-medium text-primary">標單工項預覽</div>
+            <div className="text-sm font-medium text-primary">工項預覽</div>
             <div className="text-xs text-muted-foreground">
               將寫入 {willImportCount} 筆 · 勾略過 {skippedIds.size} 筆
             </div>

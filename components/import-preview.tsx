@@ -132,9 +132,9 @@ export function ImportPreview({ caseId }: { caseId: string }) {
     <div className="space-y-6">
       {/* Step 1: 上傳檔案 */}
       <div className="rounded-lg border border-[#E0DCD6] bg-card p-6 md:p-7">
-        <div className="mb-2 text-base font-semibold text-primary md:text-lg">1. 選擇標單檔</div>
+        <div className="mb-2 text-base font-semibold text-primary md:text-lg">1. 選擇標單／報價單</div>
         <p className="mb-4 text-xs text-muted-foreground">
-          支援 .xlsx 格式（裕民工務 7 欄標單模板）。檔案不會上傳到伺服器，瀏覽器先解析、確認後才寫入資料庫。
+          支援 .xlsx 格式（裕民工務 7 欄標單／報價單模板）。檔案不會上傳到伺服器，瀏覽器先解析、確認後才寫入資料庫。
         </p>
         <input
           type="file"

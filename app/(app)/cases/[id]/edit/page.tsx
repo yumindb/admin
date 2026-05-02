@@ -13,14 +13,21 @@ export default async function EditCasePage({
   const supabase = await createClient();
   const { data: caseRow } = await supabase
     .from("cases")
-    .select("id, name, code, location, client, started_at, notes")
+    .select("id, name, code, location, client, started_at, expected_end, notes")
     .eq("id", id)
     .maybeSingle();
 
   if (!caseRow) notFound();
   const c = caseRow as Pick<
     Case,
-    "id" | "name" | "code" | "location" | "client" | "started_at" | "notes"
+    | "id"
+    | "name"
+    | "code"
+    | "location"
+    | "client"
+    | "started_at"
+    | "expected_end"
+    | "notes"
   >;
 
   return (
@@ -47,6 +54,7 @@ export default async function EditCasePage({
             location: c.location,
             client: c.client,
             started_at: c.started_at,
+            expected_end: c.expected_end,
             notes: c.notes,
           }}
         />

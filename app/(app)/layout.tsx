@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BottomTabNav, type BottomTab } from "@/components/bottom-tab-nav";
+import { LogoutButton } from "@/components/logout-button";
+import { RouteProgress } from "@/components/route-progress";
 import { logoutAction } from "../login/actions";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -42,6 +44,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <RouteProgress />
       <header className="border-b border-[#E0DCD6] bg-primary text-primary-foreground">
         <div className="flex h-16 items-center justify-between px-4 md:px-8">
           <div className="flex items-center gap-8">
@@ -78,12 +81,7 @@ export default async function AppLayout({
               </div>
             </div>
             <form action={logoutAction}>
-              <button
-                type="submit"
-                className="rounded-md border border-[#A07850]/40 px-3 py-2 text-sm text-[#E8E4DE] transition-colors hover:bg-white/5"
-              >
-                登出
-              </button>
+              <LogoutButton />
             </form>
           </div>
         </div>

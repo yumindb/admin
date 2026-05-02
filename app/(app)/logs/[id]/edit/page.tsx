@@ -4,7 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption, type PendingFieldReport } from "../../new/new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
 import type { DailyLog, DailyLogWorkItem, FieldReport } from "@/lib/types";
-import { parseWeather, computeManpowerByCase, normalizeLogPhotos } from "@/lib/daily-log";
+import {
+  parseWeather,
+  computeManpowerByCase,
+  computeSubcontractorTotalsByCase,
+  computeMachineTotalsByCase,
+  normalizeLogPhotos,
+} from "@/lib/daily-log";
+import { formatDateTW } from "@/lib/datetime";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 
 export default async function EditLogPage({
@@ -31,11 +38,29 @@ export default async function EditLogPage({
     .select("full_name, role")
     .eq("id", user!.id)
     .maybeSingle();
-  if (profile?.role !== "site_supervisor" && profile?.role !== "owner") {
-    redirect("/logs");
+
+  // 編輯權限分三條:
+  //   1. supervisor 本人 + draft/rejected → 「主流程編輯」(會重新送出 + 簽名)
+  //   2. supervisor 本人 + submitted     → 「送出後編輯」(silent, audit-only)
+  //   3. office_staff / owner + submitted/rejected → 「送出後編輯」(silent, audit-only)
+  // approved 一律不可編輯。
+  if (l.status === "approved") redirect(`/logs/${id}`);
+
+  const role = profile?.role ?? null;
+  const isSelf = l.supervisor_id === user!.id;
+
+  let editMode: "classic" | "post-submission";
+  if (role === "site_supervisor" && isSelf && (l.status === "draft" || l.status === "rejected")) {
+    editMode = "classic";
+  } else if (
+    (role === "site_supervisor" && isSelf && l.status === "submitted") ||
+    (role === "office_staff" && (l.status === "submitted" || l.status === "rejected")) ||
+    (role === "owner" && (l.status === "submitted" || l.status === "rejected"))
+  ) {
+    editMode = "post-submission";
+  } else {
+    redirect(`/logs/${id}`);
   }
-  if (l.supervisor_id !== user!.id) redirect(`/logs/${id}`);
-  if (l.status !== "draft" && l.status !== "rejected") redirect(`/logs/${id}`);
 
   const { data: cases } = await supabase
     .from("cases")
@@ -114,6 +139,26 @@ export default async function EditLogPage({
     })),
     id,
   );
+  const priorSubcontractorByCase = computeSubcontractorTotalsByCase(
+    (priorRows ?? []).map((r) => ({
+      id: r.id as string,
+      case_id: r.case_id as string,
+      subcontractors:
+        (r.manpower as { subcontractors?: { trade?: string; today?: number }[] } | null)
+          ?.subcontractors ?? [],
+    })),
+    id,
+  );
+  const priorMachineByCase = computeMachineTotalsByCase(
+    (priorRows ?? []).map((r) => ({
+      id: r.id as string,
+      case_id: r.case_id as string,
+      machines:
+        (r.manpower as { machines?: { name?: string; today?: number }[] } | null)
+          ?.machines ?? [],
+    })),
+    id,
+  );
 
   // 撈該案件的 pending 現場回報
   const { data: reportRows } = await supabase
@@ -152,20 +197,29 @@ export default async function EditLogPage({
         </Link>
         <span className="mx-1.5">／</span>
         <Link href={`/logs/${id}`} className="hover:text-accent">
-          {new Date(l.log_date).toLocaleDateString("zh-TW")}
+          {formatDateTW(l.log_date)}
         </Link>
         <span className="mx-1.5">／</span>
         <span>編輯</span>
       </nav>
-      <h1 className="mb-7 text-2xl font-semibold text-primary md:text-3xl">編輯日誌</h1>
+      <h1 className="mb-2 text-2xl font-semibold text-primary md:text-3xl">編輯日誌</h1>
+      {editMode === "post-submission" && (
+        <p className="mb-7 text-sm text-muted-foreground">
+          此日誌已送出({l.status === "rejected" ? "已退回" : "簽核中"}),這次的編輯會記錄誰在何時改了哪些欄位,但不會重啟簽核流程也不需要重新簽名。已核定的日誌不開放編輯。
+        </p>
+      )}
+      {editMode === "classic" && <div className="mb-7" />}
 
       <NewLogForm
+        editMode={editMode}
         cases={caseOptions}
         currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
         logId={id}
         currentDaySeq={currentDaySeq}
         priorAggregates={aggregates}
         priorManpowerByCase={priorManpowerByCase}
+        priorSubcontractorByCase={priorSubcontractorByCase}
+        priorMachineByCase={priorMachineByCase}
         pendingReportsByCase={pendingReportsByCase}
         initial={{
           caseId: l.case_id,

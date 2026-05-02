@@ -13,6 +13,7 @@ const EditCaseSchema = z.object({
   location: z.string().trim().max(200).optional().or(z.literal("")),
   client: z.string().trim().max(120).optional().or(z.literal("")),
   started_at: z.string().trim().optional().or(z.literal("")),
+  expected_end: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
@@ -37,6 +38,7 @@ export async function updateCaseAction(
       location: data.location || null,
       client: data.client || null,
       started_at: data.started_at || null,
+      expected_end: data.expected_end || null,
       notes: data.notes || null,
     })
     .eq("id", caseId);

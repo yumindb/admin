@@ -84,15 +84,52 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
     return m;
   }, [value]);
 
-  // 已選工項的「樹順序」— 用 sort_path 不存在但可以用 items 原本順序近似
+  // 已完成的工項不再顯示在選擇器中(歷史累計已達標單量或 100%)。
+  // 1) leaf:isWorkItemCompleted = false 才放進 set
+  // 2) section:有任一 renderable 後代就放進(否則整節隱藏,避免顯示空 section)
+  const renderableIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      if (it.itemType !== "section") {
+        if (!isWorkItemCompleted(it, aggregates?.[it.id])) set.add(it.id);
+      }
+    }
+    const sectionDecided = new Set<string>();
+    function decide(id: string) {
+      if (sectionDecided.has(id)) return;
+      sectionDecided.add(id);
+      const kids = byParent.get(id) ?? [];
+      let hasVisible = false;
+      for (const k of kids) {
+        if (k.itemType === "section") decide(k.id);
+        if (set.has(k.id)) hasVisible = true;
+      }
+      if (hasVisible) set.add(id);
+    }
+    for (const it of items) {
+      if (it.itemType === "section") decide(it.id);
+    }
+    return set;
+  }, [items, byParent, aggregates]);
+
+  // 已選工項的「樹順序」— 用 sort_path 不存在但可以用 items 原本順序近似。
+  // 同時計算每個項目的祖先名稱鏈,讓卡片顯示「電氣 › 配線管路 › PVC 管」這種上下文,
+  // 避免最終工項名只是「1/2" (E19)」這種看不出類別的情況。
   const selectedInOrder = useMemo(() => {
-    const out: { item: PickerItem; value: PickerValue }[] = [];
+    const out: { item: PickerItem; value: PickerValue; parentPath: string[] }[] = [];
     for (const it of items) {
       const v = valueMap.get(it.id);
-      if (v) out.push({ item: it, value: v });
+      if (!v) continue;
+      const path: string[] = [];
+      let cur = it.parentId ? itemMap.get(it.parentId) : null;
+      while (cur) {
+        path.unshift(cur.name);
+        cur = cur.parentId ? itemMap.get(cur.parentId) : null;
+      }
+      out.push({ item: it, value: v, parentPath: path });
     }
     return out;
-  }, [items, valueMap]);
+  }, [items, valueMap, itemMap]);
 
   const visibleIds = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -136,15 +173,12 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
   }
 
   function setQty(id: string, qty: number | null) {
-    const next = value.filter((v) => v.work_item_id !== id);
-    if (qty !== null && qty > 0) {
-      const existing = value.find((v) => v.work_item_id === id);
-      next.push({
-        work_item_id: id,
-        qty,
-        qty_mode: existing?.qty_mode,
-      });
-    }
+    // 數量改 0 不會自動移除(改動由 trash 按鈕觸發);保留條目讓使用者可以再加回去
+    const idx = value.findIndex((v) => v.work_item_id === id);
+    if (idx < 0) return;
+    const safe = qty === null || !Number.isFinite(qty) || qty < 0 ? 0 : qty;
+    const next = [...value];
+    next[idx] = { ...next[idx], qty: safe };
     onChange(next);
   }
 
@@ -180,34 +214,45 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
     patchValue(id, { qty_mode: nextMode, qty: nextQty });
   }
 
-  const initialExpanded = useMemo(() => {
-    const set = new Set<string>();
-    for (const it of items) {
-      if (it.itemType === "section") set.add(it.id);
-    }
-    return set;
-  }, [items]);
-  const [expanded, setExpanded] = useState<Set<string>>(initialExpanded);
+  // 用「collapsed set」(被折疊的)而不是「expanded set」(被展開的):
+  //   - 預設全部展開,使用者要看哪一節時不用先點(除非他自己折起來過)
+  //   - 切換案件時不會留下 stale 舊 IDs 影響新案件的預設展開狀態
+  //   - 點開單通道時自動把整條 single-section 子鏈也撤掉折疊,省下逐層點擊
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleExpand = (id: string) =>
-    setExpanded((p) => {
-      const n = new Set(p);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        // 展開:也把下方單通道整條一併展開(只有一個 section 子節點 → 跟著撤掉折疊)
+        next.delete(id);
+        let cur = id;
+        while (true) {
+          const kids = byParent.get(cur) ?? [];
+          if (kids.length === 1 && kids[0].itemType === "section") {
+            next.delete(kids[0].id);
+            cur = kids[0].id;
+          } else {
+            break;
+          }
+        }
+      } else {
+        next.add(id);
+      }
+      return next;
     });
 
   if (!items.length) {
     return (
       <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-4 py-10 text-center text-base text-muted-foreground">
-        此案件還沒匯入標單,請先請辦公室助理上傳標單
+        此案件還沒匯入工項,請先請辦公室助理匯入
       </div>
     );
   }
 
   const roots = byParent.get(null) ?? [];
-  const visibleRoots = visibleIds
-    ? roots.filter((r) => visibleIds.has(r.id))
-    : roots;
+  const visibleRoots = roots.filter(
+    (r) => renderableIds.has(r.id) && (!visibleIds || visibleIds.has(r.id)),
+  );
 
   return (
     <div className="space-y-4">
@@ -230,10 +275,11 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
             </button>
           </div>
           <ul className="space-y-2">
-            {selectedInOrder.map(({ item, value: v }) => (
+            {selectedInOrder.map(({ item, value: v, parentPath }) => (
               <li key={item.id}>
                 <SelectedItemCard
                   item={item}
+                  parentPath={parentPath}
                   value={v}
                   aggregate={aggregates?.[item.id]}
                   onChangeQty={(qty) => setQty(item.id, qty)}
@@ -256,7 +302,7 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
           <span>
             {selectedInOrder.length > 0 ? "+ 加更多工項" : "選擇工項"}
             <span className="ml-2 text-sm font-normal text-muted-foreground">
-              （從標單裡挑）
+              （從匯入的工項挑）
             </span>
           </span>
           <span className="shrink-0 text-muted-foreground transition-transform duration-150 [details[open]_&]:rotate-180">
@@ -281,6 +327,7 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
             valueMap={valueMap}
             onToggle={toggle}
             query={query}
+            renderableIds={renderableIds}
           />
         </div>
 
@@ -296,8 +343,9 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
                 key={r.id}
                 node={r}
                 byParent={byParent}
-                expanded={expanded}
+                collapsed={collapsed}
                 visibleIds={visibleIds}
+                renderableIds={renderableIds}
                 forceExpand={query.trim().length > 0}
                 onToggleExpand={toggleExpand}
                 valueMap={valueMap}
@@ -317,6 +365,7 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
 
 function SelectedItemCard({
   item,
+  parentPath,
   value: v,
   aggregate,
   onChangeQty,
@@ -324,6 +373,7 @@ function SelectedItemCard({
   onRemove,
 }: {
   item: PickerItem;
+  parentPath: string[];
   value: PickerValue;
   aggregate?: WorkItemAggregate;
   onChangeQty: (qty: number) => void;
@@ -403,6 +453,11 @@ function SelectedItemCard({
       {/* 第一列:工項名 + 移除 */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
+          {parentPath.length > 0 && (
+            <div className="mb-0.5 break-words text-xs leading-tight text-muted-foreground">
+              {parentPath.join(" › ")}
+            </div>
+          )}
           <div className="break-words text-base font-semibold leading-snug text-primary">
             {item.name}
           </div>
@@ -412,7 +467,7 @@ function SelectedItemCard({
             )}
             {item.totalQuantity !== null && (
               <span>
-                · 標單 {item.totalQuantity}
+                · 共 {item.totalQuantity}
                 {item.unit ? ` ${item.unit}` : ""}
               </span>
             )}
@@ -561,8 +616,9 @@ function ModeSegment({
 function BrowseRow({
   node,
   byParent,
-  expanded,
+  collapsed,
   visibleIds,
+  renderableIds,
   forceExpand,
   onToggleExpand,
   valueMap,
@@ -570,21 +626,29 @@ function BrowseRow({
 }: {
   node: PickerItem;
   byParent: Map<string | null, PickerItem[]>;
-  expanded: Set<string>;
+  collapsed: Set<string>;
   visibleIds: Set<string> | null;
+  renderableIds: Set<string>;
   forceExpand: boolean;
   onToggleExpand: (id: string) => void;
   valueMap: Map<string, PickerValue>;
   onToggle: (id: string, checked: boolean) => void;
 }) {
   const children = (byParent.get(node.id) ?? []).filter(
-    (child) => !visibleIds || visibleIds.has(child.id)
+    (child) =>
+      renderableIds.has(child.id) &&
+      (!visibleIds || visibleIds.has(child.id)),
   );
   const hasChildren = children.length > 0;
-  const isOpen = forceExpand || expanded.has(node.id);
+  // collapsed set 模式:預設展開,只有被使用者主動折疊的才在 set 裡。
+  const isOpen = forceExpand || !collapsed.has(node.id);
   const isSection = node.itemType === "section";
 
   const checked = valueMap.has(node.id);
+  // 該節含有幾個被選的後代工項(只在 section 顯示「已選 N」標籤,跟手機版同邏輯)
+  const selectedDescendantCount = isSection
+    ? countSelectedDescendants(byParent, node.id, valueMap)
+    : 0;
 
   const handleRowClick = () => {
     if (isSection) {
@@ -668,6 +732,11 @@ function BrowseRow({
             ✓ 已選
           </span>
         )}
+        {isSection && selectedDescendantCount > 0 && (
+          <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-xs font-medium text-[#4A7C59]">
+            已選 {selectedDescendantCount}
+          </span>
+        )}
       </div>
 
       {hasChildren && isOpen
@@ -676,8 +745,9 @@ function BrowseRow({
               key={c.id}
               node={c}
               byParent={byParent}
-              expanded={expanded}
+              collapsed={collapsed}
               visibleIds={visibleIds}
+              renderableIds={renderableIds}
               forceExpand={forceExpand}
               onToggleExpand={onToggleExpand}
               valueMap={valueMap}
@@ -699,20 +769,23 @@ function MobileBrowseView({
   valueMap,
   onToggle,
   query,
+  renderableIds,
 }: {
   items: PickerItem[];
   byParent: Map<string | null, PickerItem[]>;
   valueMap: Map<string, PickerValue>;
   onToggle: (id: string, checked: boolean) => void;
   query: string;
+  renderableIds: Set<string>;
 }) {
   const [path, setPath] = useState<PickerItem[]>([]);
 
-  // 搜尋中:忽略 path,顯示扁平結果(只可勾選的 item / spec / manual)
+  // 搜尋中:忽略 path,顯示扁平結果(只可勾選的 item / spec / manual,且已完成的不顯示)
   if (query.trim()) {
     const q = query.trim().toLowerCase();
     const matches = items.filter((it) => {
       if (it.itemType === "section") return false;
+      if (!renderableIds.has(it.id)) return false;
       const haystack = `${it.tenderCode ?? ""} ${it.name} ${it.unit ?? ""}`.toLowerCase();
       return haystack.includes(q);
     });
@@ -747,7 +820,10 @@ function MobileBrowseView({
     effectivePath.length === 0
       ? null
       : effectivePath[effectivePath.length - 1].id;
-  const currentChildren = byParent.get(currentParentId) ?? [];
+  // 已完成的工項(以及只剩已完成工項的 section)在這一層也不顯示
+  const currentChildren = (byParent.get(currentParentId) ?? []).filter((c) =>
+    renderableIds.has(c.id),
+  );
 
   return (
     <div>
@@ -889,6 +965,24 @@ function MobileItemRow({
       </button>
     </li>
   );
+}
+
+/**
+ * 工項是否已完成(歷史累計達 100% 或標單量) — 完成的就不再讓使用者勾選。
+ *   - percent 模式:total >= 1
+ *   - absolute 模式:有 totalQuantity 才能判斷,total >= totalQuantity 視為完成
+ *   - 沒 aggregate(從沒填過):一定不算完成
+ */
+function isWorkItemCompleted(
+  item: PickerItem,
+  agg: WorkItemAggregate | undefined,
+): boolean {
+  if (!agg) return false;
+  if (agg.mode === "percent") return agg.total >= 1;
+  if (agg.mode === "absolute" && item.totalQuantity != null) {
+    return agg.total >= item.totalQuantity;
+  }
+  return false;
 }
 
 /**

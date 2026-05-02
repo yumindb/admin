@@ -108,6 +108,71 @@ export function computeManpowerByCase(
   return result;
 }
 
+/** 字串正規化作為 trade / machine name 的查詢 key:trim + lowercase。
+ *  允許使用者打字時大小寫或前後空白不同也能對到同一筆 */
+function normalizeNameKey(s: string | null | undefined): string {
+  return (s ?? "").trim().toLowerCase();
+}
+
+/**
+ * 從歷史日誌算各案件「之前已累計的外包工別人次」。
+ * 結構:case_id → trade_name_lower → 累計 today 加總。
+ */
+export function computeSubcontractorTotalsByCase(
+  logs: {
+    id: string;
+    case_id: string;
+    subcontractors: { trade?: string | null; today?: number | null }[];
+  }[],
+  excludeId?: string,
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const l of logs) {
+    if (excludeId && l.id === excludeId) continue;
+    const caseMap = out[l.case_id] ?? {};
+    for (const s of l.subcontractors ?? []) {
+      const key = normalizeNameKey(s.trade);
+      if (!key) continue;
+      const n =
+        typeof s.today === "number" && Number.isFinite(s.today) ? s.today : 0;
+      caseMap[key] = (caseMap[key] ?? 0) + n;
+    }
+    out[l.case_id] = caseMap;
+  }
+  return out;
+}
+
+/**
+ * 從歷史日誌算各案件「之前已累計的機具使用數量」。
+ * 結構:case_id → machine_name_lower → 累計 today 加總。
+ */
+export function computeMachineTotalsByCase(
+  logs: {
+    id: string;
+    case_id: string;
+    machines: { name?: string | null; today?: number | null }[];
+  }[],
+  excludeId?: string,
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const l of logs) {
+    if (excludeId && l.id === excludeId) continue;
+    const caseMap = out[l.case_id] ?? {};
+    for (const m of l.machines ?? []) {
+      const key = normalizeNameKey(m.name);
+      if (!key) continue;
+      const n =
+        typeof m.today === "number" && Number.isFinite(m.today) ? m.today : 0;
+      caseMap[key] = (caseMap[key] ?? 0) + n;
+    }
+    out[l.case_id] = caseMap;
+  }
+  return out;
+}
+
+/** 給前端 form 用的 trade / machine 名稱查詢 key 正規化函式 */
+export const subcontractorKey = normalizeNameKey;
+
 export function buildReportNumber(opts: {
   caseCode: string | null;
   logDate: string; // "YYYY-MM-DD"

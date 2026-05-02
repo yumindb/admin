@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { BulkPdfDownloadButton } from "@/components/bulk-pdf-download-button";
 import { formatWeatherSummary, isBackfilledLog } from "@/lib/daily-log";
+import { formatDateTW } from "@/lib/datetime";
 import type { DailyLog, LogStatus } from "@/lib/types";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -178,7 +179,7 @@ export default async function LogsPage({
                         <span>共 {g.logs.length} 筆</span>
                         <span aria-hidden>·</span>
                         <span>
-                          最後 {new Date(g.latestDate).toLocaleDateString("zh-TW")}
+                          最後 {formatDateTW(g.latestDate)}
                         </span>
                       </div>
                       <h3 className="break-words text-[15px] font-semibold leading-snug text-primary md:text-lg">
@@ -228,7 +229,7 @@ export default async function LogsPage({
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-foreground">
                                 <span className="font-medium">
-                                  {new Date(l.log_date).toLocaleDateString("zh-TW")}
+                                  {formatDateTW(l.log_date)}
                                 </span>
                                 {isBackfilledLog(l) && (
                                   <span className="rounded-full border border-[#FDBA74] bg-[#FFF7ED] px-1.5 py-0 text-[10px] text-[#C2410C]">

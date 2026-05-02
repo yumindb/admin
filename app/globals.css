@@ -95,3 +95,11 @@ h1, h2, h3 {
   font-weight: 700;
   color: var(--accent);
 }
+
+/* 全站頁面切換時的頂端進度條(components/route-progress.tsx 用)
+   — 光條從畫面左邊外面 -100%(自己寬)滑到右邊外面 +400%(自己寬 × 4) 完整橫掃。
+   linear 時序讓使用者每一刻都感覺到位移,不會在頭尾看似停住。 */
+@keyframes route-progress-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}

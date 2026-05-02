@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { NewLogForm, type CaseOption, type PendingFieldReport } from "./new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
-import { computeManpowerByCase } from "@/lib/daily-log";
+import {
+  computeManpowerByCase,
+  computeSubcontractorTotalsByCase,
+  computeMachineTotalsByCase,
+} from "@/lib/daily-log";
 import type { DailyLogWorkItem, FieldReport } from "@/lib/types";
 
 export default async function NewLogPage({
@@ -105,6 +109,24 @@ export default async function NewLogPage({
       today_total: (l.manpower as { today_total?: number } | null)?.today_total,
     })),
   );
+  const priorSubcontractorByCase = computeSubcontractorTotalsByCase(
+    priorRows.map((l) => ({
+      id: l.id as string,
+      case_id: l.case_id as string,
+      subcontractors:
+        (l.manpower as { subcontractors?: { trade?: string; today?: number }[] } | null)
+          ?.subcontractors ?? [],
+    })),
+  );
+  const priorMachineByCase = computeMachineTotalsByCase(
+    priorRows.map((l) => ({
+      id: l.id as string,
+      case_id: l.case_id as string,
+      machines:
+        (l.manpower as { machines?: { name?: string; today?: number }[] } | null)
+          ?.machines ?? [],
+    })),
+  );
 
   // 撈這些案件的 pending 現場回報,主任填日誌時可以勾選整合進來
   const { data: reportRows } = caseIds.length
@@ -155,6 +177,8 @@ export default async function NewLogPage({
         dayLogCounts={dayLogCounts}
         priorAggregates={aggregates}
         priorManpowerByCase={priorManpowerByCase}
+        priorSubcontractorByCase={priorSubcontractorByCase}
+        priorMachineByCase={priorMachineByCase}
         pendingReportsByCase={pendingReportsByCase}
       />
     </div>

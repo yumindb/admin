@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { NextStepHint } from "@/components/next-step-hint";
+import { PhotoGallery } from "@/components/photo-gallery";
 import { NewReportForm, type CaseOption } from "../new-report-form";
 import { deleteFieldReportAction } from "../actions";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
@@ -80,7 +82,7 @@ export default async function FieldReportDetailPage({
           </Link>
           <span className="mx-1.5">／</span>
           <Link href={`/field-reports/${id}`} className="hover:text-accent">
-            {new Date(r.created_at).toLocaleString("zh-TW")}
+            {formatTW(r.created_at)}
           </Link>
           <span className="mx-1.5">／</span>
           <span>編輯</span>
@@ -106,7 +108,7 @@ export default async function FieldReportDetailPage({
           現場回報
         </Link>
         <span className="mx-1.5">／</span>
-        <span>{new Date(r.created_at).toLocaleString("zh-TW")}</span>
+        <span>{formatTW(r.created_at)}</span>
       </nav>
 
       <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
@@ -119,7 +121,7 @@ export default async function FieldReportDetailPage({
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
             <span>{r.cases?.code ?? "未編號"}</span>
-            <span>{new Date(r.created_at).toLocaleString("zh-TW")}</span>
+            <span>{formatTW(r.created_at)}</span>
             {r.author?.full_name && <span>{r.author.full_name}</span>}
           </div>
         </div>
@@ -151,7 +153,7 @@ export default async function FieldReportDetailPage({
               href={`/logs/${r.merged_log.id}`}
               className="font-medium text-accent underline"
             >
-              {new Date(r.merged_log.log_date).toLocaleDateString("zh-TW")} 的施工日誌
+              {formatDateTW(r.merged_log.log_date)} 的施工日誌
             </Link>
             。原始回報保留作為審計紀錄,不可再編輯。
           </NextStepHint>
@@ -177,29 +179,7 @@ export default async function FieldReportDetailPage({
         {!r.photos?.length ? (
           <p className="text-sm text-muted-foreground">(沒有照片)</p>
         ) : (
-          <ul className="space-y-3">
-            {r.photos.map((p, idx) => (
-              <li
-                key={p.path + idx}
-                className="grid grid-cols-[8rem_1fr] items-start gap-3 rounded-md border border-[#E0DCD6] bg-card p-3"
-              >
-                <a
-                  href={p.path}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block aspect-square overflow-hidden rounded-md border border-[#E0DCD6] bg-[#F5F1EC]"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.path} alt="" className="h-full w-full object-cover" />
-                </a>
-                <p className="whitespace-pre-line text-sm">
-                  {p.caption || (
-                    <span className="text-muted-foreground">(未附說明)</span>
-                  )}
-                </p>
-              </li>
-            ))}
-          </ul>
+          <PhotoGallery photos={r.photos} layout="row" />
         )}
       </Section>
     </div>

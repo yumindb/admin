@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronDown, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { formatTW } from "@/lib/datetime";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -198,7 +199,7 @@ function ReportCard({
   const photoCount = r.photos?.length ?? 0;
   const firstPhoto = r.photos?.[0]?.path ?? null;
   const note = r.note?.trim() ?? "";
-  const ts = new Date(r.created_at).toLocaleString("zh-TW", {
+  const ts = formatTW(r.created_at, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

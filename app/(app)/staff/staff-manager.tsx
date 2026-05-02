@@ -56,7 +56,7 @@ const ROLES: RoleMeta[] = [
     shortLabel: "助理",
     icon: ClipboardList,
     tint: "#0369A1",
-    permission: "開案、匯入標單、第三關審核、可管理人員",
+    permission: "開案、匯入工項、第三關審核、可管理人員",
     level: 2,
   },
   {

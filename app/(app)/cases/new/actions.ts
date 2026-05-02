@@ -12,6 +12,7 @@ const NewCaseSchema = z.object({
   location: z.string().trim().max(200).optional().or(z.literal("")),
   client: z.string().trim().max(120).optional().or(z.literal("")),
   started_at: z.string().trim().optional().or(z.literal("")),
+  expected_end: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
@@ -59,6 +60,7 @@ export async function createCaseAction(
     location: formData.get("location") ?? "",
     client: formData.get("client") ?? "",
     started_at: formData.get("started_at") ?? "",
+    expected_end: formData.get("expected_end") ?? "",
     notes: formData.get("notes") ?? "",
   };
   const parsedFields = NewCaseSchema.safeParse(fields);
@@ -74,7 +76,7 @@ export async function createCaseAction(
     try {
       tender = JSON.parse(rawPayload) as TenderPayload;
     } catch {
-      return { error: "標單資料無法解析，請重新上傳標單。" };
+      return { error: "工項資料無法解析，請重新上傳。" };
     }
   }
 
@@ -103,6 +105,7 @@ export async function createCaseAction(
         location: data.location || null,
         client: data.client || null,
         started_at: data.started_at || null,
+        expected_end: data.expected_end || null,
         notes: data.notes || null,
         created_by: user.id,
       })

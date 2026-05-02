@@ -16,6 +16,10 @@ export type ColumnDef<T> = {
   placeholder?: string;
   width?: string;               // CSS class for width
   required?: boolean;
+  /** 設了就變成唯讀計算欄(顯示 compute 回傳值,不可編輯)。例:累計人數從歷史日誌算 */
+  compute?: (row: T) => string | number | null;
+  /** compute 欄旁邊或下方的輔助說明,例:「之前 5 + 本日 2」 */
+  computeHint?: (row: T) => string | null;
 };
 
 type Props<T extends Record<string, unknown>> = {
@@ -69,7 +73,24 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                         <span className="ml-0.5 text-[#B91C1C]">*</span>
                       )}
                     </label>
-                    {col.type === "select" ? (
+                    {col.compute ? (
+                      (() => {
+                        const v = col.compute(row);
+                        const hint = col.computeHint?.(row);
+                        return (
+                          <>
+                            <div className="flex h-10 items-center rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-2 text-sm font-medium text-primary tabular-nums">
+                              {v == null || v === "" ? "—" : v}
+                            </div>
+                            {hint && (
+                              <p className="text-[11px] leading-tight text-muted-foreground">
+                                {hint}
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()
+                    ) : col.type === "select" ? (
                       <select
                         value={String(row[col.key] ?? "")}
                         onChange={(e) =>

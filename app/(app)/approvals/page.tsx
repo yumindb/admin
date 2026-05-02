@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatWeatherSummary } from "@/lib/daily-log";
+import { formatDateTW } from "@/lib/datetime";
 import { NextStepHint } from "@/components/next-step-hint";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 
@@ -114,7 +115,7 @@ export default async function ApprovalsPage() {
                   </h3>
                 </div>
                 <div className="text-right text-sm text-muted-foreground">
-                  <div>{new Date(l.log_date).toLocaleDateString("zh-TW")}</div>
+                  <div>{formatDateTW(l.log_date)}</div>
                   <div>{l.profiles?.full_name ?? "未知主任"}</div>
                 </div>
               </div>
