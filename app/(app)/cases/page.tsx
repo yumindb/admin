@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTW } from "@/lib/datetime";
 import { normalizeLogPhotos } from "@/lib/daily-log";
+import { getSignedUrls } from "@/lib/supabase/storage";
 import { Button } from "@/components/ui/button";
 import type {
   Case,
@@ -190,6 +191,22 @@ export default async function CasesOverviewPage({
     } else {
       s.progressPct = null;
     }
+  }
+
+  // Storage 已轉 private — 一次撈所有 preview 縮圖的 signed URL(5 min)
+  const allPreviewPaths: string[] = [];
+  for (const s of statsByCase.values()) {
+    for (const p of s.photos) allPreviewPaths.push(p.path);
+  }
+  const previewSignedMap = await getSignedUrls(
+    "daily-photos",
+    allPreviewPaths
+  );
+  for (const s of statsByCase.values()) {
+    s.photos = s.photos.map((p) => ({
+      ...p,
+      path: previewSignedMap.get(p.path) ?? p.path,
+    }));
   }
 
   // 篩選與排序

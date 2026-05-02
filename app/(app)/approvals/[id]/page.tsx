@@ -17,6 +17,7 @@ import {
   fetchWorkItemAncestry,
   groupWorkItemsByAncestor,
 } from "@/lib/work-item-grouping";
+import { getSignedUrls } from "@/lib/supabase/storage";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 import type { WorkItemGroup } from "@/lib/work-item-grouping";
 import type { DailyLogWorkItem } from "@/lib/types";
@@ -111,7 +112,15 @@ export default async function ApprovalDetailPage({
     ancestry
   );
   const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
-  const logPhotos = normalizeLogPhotos(l.photos);
+  const rawLogPhotos = normalizeLogPhotos(l.photos);
+  const photoSignedMap = await getSignedUrls(
+    "daily-photos",
+    rawLogPhotos.map((p) => p.path)
+  );
+  const logPhotos = rawLogPhotos.map((p) => ({
+    ...p,
+    path: photoSignedMap.get(p.path) ?? p.path,
+  }));
 
   return (
     <div className="mx-auto max-w-5xl">

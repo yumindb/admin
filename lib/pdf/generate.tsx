@@ -31,9 +31,13 @@ async function fetchAsDataUrl(
   bucket: string,
   pathOrUrl: string
 ): Promise<string | null> {
-  // 容錯：傳進來的可能是完整 public URL（前期 daily-photos 是 public）或單純 path
+  // 容錯：傳進來的可能是完整 public URL（早期 daily-photos 為 public）、
+  // signed URL（migration-2.10 後 daily-photos / signatures 轉 private）、
+  // 或單純 storage path。signed URL 帶 ?token=...,要砍掉。
   let path = pathOrUrl;
-  const m = pathOrUrl.match(/\/storage\/v1\/object\/(?:public\/)?[^/]+\/(.+)$/);
+  const m = pathOrUrl.match(
+    /\/storage\/v1\/object\/(?:public|sign)\/[^/]+\/([^?]+)/
+  );
   if (m) path = decodeURIComponent(m[1]);
 
   const { data, error } = await supabase.storage.from(bucket).download(path);

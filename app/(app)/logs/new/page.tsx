@@ -10,6 +10,7 @@ import {
   computeMachineTotalsByCase,
 } from "@/lib/daily-log";
 import type { DailyLogWorkItem, FieldReport } from "@/lib/types";
+import { getSignedUrls } from "@/lib/supabase/storage";
 
 export default async function NewLogPage({
   searchParams,
@@ -157,6 +158,28 @@ export default async function NewLogPage({
       createdAt: row.created_at,
     });
     pendingReportsByCase[row.case_id] = list;
+  }
+
+  // Storage 已轉 private — 對待整合 reports 的照片 sign(主任勾選預覽用)
+  const allReportPhotos: { path: string }[] = [];
+  for (const list of Object.values(pendingReportsByCase)) {
+    for (const r of list) {
+      for (const p of r.photos) allReportPhotos.push(p);
+    }
+  }
+  if (allReportPhotos.length > 0) {
+    const photoSignedMap = await getSignedUrls(
+      "daily-photos",
+      allReportPhotos.map((p) => p.path)
+    );
+    for (const list of Object.values(pendingReportsByCase)) {
+      for (const r of list) {
+        r.photos = r.photos.map((p) => ({
+          ...p,
+          path: photoSignedMap.get(p.path) ?? p.path,
+        }));
+      }
+    }
   }
 
   return (

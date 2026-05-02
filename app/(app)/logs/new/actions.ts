@@ -177,12 +177,23 @@ export async function saveLogAction(payload: SaveLogPayload) {
       return { ok: false, error: "寫入編輯紀錄失敗:" + revErr.message };
     }
 
-    const { error: updErr } = await supabase
+    // status guard: 只在「我們讀到」當下的 status 沒被別人改掉時才 update。
+    // 防止讀 → 別人 approve / reject → 我寫覆蓋掉的競態。
+    const expectedStatus = existing.status as string;
+    const { data: updRows, error: updErr } = await supabase
       .from("daily_logs")
       .update(next)
-      .eq("id", logId);
+      .eq("id", logId)
+      .eq("status", expectedStatus)
+      .select("id");
     if (updErr) {
       return { ok: false, error: "儲存失敗:" + updErr.message };
+    }
+    if (!updRows || updRows.length === 0) {
+      return {
+        ok: false,
+        error: "日誌狀態已被他人變更(可能剛被核定 / 退回),請重新整理",
+      };
     }
 
     revalidatePath("/logs");
@@ -264,27 +275,85 @@ export async function saveLogAction(payload: SaveLogPayload) {
     if (sigErr) return { ok: false, error: "簽名儲存失敗:" + sigErr.message };
   }
 
-  // 把整合進來的現場回報翻成 merged。只翻仍是 pending 的 — 防止重複整合或競態。
+  // 把整合進來的現場回報翻成 merged。
+  //
+  // Idempotency / race condition:
+  //   1. 先讀回每筆 report 當前 status。
+  //   2. 若已 merged_into_log_id === 此 logId → 視為已合併,略過(idempotent retry)。
+  //   3. 若 status !== 'pending' 但不是合併到自己 → 直接 abort 並回 warning,
+  //      不做任何 update(避免「主任 A 整合一半、主任 B 也選同一筆」的混亂)。
+  //   4. 用 `.eq("status","pending")` 條件式 update,select 回 row 數確認實際翻幾筆。
+  //
+  // 註: Supabase JS 沒有 transaction API。這仍非真正 atomic,但兩階段 + conditional
+  //      update 已可擋住絕大部分 UI race。徹底解只能寫 RPC,留待 Phase 2。
   if (payload.mergedReportIds && payload.mergedReportIds.length > 0 && logId) {
-    const { error: mergeErr } = await supabase
+    const { data: currentReports, error: readErr } = await supabase
       .from("field_reports")
-      .update({
-        status: "merged",
-        merged_into_log_id: logId,
-        merged_by: user.id,
-        merged_at: new Date().toISOString(),
-      })
-      .in("id", payload.mergedReportIds)
-      .eq("status", "pending");
-    if (mergeErr) {
-      // 不擋整體儲存,但回 warning
+      .select("id, status, merged_into_log_id")
+      .in("id", payload.mergedReportIds);
+    if (readErr) {
       return {
         ok: true,
         logId,
-        warning: "日誌已存,但部分現場回報狀態更新失敗:" + mergeErr.message,
+        warning: "日誌已存,但讀取現場回報狀態失敗:" + readErr.message,
       };
     }
+
+    const idsToMerge: string[] = [];
+    const alreadyMergedToSelf: string[] = [];
+    const conflicts: string[] = [];
+    for (const r of currentReports ?? []) {
+      const id = r.id as string;
+      const status = r.status as string;
+      const mergedTo = r.merged_into_log_id as string | null;
+      if (status === "merged" && mergedTo === logId) {
+        alreadyMergedToSelf.push(id);
+      } else if (status === "pending") {
+        idsToMerge.push(id);
+      } else {
+        conflicts.push(id);
+      }
+    }
+
+    if (conflicts.length > 0) {
+      return {
+        ok: true,
+        logId,
+        warning: `日誌已存,但 ${conflicts.length} 筆現場回報已被他人整合或封存,未重複合併`,
+      };
+    }
+
+    if (idsToMerge.length > 0) {
+      const { data: updRows, error: mergeErr } = await supabase
+        .from("field_reports")
+        .update({
+          status: "merged",
+          merged_into_log_id: logId,
+          merged_by: user.id,
+          merged_at: new Date().toISOString(),
+        })
+        .in("id", idsToMerge)
+        .eq("status", "pending")
+        .select("id");
+      if (mergeErr) {
+        return {
+          ok: true,
+          logId,
+          warning: "日誌已存,但部分現場回報狀態更新失敗:" + mergeErr.message,
+        };
+      }
+      if ((updRows?.length ?? 0) < idsToMerge.length) {
+        // 最後一刻被別人搶走 — 已存的不退,只 warn
+        return {
+          ok: true,
+          logId,
+          warning: `日誌已存,但部分現場回報在合併瞬間被他人搶先處理`,
+        };
+      }
+    }
+
     revalidatePath("/field-reports");
+    // alreadyMergedToSelf 是 idempotent 重試,不算錯誤,直接放行
   }
 
   revalidatePath("/logs");

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ChevronDown, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { formatTW } from "@/lib/datetime";
+import { getSignedUrls } from "@/lib/supabase/storage";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -77,6 +78,17 @@ export default async function FieldReportsPage() {
   const { data, error } = await query;
   const list = ((data ?? []) as ReportRow[]) ?? [];
 
+  // Storage 已轉 private — 把每筆回報「第一張」縮圖換成 signed URL(5 min)
+  const firstPhotoPaths: string[] = [];
+  for (const r of list) {
+    const fp = r.photos?.[0]?.path;
+    if (fp) firstPhotoPaths.push(fp);
+  }
+  const firstPhotoSigned = await getSignedUrls(
+    "daily-photos",
+    firstPhotoPaths
+  );
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-8 flex items-center justify-between">
@@ -115,7 +127,11 @@ export default async function FieldReportsPage() {
         <ul className="space-y-4">
           {list.map((r) => (
             <li key={r.id}>
-              <ReportCard report={r} showAuthor={false} />
+              <ReportCard
+                report={r}
+                showAuthor={false}
+                firstPhotoSigned={firstPhotoSigned}
+              />
             </li>
           ))}
         </ul>
@@ -153,7 +169,12 @@ export default async function FieldReportsPage() {
                 <ul className="mt-3 space-y-4">
                   {g.reports.map((r) => (
                     <li key={r.id}>
-                      <ReportCard report={r} showAuthor hideCaseName />
+                      <ReportCard
+                        report={r}
+                        showAuthor
+                        hideCaseName
+                        firstPhotoSigned={firstPhotoSigned}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -189,15 +210,20 @@ function ReportCard({
   report: r,
   showAuthor,
   hideCaseName = false,
+  firstPhotoSigned,
 }: {
   report: ReportRow;
   showAuthor: boolean;
   /** 分組視圖中,案場名已在 sticky header 顯示,卡片內不重複 */
   hideCaseName?: boolean;
+  firstPhotoSigned: Map<string, string>;
 }) {
   const s = STATUS[r.status];
   const photoCount = r.photos?.length ?? 0;
-  const firstPhoto = r.photos?.[0]?.path ?? null;
+  const firstPhotoOriginal = r.photos?.[0]?.path ?? null;
+  const firstPhoto = firstPhotoOriginal
+    ? firstPhotoSigned.get(firstPhotoOriginal) ?? firstPhotoOriginal
+    : null;
   const note = r.note?.trim() ?? "";
   const ts = formatTW(r.created_at, {
     month: "2-digit",

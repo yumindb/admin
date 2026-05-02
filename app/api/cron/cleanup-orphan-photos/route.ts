@@ -24,7 +24,9 @@ export const maxDuration = 60;
  */
 
 const BUCKET = "daily-photos";
-const URL_MARKER = `/object/public/${BUCKET}/`;
+// 兩種 URL 格式都要吃: public(歷史)/ sign(轉 private 後新存的)
+const PUBLIC_MARKER = `/object/public/${BUCKET}/`;
+const SIGN_MARKER = `/object/sign/${BUCKET}/`;
 const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
 const DELETE_BATCH = 100;
 
@@ -143,9 +145,18 @@ function collectPaths(photos: unknown, out: Set<string>) {
       if (typeof p === "string") url = p;
     }
     if (!url) continue;
-    const idx = url.indexOf(URL_MARKER);
-    if (idx === -1) continue;
-    const path = url.slice(idx + URL_MARKER.length);
+    let path: string | null = null;
+    for (const marker of [PUBLIC_MARKER, SIGN_MARKER]) {
+      const idx = url.indexOf(marker);
+      if (idx >= 0) {
+        const after = url.slice(idx + marker.length);
+        const q = after.indexOf("?");
+        path = q >= 0 ? after.slice(0, q) : after;
+        break;
+      }
+    }
+    // 沒命中 marker → 視為裸 storage path(未來格式)
+    if (!path) path = url;
     if (path) out.add(path);
   }
 }

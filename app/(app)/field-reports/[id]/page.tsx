@@ -5,6 +5,7 @@ import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { NextStepHint } from "@/components/next-step-hint";
 import { PhotoGallery } from "@/components/photo-gallery";
+import { getSignedUrls } from "@/lib/supabase/storage";
 import { NewReportForm, type CaseOption } from "../new-report-form";
 import { deleteFieldReportAction } from "../actions";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
@@ -55,6 +56,17 @@ export default async function FieldReportDetailPage({
   const isAuthor = r.author_id === user.id;
   const canEdit = isAuthor && r.status === "pending";
   const status = STATUS[r.status];
+
+  // Storage 已轉 private — 對 r.photos 一次 sign(5 min)
+  const reportPhotos = r.photos ?? [];
+  const photoSignedMap = await getSignedUrls(
+    "daily-photos",
+    reportPhotos.map((p) => p.path)
+  );
+  const signedPhotos = reportPhotos.map((p) => ({
+    ...p,
+    path: photoSignedMap.get(p.path) ?? p.path,
+  }));
 
   // 編輯模式 — 只有作者本人 + pending 才能進
   if (editFlag === "1") {
@@ -175,11 +187,11 @@ export default async function FieldReportDetailPage({
         )}
       </Section>
 
-      <Section title={`照片 (${r.photos?.length ?? 0})`}>
-        {!r.photos?.length ? (
+      <Section title={`照片 (${reportPhotos.length})`}>
+        {!reportPhotos.length ? (
           <p className="text-sm text-muted-foreground">(沒有照片)</p>
         ) : (
-          <PhotoGallery photos={r.photos} layout="row" />
+          <PhotoGallery photos={signedPhotos} layout="row" />
         )}
       </Section>
     </div>

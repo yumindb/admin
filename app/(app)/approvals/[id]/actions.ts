@@ -100,14 +100,26 @@ export async function approveStageAction(payload: ActPayload) {
   });
   if (insErr) return { ok: false as const, error: "寫入失敗:" + insErr.message };
 
-  // 推進 status / current_stage
+  // 推進 status / current_stage — 加 conditional update 守 race condition:
+  // 兩個簽核者同時進同一份日誌時,只有第一個成功;第二個 update 會 0 rows 命中。
   const nextStage = NEXT_STAGE[log.current_stage];
+  const expectedStage = log.current_stage;
   if (nextStage === null) {
     // 老闆核定通過
-    await supabase
+    const { data: rows, error: updErr } = await supabase
       .from("daily_logs")
       .update({ status: "approved", current_stage: null })
-      .eq("id", payload.logId);
+      .eq("id", payload.logId)
+      .eq("status", "submitted")
+      .eq("current_stage", expectedStage)
+      .select("id");
+    if (updErr) return { ok: false as const, error: "更新失敗:" + updErr.message };
+    if (!rows || rows.length === 0) {
+      return {
+        ok: false as const,
+        error: "日誌狀態已被他人變更,請重新整理",
+      };
+    }
 
     // 核定通過 → 背景產 PDF（不阻塞 response）
     after(async () => {
@@ -117,10 +129,20 @@ export async function approveStageAction(payload: ActPayload) {
       }
     });
   } else {
-    await supabase
+    const { data: rows, error: updErr } = await supabase
       .from("daily_logs")
       .update({ current_stage: nextStage })
-      .eq("id", payload.logId);
+      .eq("id", payload.logId)
+      .eq("status", "submitted")
+      .eq("current_stage", expectedStage)
+      .select("id");
+    if (updErr) return { ok: false as const, error: "更新失敗:" + updErr.message };
+    if (!rows || rows.length === 0) {
+      return {
+        ok: false as const,
+        error: "日誌狀態已被他人變更,請重新整理",
+      };
+    }
   }
 
   revalidatePath("/approvals");
@@ -159,10 +181,22 @@ export async function rejectStageAction(payload: ActPayload) {
   });
   if (insErr) return { ok: false as const, error: "寫入失敗:" + insErr.message };
 
-  await supabase
+  // conditional update — 守住「自己當下看到的 stage」,被改過就拒絕
+  const expectedStage = log.current_stage;
+  const { data: rows, error: updErr } = await supabase
     .from("daily_logs")
     .update({ status: "rejected", current_stage: null })
-    .eq("id", payload.logId);
+    .eq("id", payload.logId)
+    .eq("status", "submitted")
+    .eq("current_stage", expectedStage)
+    .select("id");
+  if (updErr) return { ok: false as const, error: "更新失敗:" + updErr.message };
+  if (!rows || rows.length === 0) {
+    return {
+      ok: false as const,
+      error: "日誌狀態已被他人變更,請重新整理",
+    };
+  }
 
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);

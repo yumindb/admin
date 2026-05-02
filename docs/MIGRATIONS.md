@@ -17,6 +17,7 @@
 | 11 | [`migration-2.7.sql`](migration-2.7.sql) | field_reports 表(現場回報)+ field_report_status enum + RLS | 必跑 |
 | 12 | [`migration-2.8.sql`](migration-2.8.sql) | daily_logs.photos 從 `string[]` 轉成 `[{path, caption}, ...]`(每張照片可填說明) | 必跑(已有資料時) |
 | 13 | [`migration-2.9.sql`](migration-2.9.sql) | daily_log_revisions 表(送出後編輯的 audit trail)+ RLS | 必跑 |
+| 14 | [`migration-2.10.sql`](migration-2.10.sql) | role-based RLS(取代 POC `poc_authenticated_all`)+ daily_log_revisions 收緊只 INSERT + storage 翻 private + path 限定 `auth.uid()/...` + signed URL 流程 | 必跑(取代 storage.sql 的舊 policy) |
 
 ## 排錯
 

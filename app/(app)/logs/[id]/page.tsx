@@ -8,6 +8,7 @@ import { ExtraItemsTable } from "@/components/extra-items-table";
 import { NextStepHint } from "@/components/next-step-hint";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { PdfDownloadButton } from "@/components/pdf-download-button";
+import { getSignedUrls } from "@/lib/supabase/storage";
 import { deleteLogAction } from "../new/actions";
 import {
   buildReportNumber,
@@ -193,7 +194,30 @@ export default async function LogDetailPage({
 
   const s = STATUS[l.status] ?? STATUS.draft;
   const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
-  const logPhotos = normalizeLogPhotos(l.photos);
+  const rawLogPhotos = normalizeLogPhotos(l.photos);
+
+  // Storage 已轉 private → signed URL(5 min)。歷史資料 path 是完整 public URL,
+  // 新資料是 storage path,helper 同時吃兩種。
+  const photoSignedMap = await getSignedUrls(
+    "daily-photos",
+    rawLogPhotos.map((p) => p.path)
+  );
+  const logPhotos = rawLogPhotos.map((p) => ({
+    ...p,
+    path: photoSignedMap.get(p.path) ?? p.path,
+  }));
+
+  // 簽核紀錄的簽名圖也轉 signed URL
+  const sigInputs = apList
+    .map((a) => a.signature_url)
+    .filter((s): s is string => !!s);
+  const sigSignedMap = await getSignedUrls("signatures", sigInputs);
+  const apListSigned = apList.map((a) => ({
+    ...a,
+    signature_url: a.signature_url
+      ? sigSignedMap.get(a.signature_url) ?? a.signature_url
+      : null,
+  }));
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -536,7 +560,7 @@ export default async function LogDetailPage({
           <p className="text-sm text-muted-foreground">尚未送出</p>
         ) : (
           <ul className="space-y-2">
-            {apList.map((a) => (
+            {apListSigned.map((a) => (
               <li
                 key={a.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-[#E0DCD6] bg-card px-3 py-2 text-sm"

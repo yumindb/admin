@@ -3,12 +3,17 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
+import { getSignedUrl } from "@/lib/supabase/storage";
 
 const BUCKET = "daily-photos";
 
 /**
- * 上傳一張照片到 Supabase Storage,回傳 public URL。
- * POC:bucket 設為 public,方便直接顯示。正式版改 private + signed URL。
+ * 上傳一張照片到 Supabase Storage,回傳 signed URL(5 min)用於 client 即時預覽。
+ *
+ * Bucket 已轉 private(migration-2.10),`getPublicUrl` 不可用。Client 拿到的
+ * `path` 欄位實質是「signed URL」,送出後存進 daily_logs.photos[].path。
+ * 後續顯示用 `getSignedUrls()` helper 重新籤,它能從 signed URL 抽出
+ * storage path。
  */
 export async function uploadPhotoAction(formData: FormData) {
   await requireRole([
@@ -47,12 +52,17 @@ export async function uploadPhotoAction(formData: FormData) {
     });
   if (upErr) return { ok: false as const, error: "上傳失敗:" + upErr.message };
 
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return { ok: true as const, path: data.publicUrl };
+  // bucket 已私有 — 回 signed URL 給 client 即時預覽。
+  // helper 用 service-role client,bypass RLS。
+  const signed = await getSignedUrl(BUCKET, path);
+  if (!signed) {
+    return { ok: false as const, error: "簽名失敗" };
+  }
+  return { ok: true as const, path: signed };
 }
 
 /**
- * 刪除一張尚未送出的暫存照片。傳入 uploadPhotoAction 回傳的 public URL,
+ * 刪除一張尚未送出的暫存照片。傳入 uploadPhotoAction 回傳的 URL(signed 或舊 public),
  * 反推出 storage path 後從 bucket 移除。
  *
  * 安全:只允許刪自己 user folder 底下的檔(path 第一段必須等於 user.id)。
@@ -63,10 +73,22 @@ export async function deletePhotoAction(publicUrl: string) {
     return { ok: false as const, error: "未提供路徑" };
   }
 
-  const marker = `/object/public/${BUCKET}/`;
-  const idx = publicUrl.indexOf(marker);
-  if (idx === -1) return { ok: false as const, error: "URL 格式不符" };
-  const path = publicUrl.slice(idx + marker.length);
+  // 同時吃 public URL(舊資料)、signed URL(新)和裸 storage path(未來)
+  let path: string | null = null;
+  for (const marker of [
+    `/object/public/${BUCKET}/`,
+    `/object/sign/${BUCKET}/`,
+  ]) {
+    const idx = publicUrl.indexOf(marker);
+    if (idx >= 0) {
+      const after = publicUrl.slice(idx + marker.length);
+      const q = after.indexOf("?");
+      path = q >= 0 ? after.slice(0, q) : after;
+      break;
+    }
+  }
+  // 沒命中 marker → 視作裸 path
+  if (!path) path = publicUrl;
   if (!path) return { ok: false as const, error: "URL 缺少路徑" };
 
   const supabase = await createClient();
@@ -128,6 +150,10 @@ export async function uploadSignatureAction(formData: FormData) {
     .upload(path, buf, { contentType, upsert: false });
   if (upErr) return { ok: false as const, error: "上傳失敗:" + upErr.message };
 
-  const { data } = supabase.storage.from(SIG_BUCKET).getPublicUrl(path);
-  return { ok: true as const, path: data.publicUrl };
+  // signature bucket 已私有 — 回 signed URL(5 min)。
+  const signed = await getSignedUrl(SIG_BUCKET, path);
+  if (!signed) {
+    return { ok: false as const, error: "簽名失敗" };
+  }
+  return { ok: true as const, path: signed };
 }

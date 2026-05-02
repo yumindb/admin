@@ -13,6 +13,7 @@ import {
 } from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
+import { getSignedUrls } from "@/lib/supabase/storage";
 
 export default async function EditLogPage({
   params,
@@ -189,6 +190,31 @@ export default async function EditLogPage({
     pendingReportsByCase[row.case_id] = list;
   }
 
+  // Storage 已轉 private — 對 initial photos + 待整合 reports 的照片一次 sign
+  const initialPhotos = normalizeLogPhotos(l.photos);
+  const allReportPhotos: { path: string }[] = [];
+  for (const list of Object.values(pendingReportsByCase)) {
+    for (const r of list) {
+      for (const p of r.photos) allReportPhotos.push(p);
+    }
+  }
+  const photoSignedMap = await getSignedUrls(
+    "daily-photos",
+    [...initialPhotos.map((p) => p.path), ...allReportPhotos.map((p) => p.path)]
+  );
+  const initialPhotosSigned = initialPhotos.map((p) => ({
+    ...p,
+    path: photoSignedMap.get(p.path) ?? p.path,
+  }));
+  for (const list of Object.values(pendingReportsByCase)) {
+    for (const r of list) {
+      r.photos = r.photos.map((p) => ({
+        ...p,
+        path: photoSignedMap.get(p.path) ?? p.path,
+      }));
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -231,7 +257,7 @@ export default async function EditLogPage({
           workItems: l.work_items ?? [],
           extraItems: l.extra_items ?? [],
           unsignedItems: l.unsigned_items ?? [],
-          photos: normalizeLogPhotos(l.photos),
+          photos: initialPhotosSigned,
           vendorNotices: l.vendor_notices ?? "",
           notes: l.notes ?? "",
         }}

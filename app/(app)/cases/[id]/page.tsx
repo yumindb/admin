@@ -13,6 +13,7 @@ import { DeleteCaseButton } from "./delete-case-button";
 import { NextStepHint } from "@/components/next-step-hint";
 import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
 import { normalizeLogPhotos } from "@/lib/daily-log";
+import { getSignedUrls } from "@/lib/supabase/storage";
 import type {
   Case,
   CaseWorkItem,
@@ -129,6 +130,16 @@ export default async function CaseDetailPage({
       });
     }
   }
+
+  // Storage 已轉 private → 一次撈所有照片的 signed URL(5 min)
+  const photoSignedMap = await getSignedUrls(
+    "daily-photos",
+    allPhotos.map((p) => p.path)
+  );
+  const allPhotosSigned: GalleryPhoto[] = allPhotos.map((p) => ({
+    ...p,
+    path: photoSignedMap.get(p.path) ?? p.path,
+  }));
 
   const treeItems: TreeItem[] = items.map((it) => ({
     id: it.id,
@@ -291,7 +302,7 @@ export default async function CaseDetailPage({
           目前沒有日誌照片
         </div>
       ) : (
-        <PhotoGallery photos={allPhotos} layout="grid" />
+        <PhotoGallery photos={allPhotosSigned} layout="grid" />
       )}
 
       {/* 跨日誌彙整:合約外項目 */}
