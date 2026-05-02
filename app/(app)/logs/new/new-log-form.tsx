@@ -1104,7 +1104,7 @@ export function NewLogForm({
               penColor="#003153"
               canvasProps={{
                 className: "w-full",
-                style: { width: "100%", height: "220px", touchAction: "none" },
+                style: { width: "100%", height: "260px", touchAction: "none" },
               }}
             />
           </div>

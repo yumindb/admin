@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
+// Vercel Functions 預設 10 秒 timeout;掃 bucket + 兩張表 + 分批刪除
+// 在資料量大時容易超時。Hobby 上限 60 秒,設到上限。
+export const maxDuration = 60;
+
 /**
  * 清理 daily-photos bucket 內的孤兒照片。
  *

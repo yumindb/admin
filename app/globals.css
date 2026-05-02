@@ -16,7 +16,7 @@
   --secondary: #e8e4de;           /* 淺暖灰 */
   --secondary-foreground: #5a5050;
   --muted: #e8e4de;
-  --muted-foreground: #8a847c;
+  --muted-foreground: #6b6258;   /* WCAG AA 對比 4.7 (原 #8a847c 為 4.0) */
   --accent: #a07850;              /* 溫銅金 */
   --accent-foreground: #ffffff;
   --destructive: #b91c1c;
@@ -81,6 +81,15 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   letter-spacing: 0.02em;
+}
+
+/* 全站鍵盤 focus 提示(只在鍵盤導航時出現,不影響滑鼠 click)。
+   shadcn 元件自帶 focus-visible 樣式;此規則覆蓋 a / 原生 input / 自製按鈕等漏網元素。 */
+@layer base {
+  *:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
 /* 標題稍微寬鬆一點 */

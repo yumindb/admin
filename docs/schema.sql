@@ -18,7 +18,7 @@ create extension if not exists "pgcrypto";   -- gen_random_uuid()
 -- ==========================================================================
 
 do $$ begin
-  create type user_role as enum ('office_staff', 'site_supervisor', 'owner');
+  create type user_role as enum ('office_staff', 'site_supervisor', 'owner', 'field_assistant');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -64,7 +64,7 @@ exception when duplicate_object then null; end $$;
 create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   full_name   text not null,
-  role        user_role not null default 'office_staff',
+  role        user_role not null default 'field_assistant',
   company     text not null default '裕民',  -- POC hardcode；正式版改 multi-company
   phone       text,
   created_at  timestamptz not null default now(),
@@ -311,7 +311,8 @@ create policy poc_authenticated_all on public.log_approvals
 -- auth.users → profiles 自動建立 trigger (Supabase canonical pattern)
 -- ==========================================================================
 -- 用 Supabase Dashboard 建帳號時,會自動在 profiles 補一筆。
--- raw_user_meta_data 可帶 full_name / role,否則用 email 前綴 + 預設 office_staff。
+-- raw_user_meta_data 可帶 full_name / role,否則用 email 前綴 + 預設 field_assistant。
+-- (預設給最低權限的 field_assistant；admin 透過後台改 role,避免新註冊就拿到審核權限)
 --
 -- ⚠ 寫法注意:必須用 `search_path = ''` (空) + 完全 schema-qualified 引用
 -- (`public.profiles`, `public.user_role`),不可寫 `search_path = public` 簡化,
@@ -330,7 +331,7 @@ begin
     coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
     coalesce(
       (new.raw_user_meta_data->>'role')::public.user_role,
-      'office_staff'::public.user_role
+      'field_assistant'::public.user_role
     )
   )
   on conflict (id) do nothing;
