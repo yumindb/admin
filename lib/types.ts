@@ -100,9 +100,14 @@ export type DailyLog = {
   current_stage: ApprovalStage | null;     // submitted 時表當前在哪關;其他狀態為 null
   submitted_at: string | null;
   pdf_path: string | null;                  // 核定通過後產生的 PDF 在 daily-log-pdfs bucket 的路徑
+  pdf_status: PdfStatus;                    // PDF 產生狀態(migration-2.11 起)
+  pdf_error: string | null;                 // 失敗原因(pdf_status='failed' 時填)
   created_at: string;
   updated_at: string;
 };
+
+/** PDF 產生狀態,搭配 pdf_path 使用。migration-2.11 起。 */
+export type PdfStatus = 'pending' | 'generating' | 'done' | 'failed';
 
 /**
  * 施工日誌送出後的編輯軌跡。每次 post-submission edit 寫一筆,

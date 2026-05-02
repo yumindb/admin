@@ -313,7 +313,12 @@ export default async function LogDetailPage({
             </Button>
           )}
           {l.status === "approved" && (
-            <PdfDownloadButton logId={id} hasPdf={!!l.pdf_path} />
+            <PdfDownloadButton
+              logId={id}
+              hasPdf={!!l.pdf_path}
+              pdfStatus={l.pdf_status}
+              pdfError={l.pdf_error}
+            />
           )}
         </div>
       </div>

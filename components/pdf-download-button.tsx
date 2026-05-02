@@ -6,20 +6,27 @@ import {
   getPdfDownloadUrlAction,
   regeneratePdfAction,
 } from "@/app/(app)/logs/pdf-actions";
+import type { PdfStatus } from "@/lib/types";
 
 /**
  * 單份日誌的「下載 PDF」按鈕。
- *   - hasPdf: 已有 pdf_path,直接拿 signed URL 開新分頁
- *   - !hasPdf 但 approved: 顯示「產生 PDF」按鈕,觸發補產
- *   - 沒 approved: 不該顯示這個按鈕(by 上層判斷)
+ * 依 pdf_status 顯示不同 state:
+ *   - generating : 「PDF 生成中…」spinner,disabled
+ *   - failed     : 顯示錯誤訊息 + 「重新產生」按鈕
+ *   - done       : 「下載 PDF」+ 小字「重新產生」
+ *   - pending    : approved 但 PDF 還沒進入 generating(舊資料 / race) → 「產生 PDF」
  */
 export function PdfDownloadButton({
   logId,
   hasPdf,
+  pdfStatus = "pending",
+  pdfError = null,
   variant = "primary",
 }: {
   logId: string;
   hasPdf: boolean;
+  pdfStatus?: PdfStatus;
+  pdfError?: string | null;
   variant?: "primary" | "outline";
 }) {
   const [pending, startTransition] = useTransition();
@@ -51,7 +58,7 @@ export function PdfDownloadButton({
         setError(res.error);
         return;
       }
-      // 重新整理頁面拿到 pdf_path
+      // 重新整理頁面拿到 pdf_path / pdf_status
       window.location.reload();
     });
   }
@@ -62,6 +69,44 @@ export function PdfDownloadButton({
       : "border-[#E0DCD6]";
   const buttonVariant = variant === "primary" ? "default" : "outline";
 
+  // generating: 顯示 spinner button(無動作)
+  if (pdfStatus === "generating") {
+    return (
+      <div className="inline-flex flex-col items-end gap-1">
+        <Button
+          type="button"
+          disabled
+          variant="outline"
+          className="border-[#E0DCD6]"
+        >
+          PDF 生成中…
+        </Button>
+      </div>
+    );
+  }
+
+  // failed: 顯示錯誤 + 重新產生
+  if (pdfStatus === "failed") {
+    return (
+      <div className="inline-flex flex-col items-end gap-1">
+        <Button
+          type="button"
+          onClick={onRegenerate}
+          disabled={pending}
+          variant="outline"
+          className="border-[#FCA5A5] text-[#B91C1C] hover:bg-[#FEF2F2]"
+        >
+          {pending ? "產生中…" : "重新產生 PDF"}
+        </Button>
+        <span className="max-w-[16rem] text-right text-[11px] text-[#B91C1C]">
+          生成失敗:{pdfError ?? "未知原因"}
+        </span>
+        {error && <span className="text-xs text-[#B91C1C]">{error}</span>}
+      </div>
+    );
+  }
+
+  // done / pending: 同舊邏輯,只是 done 走 hasPdf=true
   return (
     <div className="inline-flex flex-col items-end gap-1">
       {hasPdf ? (

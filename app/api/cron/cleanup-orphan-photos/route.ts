@@ -43,26 +43,42 @@ export async function GET(request: Request) {
 
   // 1) 列出 bucket 內所有檔案。儲存結構是 `{userId}/{filename}`,
   //    storage.list 一次列一層,所以先列根目錄拿 user folders、再列每個 folder。
-  const { data: rootEntries, error: rootErr } = await supabase.storage
-    .from(BUCKET)
-    .list("", { limit: 1000 });
-  if (rootErr) {
-    return NextResponse.json(
-      { ok: false, error: "list root: " + rootErr.message },
-      { status: 500 }
-    );
+  //
+  //    分頁保險(W4-5): 兩層都用 offset while-loop 直到 < 1000 筆。
+  //    根目錄上限是 user folder 數;>1000 user 時也吃得下。
+  //    每個 folder 的分頁同樣到 < 1000 才停。
+  const PAGE = 1000;
+  const userFolders: string[] = [];
+  {
+    let offset = 0;
+    while (true) {
+      const { data: rootEntries, error: rootErr } = await supabase.storage
+        .from(BUCKET)
+        .list("", { limit: PAGE, offset });
+      if (rootErr) {
+        return NextResponse.json(
+          { ok: false, error: "list root: " + rootErr.message },
+          { status: 500 }
+        );
+      }
+      if (!rootEntries || rootEntries.length === 0) break;
+      for (const entry of rootEntries) {
+        // folder entry 在 Supabase storage 通常 id 是 null
+        if (entry.id !== null) continue;
+        userFolders.push(entry.name);
+      }
+      if (rootEntries.length < PAGE) break;
+      offset += rootEntries.length;
+    }
   }
 
   const oldFilePaths: string[] = [];
-  for (const entry of rootEntries ?? []) {
-    // folder entry 在 Supabase storage 通常 id 是 null
-    if (entry.id !== null) continue;
-    const folder = entry.name;
+  for (const folder of userFolders) {
     let offset = 0;
     while (true) {
       const { data: files, error: lsErr } = await supabase.storage
         .from(BUCKET)
-        .list(folder, { limit: 1000, offset });
+        .list(folder, { limit: PAGE, offset });
       if (lsErr) {
         return NextResponse.json(
           { ok: false, error: `list ${folder}: ${lsErr.message}` },
@@ -76,7 +92,7 @@ export async function GET(request: Request) {
         if (created > cutoff) continue; // 太新,先放過
         oldFilePaths.push(`${folder}/${f.name}`);
       }
-      if (files.length < 1000) break;
+      if (files.length < PAGE) break;
       offset += files.length;
     }
   }

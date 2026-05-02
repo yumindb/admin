@@ -105,10 +105,15 @@ export async function approveStageAction(payload: ActPayload) {
   const nextStage = NEXT_STAGE[log.current_stage];
   const expectedStage = log.current_stage;
   if (nextStage === null) {
-    // 老闆核定通過
+    // 老闆核定通過 — 同時把 pdf_status 翻 'generating',讓 UI 顯示「產生中…」
     const { data: rows, error: updErr } = await supabase
       .from("daily_logs")
-      .update({ status: "approved", current_stage: null })
+      .update({
+        status: "approved",
+        current_stage: null,
+        pdf_status: "generating",
+        pdf_error: null,
+      })
       .eq("id", payload.logId)
       .eq("status", "submitted")
       .eq("current_stage", expectedStage)
@@ -121,11 +126,34 @@ export async function approveStageAction(payload: ActPayload) {
       };
     }
 
-    // 核定通過 → 背景產 PDF（不阻塞 response）
+    // 核定通過 → 背景產 PDF(不阻塞 response)。
+    // 完成 / 失敗都要寫回 pdf_status,讓 UI 從 spinner 切到下載 / 重試。
+    // 用 service-role 避免被 daily_logs RLS 擋(after() 跑在 user session 之後,
+    // user 可能已登出 / token 過期)。
     after(async () => {
-      const res = await generatePdfForLog(payload.logId);
-      if (!res.ok) {
-        console.error("[approveStageAction] PDF gen failed:", res.error);
+      const { createServiceClient } = await import("@/lib/supabase/server");
+      const service = createServiceClient();
+      try {
+        const res = await generatePdfForLog(payload.logId);
+        if (res.ok) {
+          await service
+            .from("daily_logs")
+            .update({ pdf_status: "done", pdf_error: null })
+            .eq("id", payload.logId);
+        } else {
+          console.error("[approveStageAction] PDF gen failed:", res.error);
+          await service
+            .from("daily_logs")
+            .update({ pdf_status: "failed", pdf_error: res.error })
+            .eq("id", payload.logId);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[approveStageAction] PDF gen threw:", msg);
+        await service
+          .from("daily_logs")
+          .update({ pdf_status: "failed", pdf_error: msg })
+          .eq("id", payload.logId);
       }
     });
   } else {

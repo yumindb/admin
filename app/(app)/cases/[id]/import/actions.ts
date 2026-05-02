@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -96,69 +97,145 @@ export async function confirmImportAction(payload: ConfirmPayload) {
   let updatedCount = 0;
   const skippedFromUI = payload.nodes.filter((n) => n.skippedByUser).length;
 
-  // 4) 兩段式 insert：先 insert root（無 parent）→ 拿到 server id → 再 insert children
-  //    用一個 mapping: clientId → serverId
+  // 4) Batch insert/update — 一次 round-trip 寫入所有 nodes,避免 N+1 超 Vercel 10s。
+  //    策略:server-side 先把 clientId → serverId map 完整建好(已存在用 dup.id;
+  //    新項用 server-generated UUID),再依 (插入新項 + 更新現有未鎖項) 兩條 statement 寫入。
   const idMap = new Map<string, string>();
-  // 把 nodes 依 sortPath 排序，確保 parent 在前
+  // 把 nodes 依 sortPath 排序,確保 parent 在前(map 才能查到 parentServerId)
   const sorted = [...usable].sort((a, b) => a.sortPath.localeCompare(b.sortPath));
+
+  type InsertRow = {
+    id: string;
+    case_id: string;
+    parent_id: string | null;
+    sort_path: string;
+    depth: number;
+    item_type: "section" | "item" | "spec";
+    tender_code: string | null;
+    name: string;
+    unit: string | null;
+    quantity: number | null;
+    unit_price: number | null;
+    total_price: number | null;
+    brand_note: string | null;
+    spec_text: string | null;
+    import_id: string;
+  };
+  type UpdateRow = {
+    id: string;
+    parent_id: string | null;
+    sort_path: string;
+    depth: number;
+    item_type: "section" | "item" | "spec";
+    unit: string | null;
+    quantity: number | null;
+    unit_price: number | null;
+    total_price: number | null;
+    brand_note: string | null;
+    spec_text: string | null;
+    import_id: string;
+  };
+  const toInsert: InsertRow[] = [];
+  const toUpdate: UpdateRow[] = [];
 
   for (const n of sorted) {
     const itemType = n.type === "section" ? "section" : n.type === "spec" ? "spec" : "item";
     const key = dedupeKey(n.tenderCode, n.name);
     const dup = existingMap.get(key);
-
     const parentServerId = n.parentId ? idMap.get(n.parentId) ?? null : null;
 
     if (dup) {
-      if (dup.modified) {
-        // 保留使用者修改，但仍把 client→server id 記下供子項用
-        idMap.set(n.id, dup.id);
-        continue;
-      }
-      const { error } = await supabase
-        .from("case_work_items")
-        .update({
-          unit: n.unit,
-          quantity: n.quantity,
-          unit_price: n.unitPrice,
-          total_price: n.totalPrice,
-          brand_note: n.brandNote,
-          spec_text: n.specText,
-          import_id: importId,
-          parent_id: parentServerId,
-          sort_path: n.sortPath,
-          depth: n.depth,
-          item_type: itemType,
-        })
-        .eq("id", dup.id);
-      if (error) return { ok: false, error: "更新工項失敗：" + error.message };
       idMap.set(n.id, dup.id);
+      if (dup.modified) continue; // 保留使用者修改
+      toUpdate.push({
+        id: dup.id,
+        parent_id: parentServerId,
+        sort_path: n.sortPath,
+        depth: n.depth,
+        item_type: itemType,
+        unit: n.unit,
+        quantity: n.quantity,
+        unit_price: n.unitPrice,
+        total_price: n.totalPrice,
+        brand_note: n.brandNote,
+        spec_text: n.specText,
+        import_id: importId,
+      });
       updatedCount++;
     } else {
-      const { data: inserted, error } = await supabase
-        .from("case_work_items")
-        .insert({
-          case_id: payload.caseId,
-          parent_id: parentServerId,
-          sort_path: n.sortPath,
-          depth: n.depth,
-          item_type: itemType,
-          tender_code: n.tenderCode,
-          name: n.name,
-          unit: n.unit,
-          quantity: n.quantity,
-          unit_price: n.unitPrice,
-          total_price: n.totalPrice,
-          brand_note: n.brandNote,
-          spec_text: n.specText,
-          import_id: importId,
-        })
-        .select("id")
-        .single();
-      if (error || !inserted) return { ok: false, error: "新增工項失敗：" + error?.message };
-      idMap.set(n.id, inserted.id as string);
+      const newId = randomUUID();
+      idMap.set(n.id, newId);
+      toInsert.push({
+        id: newId,
+        case_id: payload.caseId,
+        parent_id: parentServerId,
+        sort_path: n.sortPath,
+        depth: n.depth,
+        item_type: itemType,
+        tender_code: n.tenderCode,
+        name: n.name,
+        unit: n.unit,
+        quantity: n.quantity,
+        unit_price: n.unitPrice,
+        total_price: n.totalPrice,
+        brand_note: n.brandNote,
+        spec_text: n.specText,
+        import_id: importId,
+      });
       importedCount++;
     }
+  }
+
+  // 4a) Batch insert 新項 — 因為 parent_id 已是 server UUID,FK self-reference 不會炸
+  //     (parent 在同一 batch 內依 sort 順序排序;Postgres 接受同 statement 內的自引用 FK)。
+  if (toInsert.length > 0) {
+    const { error: insErr } = await supabase
+      .from("case_work_items")
+      .insert(toInsert);
+    if (insErr) return { ok: false, error: "新增工項失敗：" + insErr.message };
+  }
+
+  // 4b) Batch update 既有未鎖項 — Supabase 沒原生 batch update,
+  //     用 upsert(只列已存在的 id,onConflict='id')一次寫入。
+  //     注意:upsert 不能改 case_id / tender_code / name(dedupe key 與所有權)
+  //     所以 UpdateRow 不含 case_id / tender_code / name,但 upsert 必須帶這些 NOT NULL 欄位 →
+  //     改用一條一條 update 仍是 N round-trip。
+  //     折衷:如果 toUpdate 很多就 fall back to per-row(暫時),否則 5 個以下併行 OK。
+  //     實務上「未鎖項 update」只在重複匯入時發生,通常 <50,影響小;
+  //     但仍用 4-concurrency 池避免 sequential await。
+  if (toUpdate.length > 0) {
+    const concurrency = 4;
+    let cursor = 0;
+    let firstErr: string | null = null;
+    const workers = Array.from(
+      { length: Math.min(concurrency, toUpdate.length) },
+      async () => {
+        while (true) {
+          const i = cursor++;
+          if (i >= toUpdate.length || firstErr) return;
+          const u = toUpdate[i];
+          const { error } = await supabase
+            .from("case_work_items")
+            .update({
+              parent_id: u.parent_id,
+              sort_path: u.sort_path,
+              depth: u.depth,
+              item_type: u.item_type,
+              unit: u.unit,
+              quantity: u.quantity,
+              unit_price: u.unit_price,
+              total_price: u.total_price,
+              brand_note: u.brand_note,
+              spec_text: u.spec_text,
+              import_id: u.import_id,
+            })
+            .eq("id", u.id);
+          if (error && !firstErr) firstErr = error.message;
+        }
+      }
+    );
+    await Promise.all(workers);
+    if (firstErr) return { ok: false, error: "更新工項失敗：" + firstErr };
   }
 
   // 5) 更新 tender_imports.imported_count / skipped_count

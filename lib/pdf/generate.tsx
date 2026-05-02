@@ -50,6 +50,28 @@ async function fetchAsDataUrl(
   return `data:${mime};base64,${base64}`;
 }
 
+/**
+ * 4-concurrency limiter,避免一份日誌一次拉 24+ 張照片時 Vercel 1024MB heap OOM。
+ * 不裝 p-limit,手寫 worker pool 即可。
+ */
+async function pLimit<T, R>(
+  items: T[],
+  n: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function generatePdfForLog(logId: string): Promise<
   { ok: true; pdfPath: string } | { ok: false; error: string }
 > {
@@ -133,33 +155,36 @@ export async function generatePdfForLog(logId: string): Promise<
     profileMap.set(p.id as string, (p.full_name as string) ?? "—");
   }
 
-  // 簽名圖：daily-photos / signatures 都試（早期實作有混用）
-  const approvalsForPdf: PdfApproval[] = await Promise.all(
-    approvals.map(async (a) => {
-      let signatureDataUrl: string | null = null;
-      if (a.signature_url) {
-        signatureDataUrl =
-          (await fetchAsDataUrl(supabase, SIGNATURES_BUCKET, a.signature_url)) ??
-          (await fetchAsDataUrl(supabase, PHOTOS_BUCKET, a.signature_url));
-      }
-      return {
-        ...a,
-        approverName: a.approver_id ? profileMap.get(a.approver_id) ?? null : null,
-        signatureDataUrl,
-      };
-    })
-  );
+  // 簽名圖 + 工地照片合併成同一個 4-concurrency 池,避免一次拉 24+ object 把 heap 撐爆。
+  // 簽名 daily-photos / signatures 都試(早期實作有混用)。
+  const approvalsForPdf: PdfApproval[] = await pLimit(approvals, 4, async (a) => {
+    let signatureDataUrl: string | null = null;
+    if (a.signature_url) {
+      signatureDataUrl =
+        (await fetchAsDataUrl(supabase, SIGNATURES_BUCKET, a.signature_url)) ??
+        (await fetchAsDataUrl(supabase, PHOTOS_BUCKET, a.signature_url));
+    }
+    return {
+      ...a,
+      approverName: a.approver_id ? profileMap.get(a.approver_id) ?? null : null,
+      signatureDataUrl,
+    };
+  });
 
   // 工地照片 → base64 data URL。caption 取使用者填的說明,沒填則用「照片 N」。
-  const photos: PdfPhoto[] = (
-    await Promise.all(
-      normalizeLogPhotos(log.photos).map(async (p, idx) => {
-        const dataUrl = await fetchAsDataUrl(supabase, PHOTOS_BUCKET, p.path);
-        if (!dataUrl) return null;
-        return { dataUrl, caption: p.caption.trim() || `照片 ${idx + 1}` };
-      })
-    )
-  ).filter(Boolean) as PdfPhoto[];
+  const rawPhotos = normalizeLogPhotos(log.photos);
+  const photoResults = await pLimit<typeof rawPhotos[number], PdfPhoto | null>(
+    rawPhotos,
+    4,
+    async (p, idx) => {
+      const dataUrl = await fetchAsDataUrl(supabase, PHOTOS_BUCKET, p.path);
+      if (!dataUrl) return null;
+      return { dataUrl, caption: p.caption.trim() || `照片 ${idx + 1}` };
+    }
+  );
+  const photos: PdfPhoto[] = photoResults.filter(
+    (x): x is PdfPhoto => x !== null
+  );
 
   const data: PdfData = {
     log,
