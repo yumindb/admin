@@ -25,11 +25,10 @@ export function PhotoGallery({
   layout?: "grid" | "row";
 }) {
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
-  const paths = photos.map((p) => p.path);
 
   const lightbox = (
     <PhotoLightbox
-      photos={paths}
+      photos={photos}
       path={lightboxPath}
       onChange={setLightboxPath}
     />

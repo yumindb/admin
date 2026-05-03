@@ -1361,7 +1361,7 @@ export function NewLogForm({
       </div>
 
       <PhotoLightbox
-        photos={photos.map((p) => p.path)}
+        photos={photos}
         path={lightboxPath}
         onChange={setLightboxPath}
       />
