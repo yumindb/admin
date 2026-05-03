@@ -293,12 +293,14 @@ export function NewLogForm({
 
   // 案件 picker 內的 extra/unsigned PickerItem 列表 = 案件原有 + 本次新增的臨時項
   // 用 useMemo 而非 useEffect 避免 setState-in-effect 的 cascading render
+  // 去重必要:server action 成功後 Next.js auto-revalidate 當前 route → server props
+  // 已含新項,但 client 的 extraAdded state 仍帶同一筆 id → 不去重會雙胞胎
   const extraItemsExtra = useMemo(
-    () => [...(selectedCase?.extraWorkItems ?? []), ...extraAdded],
+    () => dedupById([...(selectedCase?.extraWorkItems ?? []), ...extraAdded]),
     [selectedCase, extraAdded],
   );
   const unsignedItemsExtra = useMemo(
-    () => [...(selectedCase?.unsignedWorkItems ?? []), ...unsignedAdded],
+    () => dedupById([...(selectedCase?.unsignedWorkItems ?? []), ...unsignedAdded]),
     [selectedCase, unsignedAdded],
   );
 
@@ -1571,6 +1573,18 @@ const PERCENT_DEFAULT_UNITS = new Set([
 function defaultPickerMode(unit: string | null): "absolute" | "percent" {
   if (!unit) return "absolute";
   return PERCENT_DEFAULT_UNITS.has(unit.trim()) ? "percent" : "absolute";
+}
+
+/** 以 id 為 key 去重,保留先出現的(server props 優先,client local state 次之) */
+function dedupById<T extends { id: string }>(arr: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of arr) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
 }
 
 type StoredDraft = {
