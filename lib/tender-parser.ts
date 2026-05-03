@@ -538,6 +538,32 @@ export function parseQuoteSheet(matrix: unknown[][]): ParseResult {
     // 報價單嚴格要求：必須是純數字項次,否則一律 skip(避免把頁尾公司列當 item)
     const codeNumeric = /^\d+(\.\d+)?$/.test(code);
     if (!codeNumeric) {
+      // 新版報價單格式: 分類抬頭放在 A 欄(整列其他欄空白),例如「拆除工程」
+      const isAOnlySection =
+        !!code &&
+        !name &&
+        !unit &&
+        qty === null &&
+        unitPrice === null &&
+        totalPrice === null &&
+        !note;
+      if (isAOnlySection) {
+        sectionSerial++;
+        currentSection = code;
+        rows.push({
+          rowIndex,
+          type: "section",
+          tenderCode: `第${sectionSerial}類`,
+          name: code,
+          unit: null,
+          quantity: null,
+          unitPrice: null,
+          totalPrice: null,
+          brandNote: null,
+          specText: null,
+        });
+        continue;
+      }
       rows.push(skipRow(rowIndex, "非數字項次"));
       continue;
     }
