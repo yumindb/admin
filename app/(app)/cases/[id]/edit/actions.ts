@@ -13,7 +13,7 @@ const EditCaseSchema = z.object({
   caseId: z.string().uuid(),
   name: z.string().trim().min(1, "案件名稱必填").max(200),
   code: z.string().trim().max(60).optional().or(z.literal("")),
-  company: z.enum(COMPANIES, { errorMap: () => ({ message: "請選擇承接公司" }) }),
+  company: z.enum(COMPANIES, { message: "請選擇承接公司" }),
   location: z.string().trim().max(200).optional().or(z.literal("")),
   client: z.string().trim().max(120).optional().or(z.literal("")),
   started_at: z.string().trim().optional().or(z.literal("")),

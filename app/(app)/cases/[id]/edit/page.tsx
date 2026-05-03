@@ -13,7 +13,7 @@ export default async function EditCasePage({
   const supabase = await createClient();
   const { data: caseRow } = await supabase
     .from("cases")
-    .select("id, name, code, location, client, started_at, expected_end, notes")
+    .select("id, name, code, company, location, client, started_at, expected_end, notes")
     .eq("id", id)
     .maybeSingle();
 
@@ -23,6 +23,7 @@ export default async function EditCasePage({
     | "id"
     | "name"
     | "code"
+    | "company"
     | "location"
     | "client"
     | "started_at"
