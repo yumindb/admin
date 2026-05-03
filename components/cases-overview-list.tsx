@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { formatDateTW } from "@/lib/datetime";
 import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
+import { getCompanyShort } from "@/lib/companies";
 import type { Case, CaseStatus, LogPhoto } from "@/lib/types";
 
 // re-export 讓既有 import { CaseStats } from this file 仍可用
@@ -171,7 +172,7 @@ export function CasesOverviewList({
               return (
                 <CompanyPill
                   key={co}
-                  label={co}
+                  label={getCompanyShort(co)}
                   count={count}
                   active={companyFilter === co}
                   onClick={() => setCompanyFilter(co)}
@@ -324,7 +325,7 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="shrink-0 rounded-md border border-[#E0DCD6] bg-[#F5F1EC] px-2 py-0.5 text-xs font-medium text-primary">
-              {c.company || "—"}
+              {c.company ? getCompanyShort(c.company) : "—"}
             </span>
             <span className="truncate text-sm text-muted-foreground">
               {c.code ?? "未編號"}

@@ -9,6 +9,7 @@ import {
 } from "@/components/work-items-tree";
 import { WorkItemsTreeSection } from "@/components/work-items-tree-section";
 import { tryGetActor } from "@/lib/auth/require-role";
+import { getCompanyShort } from "@/lib/companies";
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
 import {
@@ -183,7 +184,7 @@ export default async function CaseDetailPage({
             <span>
               公司：
               <span className="ml-0.5 font-medium text-foreground">
-                {c.company || "—"}
+                {c.company ? getCompanyShort(c.company) : "—"}
               </span>
             </span>
             <span>地點：{c.location || "—"}</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { getCompanyShort } from "@/lib/companies";
 import {
   Crown,
   ClipboardList,
@@ -190,7 +191,7 @@ export function StaffManager({
             return (
               <CompanyTab
                 key={co}
-                label={co}
+                label={getCompanyShort(co)}
                 count={count}
                 active={companyFilter === co}
                 onClick={() => setCompanyFilter(co)}

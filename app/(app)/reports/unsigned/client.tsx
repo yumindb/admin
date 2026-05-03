@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatDateTW } from "@/lib/datetime";
+import { getCompanyShort } from "@/lib/companies";
 
 export type UnsignedRow = {
   kind: "extra" | "unsigned";
@@ -213,7 +214,7 @@ export function UnsignedReportClient({
                     }`}
                   >
                     <span className="rounded bg-white/20 px-1 text-[10px]">
-                      {c.company || "—"}
+                      {c.company ? getCompanyShort(c.company) : "—"}
                     </span>
                     <span>{c.name}</span>
                   </button>

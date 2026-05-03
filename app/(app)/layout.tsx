@@ -6,6 +6,7 @@ import { BottomTabNav, type BottomTab } from "@/components/bottom-tab-nav";
 import { LogoutButton } from "@/components/logout-button";
 import { RouteProgress } from "@/components/route-progress";
 import { logoutAction } from "../login/actions";
+import { getCompanyShort } from "@/lib/companies";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
@@ -38,7 +39,7 @@ export default async function AppLayout({
 
   const fullName = profile?.full_name ?? user.email ?? "未命名使用者";
   const roleLabel = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : "—";
-  const company = profile?.company ?? "裕民";
+  const company = getCompanyShort(profile?.company ?? "裕民");
 
   // 撈當前使用者角色對應的待簽數量,加在 nav 連結後做 badge
   let approvalsBadge = 0;

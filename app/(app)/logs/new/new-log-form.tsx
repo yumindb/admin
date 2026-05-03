@@ -14,6 +14,7 @@ import {
 import type { WorkItemAggregateMap } from "@/lib/work-item-aggregates";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
 import { NextStepHint } from "@/components/next-step-hint";
+import { getCompanyShort } from "@/lib/companies";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { saveLogAction } from "./actions";
 import {
@@ -664,7 +665,7 @@ export function NewLogForm({
         </div>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           <span>{logDate || "—"}{weekdayLabel ? ` ${weekdayLabel}` : ""}</span>
-          {selectedCase?.company && <span>· {selectedCase.company}</span>}
+          {selectedCase?.company && <span>· {getCompanyShort(selectedCase.company)}</span>}
           {remainingDays !== null && <span>· 剩餘 {remainingDays} 天</span>}
           <span>· 填表 {currentUserName}</span>
         </div>

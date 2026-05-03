@@ -8,6 +8,7 @@
  *   - 「下載 Excel」按鈕(把選中的 case ids 傳給 server action)
  */
 import { useMemo, useState } from "react";
+import { getCompanyShort } from "@/lib/companies";
 import { ExcelDownloadButton } from "@/components/excel-download-button";
 import { getCrossCaseSummaryXlsxAction } from "../reports-actions";
 import type { CrossCaseSummaryRow } from "@/lib/excel/cross-case-summary";
@@ -129,7 +130,7 @@ export function WorkItemsReportClient({
                   }`}
                 >
                   <span className="rounded bg-white/20 px-1 text-[10px]">
-                    {c.company || "—"}
+                    {c.company ? getCompanyShort(c.company) : "—"}
                   </span>
                   <span>{c.name}</span>
                 </button>

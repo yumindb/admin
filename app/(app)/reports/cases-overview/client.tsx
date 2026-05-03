@@ -8,6 +8,7 @@
  */
 import Link from "next/link";
 import { useState } from "react";
+import { getCompanyShort } from "@/lib/companies";
 import { formatDateTW } from "@/lib/datetime";
 import type { CaseStatus } from "@/lib/types";
 
@@ -153,7 +154,7 @@ export function CasesOverviewReportClient({
                       </div>
                     )}
                   </td>
-                  <Td>{r.company || "—"}</Td>
+                  <Td>{r.company ? getCompanyShort(r.company) : "—"}</Td>
                   <Td>
                     <span
                       className={`inline-block rounded-full border px-2 py-0.5 text-[11px] ${s.cls}`}
