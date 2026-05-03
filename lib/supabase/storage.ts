@@ -70,12 +70,25 @@ export async function getSignedUrls(
   }
   if (!paths.length) return out;
 
-  const supabase = createServiceClient();
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrls(paths, ttl);
+  // env var 未設 / service-role 建構失敗時不要炸頁面,回空 map 讓 UI 顯示 placeholder
+  let supabase;
+  try {
+    supabase = createServiceClient();
+  } catch (err) {
+    console.error("[storage] createServiceClient failed:", err);
+    return out;
+  }
+  let data, error;
+  try {
+    ({ data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUrls(paths, ttl));
+  } catch (err) {
+    console.error("[storage] createSignedUrls threw:", err);
+    return out;
+  }
   if (error || !data) {
-    // 整批失敗 → 回空 map,UI 顯示 placeholder
+    if (error) console.error("[storage] createSignedUrls error:", error);
     return out;
   }
 
