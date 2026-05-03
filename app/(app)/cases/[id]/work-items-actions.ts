@@ -339,7 +339,12 @@ export async function createExtraOrUnsignedAction(
       })
       .select("id")
       .single();
-    if (error) throw wrapDbError(error, "新增工項失敗");
+    if (error) {
+      console.error("[createExtraOrUnsignedAction] insert failed", error);
+      // POC 階段把真正的 DB 錯誤訊息直接吐給 client,方便 Phil 自己 debug
+      // (正式版改回 wrapDbError 隱藏 internal details)
+      return { ok: false, error: `新增工項失敗:${error.message}` };
+    }
 
     revalidatePath(`/cases/${data.case_id}`);
     return { ok: true, workItemId: inserted.id as string };
