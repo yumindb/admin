@@ -32,16 +32,26 @@ import {
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: "草稿", cls: "bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]" },
-  submitted: { label: "待核定", cls: "bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]" },
+  // submitted 用「簽核中」當基底,實際顯示時依 current_stage 接「:複核 / :審核 / :核定」
+  submitted: { label: "簽核中", cls: "bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]" },
   approved: { label: "已核定", cls: "bg-[#ECFDF5] text-[#4A7C59] border-[#A7F3D0]" },
   rejected: { label: "已退回", cls: "bg-[#FEF2F2] text-[#B91C1C] border-[#FCA5A5]" },
 };
 
+// 完整版 — 顯示在 NextStepHint / 簽核紀錄 etc.
 const STAGE_LABEL: Record<string, string> = {
   fill: "填表(工地主任)",
   review: "複核(工地主任)",
   audit: "審核(辦公室助理)",
   approve: "核定(老闆)",
+};
+
+// 簡短版 — 接在 status badge 後綴用,如「簽核中:審核」
+const STAGE_LABEL_SHORT: Record<string, string> = {
+  fill: "填表",
+  review: "複核",
+  audit: "審核",
+  approve: "核定",
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -249,6 +259,9 @@ export default async function LogDetailPage({
               className={`inline-block rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
             >
               {s.label}
+              {l.status === "submitted" && l.current_stage
+                ? `:${STAGE_LABEL_SHORT[l.current_stage] ?? l.current_stage}`
+                : ""}
             </span>
             {isBackfilledLog(l) && (
               <span
