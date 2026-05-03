@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { COMPANIES, DEFAULT_COMPANY } from "@/lib/companies";
 
 export type CaseFormState =
   | { error?: string; fieldErrors?: Record<string, string[]> }
@@ -13,6 +14,7 @@ export type CaseFormState =
 export type CaseFormDefaults = {
   name?: string | null;
   code?: string | null;
+  company?: string | null;
   location?: string | null;
   client?: string | null;
   started_at?: string | null;
@@ -73,6 +75,22 @@ export function CaseFormFields({
           />
         </Field>
       </div>
+
+      <Field label="承接公司 *" htmlFor="company" error={fieldErrors?.company?.[0]}>
+        <select
+          id="company"
+          name="company"
+          required
+          defaultValue={defaults.company ?? DEFAULT_COMPANY}
+          className="flex h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm text-foreground outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+        >
+          {COMPANIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <Field label="施工地點" htmlFor="location">

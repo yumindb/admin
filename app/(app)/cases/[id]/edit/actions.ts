@@ -6,12 +6,14 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { wrapDbError } from "@/lib/db/wrap-error";
+import { COMPANIES } from "@/lib/companies";
 import type { CaseFormState } from "@/components/case-form";
 
 const EditCaseSchema = z.object({
   caseId: z.string().uuid(),
   name: z.string().trim().min(1, "案件名稱必填").max(200),
   code: z.string().trim().max(60).optional().or(z.literal("")),
+  company: z.enum(COMPANIES, { errorMap: () => ({ message: "請選擇承接公司" }) }),
   location: z.string().trim().max(200).optional().or(z.literal("")),
   client: z.string().trim().max(120).optional().or(z.literal("")),
   started_at: z.string().trim().optional().or(z.literal("")),
@@ -39,6 +41,7 @@ export async function updateCaseAction(
     .update({
       name: data.name,
       code: data.code || null,
+      company: data.company,
       location: data.location || null,
       client: data.client || null,
       started_at: data.started_at || null,

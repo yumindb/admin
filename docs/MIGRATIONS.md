@@ -19,6 +19,7 @@
 | 13 | [`migration-2.9.sql`](migration-2.9.sql) | daily_log_revisions 表(送出後編輯的 audit trail)+ RLS | 必跑 |
 | 14 | [`migration-2.10.sql`](migration-2.10.sql) | role-based RLS(取代 POC `poc_authenticated_all`)+ daily_log_revisions 收緊只 INSERT + storage 翻 private + path 限定 `auth.uid()/...` + signed URL 流程 | 必跑(取代 storage.sql 的舊 policy) |
 | 15 | [`migration-2.11.sql`](migration-2.11.sql) | daily_logs 加 `pdf_status` enum + `pdf_error` text(讓 PDF 背景生成的 generating / failed 狀態能在 UI 透明顯示)| 必跑 |
+| 16 | [`migration-2.12.sql`](migration-2.12.sql) | cases.company / profiles.company 補成 3 家正式公司名 + default 改為「裕民工務企業有限公司」| 必跑(若有舊資料) |
 
 ## 排錯
 

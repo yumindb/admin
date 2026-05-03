@@ -51,6 +51,7 @@ export default async function EditCasePage({
           defaults={{
             name: c.name,
             code: c.code,
+            company: c.company,
             location: c.location,
             client: c.client,
             started_at: c.started_at,

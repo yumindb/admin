@@ -5,10 +5,12 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { confirmImportAction } from "@/app/(app)/cases/[id]/import/actions";
 import { getNextCaseCode } from "@/lib/case-codes";
+import { COMPANIES } from "@/lib/companies";
 
 const NewCaseSchema = z.object({
   name: z.string().trim().min(1, "案件名稱必填").max(200),
   code: z.string().trim().max(60).optional().or(z.literal("")),
+  company: z.enum(COMPANIES, { errorMap: () => ({ message: "請選擇承接公司" }) }),
   location: z.string().trim().max(200).optional().or(z.literal("")),
   client: z.string().trim().max(120).optional().or(z.literal("")),
   started_at: z.string().trim().optional().or(z.literal("")),
@@ -57,6 +59,7 @@ export async function createCaseAction(
   const fields = {
     name: formData.get("name"),
     code: formData.get("code") ?? "",
+    company: formData.get("company") ?? "",
     location: formData.get("location") ?? "",
     client: formData.get("client") ?? "",
     started_at: formData.get("started_at") ?? "",
@@ -102,6 +105,7 @@ export async function createCaseAction(
       .insert({
         name: data.name,
         code: code || null,
+        company: data.company,
         location: data.location || null,
         client: data.client || null,
         started_at: data.started_at || null,
