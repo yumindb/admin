@@ -313,7 +313,7 @@ export default async function EditLogPage({
       )}
       {editMode === "post-submission" && (
         <p className="mb-7 text-sm text-muted-foreground">
-          此日誌已送出({l.status === "rejected" ? "已退回" : "簽核中"}),這次的編輯會記錄誰在何時改了哪些欄位,但不會重啟簽核流程也不需要重新簽名。已核定的日誌不開放編輯。
+          此日誌已送出({l.status === "rejected" ? "已退回" : "簽核中"}),這次的編輯會記錄誰在何時改了哪些欄位。若內容有變,簽核流程會自動退回到辦公室助理階段重新審核(不需要重新簽名)。已核定的日誌不開放編輯。
         </p>
       )}
       {editMode === "classic" && <div className="mb-7" />}

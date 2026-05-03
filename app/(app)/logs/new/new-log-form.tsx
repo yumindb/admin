@@ -1288,7 +1288,7 @@ export function NewLogForm({
 
       <NextStepHint tone="info">
         {editMode === "post-submission"
-          ? "這份日誌已送出,你的編輯會記錄一筆軌跡(誰、何時、改了哪些欄位),不會重啟簽核流程也不需要重新簽名。"
+          ? "這份日誌已送出。你的編輯會記錄一筆軌跡(誰、何時、改了哪些欄位)。若內容有變,流程會自動退回到辦公室助理階段重新審核,不需要重新簽名。"
           : "「儲存草稿」可以晚點再回來填,只有你看得到。「送出核定」會通知老闆,送出後若要改要等被退回或請主管退回。"}
       </NextStepHint>
 
@@ -1366,7 +1366,7 @@ export function NewLogForm({
               </h2>
             </div>
             <div className="px-5 py-4 text-sm leading-relaxed text-foreground">
-              日誌已被簽核流程走過。儲存的修改不會自動通知簽核者。是否仍要儲存？
+              日誌已在簽核流程中。儲存後若內容有變,流程會自動退回到辦公室助理階段,由助理重新審核再交給老闆。是否仍要儲存？
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
               <Button

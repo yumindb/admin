@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type {
+  ApprovalStage,
   DailyLogManpower,
   DailyLogWorkItem,
   DailyLogExtraItem,
@@ -101,7 +102,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
     const { data: existing, error: loadErr } = await supabase
       .from("daily_logs")
       .select(
-        "id, supervisor_id, status, log_date, weather, manpower, work_items, extra_items, unsigned_items, photos, vendor_notices, notes"
+        "id, supervisor_id, status, current_stage, log_date, weather, manpower, work_items, extra_items, unsigned_items, photos, vendor_notices, notes"
       )
       .eq("id", logId)
       .maybeSingle();
@@ -177,12 +178,35 @@ export async function saveLogAction(payload: SaveLogPayload) {
       return { ok: false, error: "寫入編輯紀錄失敗:" + revErr.message };
     }
 
+    // 簽核階段重設規則(post_edit 時依角色決定退回到哪一關):
+    //   - submitted + 主任 改 → 一律退到 audit(助理重審 → 老闆重看)
+    //   - submitted + 助理 改 + current_stage='approve' → 退到 audit
+    //     (老闆原本要核定的版本被助理改了,要先讓助理自己重審才上老闆)
+    //   - submitted + 助理 改 + current_stage='audit' → 不變(助理在自己關卡內修正)
+    //   - submitted + 主任 改 + current_stage='review' → 退到 audit
+    //     (主任改完不再卡自己關卡;直接讓助理看新版本)
+    //   - rejected → current_stage 仍是 null,不變(主任後續再走 classic 重送)
+    //   - 老闆 改 → 已被 status='approved' 阻擋進不來
+    const existingStage =
+      (existing.current_stage as ApprovalStage | null) ?? null;
+    let nextStage: ApprovalStage | null = existingStage;
+    if (existing.status === "submitted") {
+      if (role === "site_supervisor") {
+        nextStage = "audit";
+      } else if (role === "office_staff" && existingStage === "approve") {
+        nextStage = "audit";
+      }
+    }
+    const stageChanged = nextStage !== existingStage;
+
     // status guard: 只在「我們讀到」當下的 status 沒被別人改掉時才 update。
     // 防止讀 → 別人 approve / reject → 我寫覆蓋掉的競態。
     const expectedStatus = existing.status as string;
+    const updatePayload: Record<string, unknown> = { ...next };
+    if (stageChanged) updatePayload.current_stage = nextStage;
     const { data: updRows, error: updErr } = await supabase
       .from("daily_logs")
-      .update(next)
+      .update(updatePayload)
       .eq("id", logId)
       .eq("status", expectedStatus)
       .select("id");
@@ -199,7 +223,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
     revalidatePath("/logs");
     revalidatePath(`/logs/${logId}`);
     revalidatePath("/approvals");
-    return { ok: true, logId };
+    return { ok: true, logId, stageReset: stageChanged ? nextStage : null };
   }
 
   // ============================================================
