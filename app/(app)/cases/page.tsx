@@ -3,11 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizeLogPhotos } from "@/lib/daily-log";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { Button } from "@/components/ui/button";
-import {
-  CasesOverviewList,
-  isCaseBehind,
-  type CaseStats,
-} from "@/components/cases-overview-list";
+import { CasesOverviewList } from "@/components/cases-overview-list";
+import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
 import {
   CasesKpiBar,
   type CasesKpis,

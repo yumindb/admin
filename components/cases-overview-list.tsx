@@ -13,18 +13,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { formatDateTW } from "@/lib/datetime";
+import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
 import type { Case, CaseStatus, LogPhoto } from "@/lib/types";
 
-export type CaseStats = {
-  itemCount: number;
-  logCount: number;
-  progressPct: number | null;
-  extraCount: number;
-  unsignedCount: number;
-  photos: LogPhoto[];
-  photoTotal: number;
-  startedDaysAgo: number | null;
-};
+// re-export 讓既有 import { CaseStats } from this file 仍可用
+export type { CaseStats };
+export { isCaseBehind };
 
 type StatusFilter = CaseStatus | "all";
 type SortKey = "recent" | "oldest" | "name" | "started";
@@ -49,13 +43,6 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "name", label: "名稱" },
   { key: "started", label: "開工日期" },
 ];
-
-/** 進度落後判斷:< 30% 且開工 > 60 天前 */
-export function isCaseBehind(stats: CaseStats): boolean {
-  if (stats.progressPct === null) return false;
-  if (stats.startedDaysAgo === null) return false;
-  return stats.progressPct < 30 && stats.startedDaysAgo > 60;
-}
 
 export function CasesOverviewList({
   cases,
