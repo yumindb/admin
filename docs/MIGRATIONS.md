@@ -21,6 +21,7 @@
 | 15 | [`migration-2.11.sql`](migration-2.11.sql) | daily_logs 加 `pdf_status` enum + `pdf_error` text(讓 PDF 背景生成的 generating / failed 狀態能在 UI 透明顯示)| 必跑 |
 | 16 | [`migration-2.12.sql`](migration-2.12.sql) | cases.company / profiles.company 補成 3 家正式公司名 + default 改為「裕民工務企業有限公司」| 必跑(若有舊資料) |
 | 17 | [`migration-2.13.sql`](migration-2.13.sql) | 合約外/未簽約升等為 case_work_items(work_item_type 加 'extra'+'unsigned';case_work_items 加 quote_status/contract_signed_at/contract_note/created_by) | 必跑 |
+| 18 | [`migration-2.14.sql`](migration-2.14.sql) | 開放 site_supervisor INSERT case_work_items(限 item_type IN ('extra','unsigned'))— 解 2.13「新增臨時項 RLS 擋」 | 必跑(配 2.13) |
 
 ## 排錯
 
