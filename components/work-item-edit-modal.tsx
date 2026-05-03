@@ -13,9 +13,11 @@ import { useEffect, useState, useTransition } from "react";
 import { X } from "lucide-react";
 import {
   createWorkItemAction,
+  createExtraOrUnsignedAction,
   updateWorkItemAction,
   type WorkItemActionResult,
 } from "@/app/(app)/cases/[id]/work-items-actions";
+import type { WorkItemType } from "@/lib/types";
 
 export type SectionOption = {
   id: string;
@@ -30,7 +32,7 @@ export type WorkItemEditTarget = {
   quantity: number | null;
   unitPrice: number | null;
   brandNote: string | null;
-  itemType: "section" | "item" | "spec" | "manual";
+  itemType: WorkItemType;
 };
 
 type Props = {
@@ -45,6 +47,13 @@ type Props = {
   initialParentId?: string | null;
   /** edit 時:現有工項資料 */
   target?: WorkItemEditTarget;
+  /**
+   * 若帶入 'extra' / 'unsigned' → modal 切到合約外/未簽約模式:
+   *   - 隱藏「上層分類」dropdown(這兩種一律 root 層)
+   *   - create 時呼叫 createExtraOrUnsignedAction 而非 createWorkItemAction
+   *   - 標題用對應字樣
+   */
+  extraUnsignedKind?: "extra" | "unsigned";
 };
 
 export function WorkItemEditModal({
@@ -56,6 +65,7 @@ export function WorkItemEditModal({
   mode,
   initialParentId,
   target,
+  extraUnsignedKind,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -103,7 +113,11 @@ export function WorkItemEditModal({
     const fd = new FormData();
     if (mode === "create") {
       fd.set("case_id", caseId);
-      if (parentId) fd.set("parent_id", parentId);
+      if (extraUnsignedKind) {
+        fd.set("kind", extraUnsignedKind);
+      } else if (parentId) {
+        fd.set("parent_id", parentId);
+      }
       fd.set("name", name);
       fd.set("unit", unit);
       fd.set("quantity", quantity);
@@ -119,10 +133,17 @@ export function WorkItemEditModal({
     }
 
     startTransition(async () => {
-      const result =
-        mode === "create"
-          ? await createWorkItemAction(fd)
-          : await updateWorkItemAction(fd);
+      let result: WorkItemActionResult;
+      if (mode === "create") {
+        if (extraUnsignedKind) {
+          const r = await createExtraOrUnsignedAction(fd);
+          result = r.ok ? { ok: true } : { ok: false, error: r.error };
+        } else {
+          result = await createWorkItemAction(fd);
+        }
+      } else {
+        result = await updateWorkItemAction(fd);
+      }
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -132,7 +153,13 @@ export function WorkItemEditModal({
     });
   }
 
-  const title = mode === "create" ? "新增工項" : "編輯工項";
+  const kindLabel =
+    extraUnsignedKind === "extra"
+      ? "合約外項目"
+      : extraUnsignedKind === "unsigned"
+        ? "未簽約施工項目"
+        : "工項";
+  const title = mode === "create" ? `新增${kindLabel}` : `編輯${kindLabel}`;
 
   return (
     <div
@@ -160,7 +187,7 @@ export function WorkItemEditModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          {mode === "create" && (
+          {mode === "create" && !extraUnsignedKind && (
             <Field label="上層分類">
               <select
                 value={parentId}

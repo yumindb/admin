@@ -15,7 +15,16 @@ export type Profile = {
   updated_at: string;
 };
 export type CaseStatus = "active" | "paused" | "closed";
-export type WorkItemType = "section" | "item" | "spec" | "manual";
+export type WorkItemType =
+  | "section"
+  | "item"
+  | "spec"
+  | "manual"
+  | "extra"     // 合約外項目(已簽約追加;有單價/複價)
+  | "unsigned"; // 未簽約施工內容(待 office_staff 補報價、簽約後改為 extra)
+
+/** 合約外/未簽約 的報價狀態。pending=待報價,quoted=已報價(有單價即視為已報價) */
+export type QuoteStatus = "pending" | "quoted";
 export type TenderImportStatus = "parsed" | "imported" | "failed";
 export type LogStatus = "draft" | "submitted" | "approved" | "rejected";
 export type ApprovalStage = "fill" | "review" | "audit" | "approve";
@@ -195,6 +204,11 @@ export type CaseWorkItem = {
   skipped: boolean;
   modified_by_user: boolean;
   import_id: string | null;
+  // 以下為 migration-2.13 新增欄位,僅 item_type IN ('extra','unsigned') 使用
+  quote_status: QuoteStatus | null;        // 待報價/已報價;有單價即視為已報價
+  contract_signed_at: string | null;       // 未簽約 → 合約外的時間戳
+  contract_note: string | null;            // 簽約備註
+  created_by: string | null;               // 誰建立(標單匯入為 null;手動新增帶 auth.uid)
   created_at: string;
   updated_at: string;
 };

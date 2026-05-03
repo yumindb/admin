@@ -106,8 +106,18 @@ export default async function ApprovalDetailPage({
   for (const [id, n] of ancestry) {
     wiMap.set(id, { id, name: n.name, unit: n.unit, tender_code: n.tender_code });
   }
+  // 拆三組(同 logs/[id]/page.tsx)
+  const contractWorkItems: DailyLogWorkItem[] = [];
+  const extraWorkItems: DailyLogWorkItem[] = [];
+  const unsignedWorkItems: DailyLogWorkItem[] = [];
+  for (const w of l.work_items ?? []) {
+    const t = ancestry.get(w.work_item_id)?.item_type;
+    if (t === "extra") extraWorkItems.push(w);
+    else if (t === "unsigned") unsignedWorkItems.push(w);
+    else contractWorkItems.push(w);
+  }
   const workItemGroups = groupWorkItemsByAncestor(
-    l.work_items ?? [],
+    contractWorkItems,
     (w) => w.work_item_id,
     ancestry
   );
@@ -177,9 +187,9 @@ export default async function ApprovalDetailPage({
         </div>
       </Section>
 
-      <Section title={`一、依施工計畫書執行按圖施工概況 (${l.work_items?.length ?? 0})`}>
-        {!l.work_items?.length ? (
-          <p className="text-sm text-muted-foreground">無</p>
+      <Section title={`一、依施工計畫書執行按圖施工概況 (${contractWorkItems.length})`}>
+        {!contractWorkItems.length ? (
+          <p className="text-sm text-muted-foreground">無合約內工項</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
             <table className="min-w-full text-base">
@@ -238,8 +248,21 @@ export default async function ApprovalDetailPage({
         </Section>
       )}
 
+      {extraWorkItems.length > 0 && (
+        <Section title={`四、合約外項目 (${extraWorkItems.length})`}>
+          <ApprovalExtraUnsignedTable rows={extraWorkItems} wiMap={wiMap} />
+        </Section>
+      )}
+
+      {unsignedWorkItems.length > 0 && (
+        <Section title={`五、未簽約施工內容 (${unsignedWorkItems.length})`}>
+          <ApprovalExtraUnsignedTable rows={unsignedWorkItems} wiMap={wiMap} />
+        </Section>
+      )}
+
+      {/* 舊資料相容 */}
       {l.extra_items?.length > 0 && (
-        <Section title={`四、非合約內施工項目 (${l.extra_items.length})`}>
+        <Section title={`（舊）合約外（free-form） (${l.extra_items.length})`}>
           <ExtraItemsTable
             rows={l.extra_items}
             cols={[
@@ -256,7 +279,7 @@ export default async function ApprovalDetailPage({
       )}
 
       {l.unsigned_items?.length > 0 && (
-        <Section title={`五、未簽約施工內容 (${l.unsigned_items.length})`}>
+        <Section title={`（舊）未簽約（free-form） (${l.unsigned_items.length})`}>
           <ExtraItemsTable
             rows={l.unsigned_items}
             cols={[
@@ -388,6 +411,52 @@ function InfoCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-[#E0DCD6] bg-white px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-sm font-medium text-primary">{value}</div>
+    </div>
+  );
+}
+
+function ApprovalExtraUnsignedTable({
+  rows,
+  wiMap,
+}: {
+  rows: DailyLogWorkItem[];
+  wiMap: Map<string, WorkItemRow>;
+}) {
+  const fmt = (w: DailyLogWorkItem, unit: string | null) => {
+    if (w.qty_mode === "percent") {
+      return `${Math.round(w.qty * 100)}%${unit ? ` (${unit})` : ""}`;
+    }
+    return `${w.qty}${unit ? " " + unit : ""}`;
+  };
+  return (
+    <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
+      <table className="min-w-full text-base">
+        <thead>
+          <tr className="bg-primary text-primary-foreground">
+            <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">工項</th>
+            <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">單位</th>
+            <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">完成</th>
+            <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">備註</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((w, i) => {
+            const meta = wiMap.get(w.work_item_id);
+            return (
+              <tr key={`${w.work_item_id}-${i}`} className="border-b border-[#E0DCD6]">
+                <td className="h-14 px-4 align-top">{meta?.name ?? "(已刪除)"}</td>
+                <td className="h-14 px-4 align-top">{meta?.unit ?? "—"}</td>
+                <td className="h-14 px-4 align-top text-right tabular-nums">
+                  {fmt(w, meta?.unit ?? null)}
+                </td>
+                <td className="h-14 px-4 align-top text-sm text-muted-foreground">
+                  {w.note ?? ""}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

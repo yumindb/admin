@@ -18,6 +18,10 @@ import {
 } from "./case-excel-buttons";
 import { NextStepHint } from "@/components/next-step-hint";
 import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
+import {
+  ExtraUnsignedSection,
+  type ExtraUnsignedRow,
+} from "@/components/extra-unsigned-section";
 import { normalizeLogPhotos } from "@/lib/daily-log";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import type {
@@ -28,14 +32,15 @@ import type {
   DailyLogWorkItem,
   DailyLogExtraItem,
   DailyLogUnsignedItem,
+  QuoteStatus,
 } from "@/lib/types";
 
-type ExtraRow = DailyLogExtraItem & {
+type LegacyExtraRow = DailyLogExtraItem & {
   log_id: string;
   log_date: string;
 };
 
-type UnsignedRow = DailyLogUnsignedItem & {
+type LegacyUnsignedRow = DailyLogUnsignedItem & {
   log_id: string;
   log_date: string;
 };
@@ -117,17 +122,49 @@ export default async function CaseDetailPage({
     }
   }
 
-  // 彙整跨所有日誌的「合約外」與「未簽約」項目,附上來源日誌
-  const extraRows: ExtraRow[] = [];
-  const unsignedRows: UnsignedRow[] = [];
+  // 案件級的合約外/未簽約工項 — 升等後的主資料,從 case_work_items 撈
+  const extraItems: ExtraUnsignedRow[] = items
+    .filter((it) => it.item_type === "extra")
+    .map((it) => ({
+      id: it.id,
+      name: it.name,
+      unit: it.unit,
+      quantity: it.quantity,
+      unitPrice: it.unit_price,
+      totalPrice: it.total_price,
+      brandNote: it.brand_note,
+      itemType: "extra",
+      quoteStatus: (it.quote_status as QuoteStatus | null) ?? null,
+      contractSignedAt: it.contract_signed_at,
+      contractNote: it.contract_note,
+    }));
+  const unsignedItems: ExtraUnsignedRow[] = items
+    .filter((it) => it.item_type === "unsigned")
+    .map((it) => ({
+      id: it.id,
+      name: it.name,
+      unit: it.unit,
+      quantity: it.quantity,
+      unitPrice: it.unit_price,
+      totalPrice: it.total_price,
+      brandNote: it.brand_note,
+      itemType: "unsigned",
+      quoteStatus: (it.quote_status as QuoteStatus | null) ?? null,
+      contractSignedAt: null,
+      contractNote: null,
+    }));
+
+  // 舊資料相容:從舊日誌 jsonb 蒐集合約外/未簽約(只有舊資料才會有)
+  const legacyExtraRows: LegacyExtraRow[] = [];
+  const legacyUnsignedRows: LegacyUnsignedRow[] = [];
   // 跨所有日誌的照片,日期前綴附在 caption 上,給 PhotoGallery+Lightbox 用
   const allPhotos: GalleryPhoto[] = [];
   for (const log of allLogs) {
     for (const e of (log.extra_items ?? []) as DailyLogExtraItem[]) {
-      extraRows.push({ ...e, log_id: log.id, log_date: log.log_date });
+      legacyExtraRows.push({ ...e, log_id: log.id, log_date: log.log_date });
     }
     for (const u of (log.unsigned_items ?? []) as DailyLogUnsignedItem[]) {
-      unsignedRows.push({ ...u, log_id: log.id, log_date: log.log_date });
+      legacyUnsignedRows.push({ ...u, log_id: log.id, log_date: log.log_date });
     }
     const datePrefix = formatDateTW(log.log_date);
     for (const p of normalizeLogPhotos(log.photos)) {
@@ -150,11 +187,15 @@ export default async function CaseDetailPage({
     path: photoSignedMap.get(p.path) ?? p.path,
   }));
 
-  const treeItems: TreeItem[] = items.map((it) => ({
+  // 樹狀工項清單只顯示合約內(section/item/spec/manual);extra/unsigned 用各自區塊顯示
+  const contractItems = items.filter(
+    (it) => it.item_type !== "extra" && it.item_type !== "unsigned",
+  );
+  const treeItems: TreeItem[] = contractItems.map((it) => ({
     id: it.id,
     parentId: it.parent_id,
     depth: it.depth,
-    itemType: it.item_type,
+    itemType: it.item_type as TreeItem["itemType"],
     tenderCode: it.tender_code,
     name: it.name,
     unit: it.unit,
@@ -231,8 +272,8 @@ export default async function CaseDetailPage({
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">
         <Stat
           label="工項總數"
-          value={items.length}
-          accent={items.length > 0}
+          value={contractItems.length}
+          accent={contractItems.length > 0}
         />
         <Stat
           label="已登記日誌"
@@ -240,12 +281,14 @@ export default async function CaseDetailPage({
           accent={allLogs.length > 0}
         />
         <Stat
-          label="分類層"
-          value={items.filter((x) => x.item_type === "section").length}
+          label="合約外項目"
+          value={extraItems.length}
+          accent={extraItems.length > 0}
         />
         <Stat
-          label="工項層"
-          value={items.filter((x) => x.item_type === "item" || x.item_type === "spec").length}
+          label="未簽約項目"
+          value={unsignedItems.length}
+          accent={unsignedItems.length > 0}
         />
       </div>
 
@@ -333,53 +376,76 @@ export default async function CaseDetailPage({
         <PhotoGallery photos={allPhotosSigned} layout="grid" />
       )}
 
-      {/* 跨日誌彙整:合約外項目 */}
-      <div className="mt-10 mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-primary md:text-xl">
-          合約外項目（非合約內施工）
-          <span className="ml-2 text-sm font-normal text-muted-foreground">
-            共 {extraRows.length} 筆
-          </span>
-        </h2>
-      </div>
-      <ExtraItemsAggregateTable
-        rows={extraRows}
-        emptyHint="目前沒有日誌登記合約外項目"
-        cols={[
-          { key: "log_date", label: "日期" },
-          { key: "name", label: "施工項目" },
-          { key: "unit", label: "單位" },
-          { key: "qty", label: "數量", align: "right" },
-          { key: "headcount", label: "人數", align: "right" },
-          { key: "location", label: "位置" },
-          { key: "requested_by", label: "甲方交辦" },
-          { key: "reason", label: "事由" },
-        ]}
+      {/* 合約外項目 — 案件級工項,可編輯報價、看進度 */}
+      <ExtraUnsignedSection
+        kind="extra"
+        rows={extraItems}
+        progress={progress}
+        caseId={c.id}
+        editable={canEditWorkItems}
       />
 
-      {/* 跨日誌彙整:未簽約項目 */}
-      <div className="mt-10 mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-primary md:text-xl">
-          未簽約施工內容
-          <span className="ml-2 text-sm font-normal text-muted-foreground">
-            共 {unsignedRows.length} 筆
-          </span>
-        </h2>
-      </div>
-      <ExtraItemsAggregateTable
-        rows={unsignedRows}
-        emptyHint="目前沒有日誌登記未簽約項目"
-        cols={[
-          { key: "log_date", label: "日期" },
-          { key: "name", label: "施工項目" },
-          { key: "unit", label: "單位" },
-          { key: "qty", label: "數量", align: "right" },
-          { key: "headcount", label: "人數", align: "right" },
-          { key: "category", label: "類別" },
-          { key: "quote_amount", label: "報價金額", align: "right" },
-          { key: "reason", label: "事由" },
-        ]}
+      {/* 未簽約施工內容 — 案件級工項,可補報價、標記簽約 */}
+      <ExtraUnsignedSection
+        kind="unsigned"
+        rows={unsignedItems}
+        progress={progress}
+        caseId={c.id}
+        editable={canEditWorkItems}
       />
+
+      {/* 舊資料相容:來自舊日誌的 jsonb 合約外/未簽約清單,只在還有舊資料時顯示 */}
+      {legacyExtraRows.length > 0 && (
+        <>
+          <div className="mt-10 mb-4 flex items-center justify-between">
+            <h2 className="text-base font-medium text-muted-foreground">
+              （舊資料）日誌登記的合約外項目
+              <span className="ml-2 text-xs">
+                共 {legacyExtraRows.length} 筆 — 來自升等前的日誌欄位
+              </span>
+            </h2>
+          </div>
+          <LegacyAggregateTable
+            rows={legacyExtraRows}
+            cols={[
+              { key: "log_date", label: "日期" },
+              { key: "name", label: "施工項目" },
+              { key: "unit", label: "單位" },
+              { key: "qty", label: "數量", align: "right" },
+              { key: "headcount", label: "人數", align: "right" },
+              { key: "location", label: "位置" },
+              { key: "requested_by", label: "甲方交辦" },
+              { key: "reason", label: "事由" },
+            ]}
+          />
+        </>
+      )}
+
+      {legacyUnsignedRows.length > 0 && (
+        <>
+          <div className="mt-10 mb-4 flex items-center justify-between">
+            <h2 className="text-base font-medium text-muted-foreground">
+              （舊資料）日誌登記的未簽約項目
+              <span className="ml-2 text-xs">
+                共 {legacyUnsignedRows.length} 筆 — 來自升等前的日誌欄位
+              </span>
+            </h2>
+          </div>
+          <LegacyAggregateTable
+            rows={legacyUnsignedRows}
+            cols={[
+              { key: "log_date", label: "日期" },
+              { key: "name", label: "施工項目" },
+              { key: "unit", label: "單位" },
+              { key: "qty", label: "數量", align: "right" },
+              { key: "headcount", label: "人數", align: "right" },
+              { key: "category", label: "類別" },
+              { key: "quote_amount", label: "報價金額", align: "right" },
+              { key: "reason", label: "事由" },
+            ]}
+          />
+        </>
+      )}
 
       {c.notes && (
         <div className="mt-8 rounded-lg border border-[#E0DCD6] bg-card p-6">
@@ -422,24 +488,15 @@ type AggregateCol<T> = {
   align?: "left" | "right";
 };
 
-function ExtraItemsAggregateTable<
+function LegacyAggregateTable<
   T extends { log_id: string; log_date: string },
 >({
   rows,
   cols,
-  emptyHint,
 }: {
   rows: T[];
   cols: AggregateCol<T>[];
-  emptyHint: string;
 }) {
-  if (!rows.length) {
-    return (
-      <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-10 text-center text-sm text-muted-foreground">
-        {emptyHint}
-      </div>
-    );
-  }
   return (
     <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
       <table className="min-w-full text-base">

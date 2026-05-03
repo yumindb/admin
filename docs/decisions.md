@@ -411,3 +411,73 @@ draft →[submit]→ submitted+review
 - 「自核」checkbox(supervisor 送出時可勾「我自己複核」一鍵跳過 review):PROJECT.md 提到的選項,目前 POC 不做
 - supervisor 看別人的日誌(跨主任協同):目前 supervisor `/approvals` 只看自己的,Phase 3 看公司怎麼分工
 - 退回後重送是否要保留歷史版本:目前 supervisor 編輯後 status 直接從 rejected → submitted+review,前一輪的 log_approvals 紀錄保留但日誌內容已覆寫
+
+---
+
+## Phase 2.13 — 合約外 / 未簽約 升等為案件級工項 (2026-05-03)
+
+### 一、為什麼
+
+POC 階段 合約外 / 未簽約 是 `daily_logs.extra_items` / `unsigned_items` jsonb 內的 free-form 列表 —
+**每份日誌獨立**、沒跨日誌身份、沒進度、沒報價欄位整合。
+
+業主回饋:這兩種工項也要能像合約內工項一樣被填寫累計進度、之前出現過的下次能直接勾選、辦公室能事後補報價、簽約後要能歸到合約外。
+
+### 二、Schema 決策(migration-2.13)
+
+**2.13.1 把 合約外/未簽約 升等為案件級工項**
+- `work_item_type` enum 加 `'extra'`(合約外、已簽約追加)+ `'unsigned'`(未簽約)
+- 視為 `case_work_items` 的一等公民,跟 `'item'` 共享 unit_price / quantity / progress 等所有欄位
+- `daily_logs.work_items` jsonb(原本只放合約內 picker 的勾選)現在也吃 extra/unsigned 的 work_item_id —
+  寫入時不需要區分 type,讀取時透過 join `case_work_items.item_type` 拆三組
+- 這樣 site-supervisor-sim / 累計完成 / 100%自動隱藏 / percent mode / 月報 全部「免費」復用
+
+**2.13.2 新欄位**
+```
+case_work_items
+  + quote_status text             待報價/已報價(僅 extra/unsigned 用,有單價即視為 quoted)
+  + contract_signed_at timestamptz 未簽約 → 合約外的時間戳
+  + contract_note text             簽約備註(必填,例:「2026-05-08 LINE 同意追加」)
+  + created_by uuid                哪個 profile 建的(標單匯入為 null)
+```
+
+**2.13.3 舊資料相容**
+- `daily_logs.extra_items` / `unsigned_items` jsonb **保留不刪**,讓升等前的舊日誌仍能 read-only 顯示
+- log detail / approval detail / 案件總覽 / 月報 都加了「(舊)…」section,只在資料存在時渲染
+- 新日誌 jsonb 一律寫 `[]`(saveLogAction 內 payload.extraItems / payload.unsignedItems 收 client 傳的空陣列)
+
+### 三、權限與流程
+
+**2.13.4 新增臨時項權限放到三角色都可**
+- `createExtraOrUnsignedAction` 接受 site_supervisor / office_staff / owner — 用 Phil 確認的「現場主任填日誌時可即時新增,辦公室助理/老闆編輯日誌或案件總覽也能新增」
+- 編輯/刪除/標記簽約 仍限 office_staff / owner
+
+**2.13.5 簽約流程**
+- 未簽約必須先填單價(quote_status='quoted')才能標記簽約
+- 標記簽約 = `markUnsignedAsSignedAction`:必填 contract_note + 設 contract_signed_at + 翻 item_type 'unsigned' → 'extra'
+- UI:案件總覽未簽約區塊每列有「標記簽約」按鈕,彈 dialog 收備註
+
+**2.13.6 picker 自動隱藏完成**
+- `WorkItemsPicker` 已內建「累計達標單量則隱藏」邏輯(`isWorkItemCompleted`)
+- extra/unsigned 走同一份 `priorAggregates` map,因此「填過一次 → 之後仍可勾;100% 完成 → 自動消失」是免費的
+
+### 四、UI 整合
+
+**2.13.7 三 picker / 三 section**
+- /logs/new 與 /logs/[id]/edit:section 4 「合約外」+ section 5「未簽約」改用 `WorkItemsPicker`(原 `ExtraItemsEditor` 退役)
+- 新增臨時項按鈕在 picker 上方;點開 `AddTempWorkItemDialog` → 立即 server insert → return id → useState append 到 picker items 並打勾,user 可立刻填本日數量
+- 案件總覽 /cases/[id]:`WorkItemsTreeSection` 之下加 `ExtraUnsignedSection` × 2(extra / unsigned)
+  - office_staff / owner 看到「+ 新增 / 編輯 / 刪除 / 標記簽約」操作
+  - 共用 `WorkItemEditModal`,新增 `extraUnsignedKind` prop 切換到對應模式(隱藏「上層分類」、改 server action)
+
+**2.13.8 樹狀只顯示合約內**
+- 案件總覽 `WorkItemsTreeSection` 不再渲染 extra/unsigned(避免「未分類層」變成假 root section)
+- TreeItem 的 itemType 仍是窄 union(`section/item/spec/manual`),case detail 在 map 進去時 cast(因為已先 filter)
+- 案件統計卡片(Stat)從 4 卡改為:工項總數 / 已登記日誌 / 合約外項目 / 未簽約項目
+
+### 五、Phase 3+ TODO
+
+1. 月份性「未簽約 → 合約外」轉換報表(office_staff 結帳用)
+2. 報價金額審核流程:目前 office_staff 直接編輯 unit_price,沒簽核;Phase 3 可考慮加 owner 確認單價
+3. 合約外 / 未簽約 沒有 section/parent 概念,扁平。若未來工項數爆量,可加 tag/分類欄位
+4. localStorage 草稿 key 升 v3,舊草稿(v2)會被忽略 — 影響:升級時若 supervisor 有未送出的 free-form 草稿會看不到,需要重填

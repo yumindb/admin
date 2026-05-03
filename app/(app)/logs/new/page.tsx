@@ -51,20 +51,43 @@ export default async function NewLogPage({
         .order("sort_path", { ascending: true })
     : { data: [] };
 
-  const grouped = new Map<string, PickerItem[]>();
+  // 把每案的 case_work_items 拆三組:合約內(section/item/spec/manual)、合約外(extra)、未簽約(unsigned)
+  const groupedContract = new Map<string, PickerItem[]>();
+  const groupedExtra = new Map<string, PickerItem[]>();
+  const groupedUnsigned = new Map<string, PickerItem[]>();
   for (const w of workItems ?? []) {
-    const arr = grouped.get(w.case_id as string) ?? [];
-    arr.push({
+    const baseType = w.item_type as
+      | "section" | "item" | "spec" | "manual" | "extra" | "unsigned";
+    // extra/unsigned 在 picker 視作 'item'(扁平、可勾選),只有合約內保留原 type
+    const pickerType: PickerItem["itemType"] =
+      baseType === "extra" || baseType === "unsigned" ? "item" : baseType;
+    const item: PickerItem = {
       id: w.id as string,
-      parentId: w.parent_id as string | null,
-      depth: w.depth as number,
-      itemType: w.item_type as PickerItem["itemType"],
+      parentId:
+        baseType === "extra" || baseType === "unsigned"
+          ? null
+          : (w.parent_id as string | null),
+      depth: baseType === "extra" || baseType === "unsigned" ? 0 : (w.depth as number),
+      itemType: pickerType,
       tenderCode: w.tender_code as string | null,
       name: w.name as string,
       unit: w.unit as string | null,
       totalQuantity: w.quantity as number | null,
-    });
-    grouped.set(w.case_id as string, arr);
+    };
+    const caseId = w.case_id as string;
+    if (baseType === "extra") {
+      const arr = groupedExtra.get(caseId) ?? [];
+      arr.push(item);
+      groupedExtra.set(caseId, arr);
+    } else if (baseType === "unsigned") {
+      const arr = groupedUnsigned.get(caseId) ?? [];
+      arr.push(item);
+      groupedUnsigned.set(caseId, arr);
+    } else {
+      const arr = groupedContract.get(caseId) ?? [];
+      arr.push(item);
+      groupedContract.set(caseId, arr);
+    }
   }
 
   const caseOptions: CaseOption[] = (cases ?? []).map((c) => ({
@@ -74,7 +97,9 @@ export default async function NewLogPage({
     company: c.company as string,
     location: c.location as string | null,
     expectedEnd: c.expected_end as string | null,
-    workItems: grouped.get(c.id as string) ?? [],
+    workItems: groupedContract.get(c.id as string) ?? [],
+    extraWorkItems: groupedExtra.get(c.id as string) ?? [],
+    unsignedWorkItems: groupedUnsigned.get(c.id as string) ?? [],
   }));
 
   // 撈這些案件的所有 daily_logs:
@@ -200,6 +225,28 @@ export default async function NewLogPage({
       const s = src as DailyLog;
       prefilledFrom = { sourceLogDate: s.log_date };
       const today = new Date().toISOString().slice(0, 10);
+      // 複製日誌時要把來源 work_items 依 item_type 拆三組(合約內 / 合約外 / 未簽約)
+      // 用本批撈的 case_work_items 查表;查不到的當作合約內(dangling)
+      const itemTypeBySrcId = new Map<string, string>();
+      for (const w of workItems ?? []) {
+        itemTypeBySrcId.set(w.id as string, w.item_type as string);
+      }
+      const srcWorkItems = (s.work_items ?? []) as DailyLogWorkItem[];
+      const cloneContract: DailyLogWorkItem[] = [];
+      const cloneExtra: DailyLogWorkItem[] = [];
+      const cloneUnsigned: DailyLogWorkItem[] = [];
+      for (const w of srcWorkItems) {
+        const t = itemTypeBySrcId.get(w.work_item_id);
+        const v: DailyLogWorkItem = {
+          work_item_id: w.work_item_id,
+          qty: w.qty,
+          qty_mode: w.qty_mode ?? "absolute",
+          note: w.note ?? "",
+        };
+        if (t === "extra") cloneExtra.push(v);
+        else if (t === "unsigned") cloneUnsigned.push(v);
+        else cloneContract.push(v);
+      }
       cloneInitial = {
         caseId: s.case_id,
         logDate: today,
@@ -210,13 +257,10 @@ export default async function NewLogPage({
           trade: x.trade,
         })),
         machines: (s.manpower?.machines ?? []).map((x) => ({ name: x.name })),
-        // 工項:整份 picked(含 qty / qty_mode)複製過來,user 自己 stepper 改
-        workItems: (s.work_items ?? []).map((w: DailyLogWorkItem) => ({
-          work_item_id: w.work_item_id,
-          qty: w.qty,
-          qty_mode: w.qty_mode ?? "absolute",
-          note: w.note ?? "",
-        })),
+        // 工項:三組分別填入
+        workItems: cloneContract,
+        pickedExtra: cloneExtra,
+        pickedUnsigned: cloneUnsigned,
         extraItems: [],
         unsignedItems: [],
         photos: [],

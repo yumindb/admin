@@ -82,20 +82,45 @@ export default async function EditLogPage({
         .order("sort_path", { ascending: true })
     : { data: [] };
 
-  const grouped = new Map<string, PickerItem[]>();
+  // 與 /logs/new 同樣分三組;extra/unsigned 在 picker 視作 'item'(扁平)
+  const groupedContract = new Map<string, PickerItem[]>();
+  const groupedExtra = new Map<string, PickerItem[]>();
+  const groupedUnsigned = new Map<string, PickerItem[]>();
+  // 同時建一個 work_item_id → item_type 的查表,讓下方把 log 的 work_items 拆三組
+  const itemTypeById = new Map<string, string>();
   for (const w of workItems ?? []) {
-    const arr = grouped.get(w.case_id as string) ?? [];
-    arr.push({
+    const baseType = w.item_type as
+      | "section" | "item" | "spec" | "manual" | "extra" | "unsigned";
+    itemTypeById.set(w.id as string, baseType);
+    const pickerType: PickerItem["itemType"] =
+      baseType === "extra" || baseType === "unsigned" ? "item" : baseType;
+    const item: PickerItem = {
       id: w.id as string,
-      parentId: w.parent_id as string | null,
-      depth: w.depth as number,
-      itemType: w.item_type as PickerItem["itemType"],
+      parentId:
+        baseType === "extra" || baseType === "unsigned"
+          ? null
+          : (w.parent_id as string | null),
+      depth: baseType === "extra" || baseType === "unsigned" ? 0 : (w.depth as number),
+      itemType: pickerType,
       tenderCode: w.tender_code as string | null,
       name: w.name as string,
       unit: w.unit as string | null,
       totalQuantity: w.quantity as number | null,
-    });
-    grouped.set(w.case_id as string, arr);
+    };
+    const caseId = w.case_id as string;
+    if (baseType === "extra") {
+      const arr = groupedExtra.get(caseId) ?? [];
+      arr.push(item);
+      groupedExtra.set(caseId, arr);
+    } else if (baseType === "unsigned") {
+      const arr = groupedUnsigned.get(caseId) ?? [];
+      arr.push(item);
+      groupedUnsigned.set(caseId, arr);
+    } else {
+      const arr = groupedContract.get(caseId) ?? [];
+      arr.push(item);
+      groupedContract.set(caseId, arr);
+    }
   }
 
   const caseOptions: CaseOption[] = (cases ?? []).map((c) => ({
@@ -105,8 +130,22 @@ export default async function EditLogPage({
     company: c.company as string,
     location: c.location as string | null,
     expectedEnd: c.expected_end as string | null,
-    workItems: grouped.get(c.id as string) ?? [],
+    workItems: groupedContract.get(c.id as string) ?? [],
+    extraWorkItems: groupedExtra.get(c.id as string) ?? [],
+    unsignedWorkItems: groupedUnsigned.get(c.id as string) ?? [],
   }));
+
+  // 把當前 log 的 work_items 依 item_type 拆三組,塞給三個 picker
+  const logWorkItems = (l.work_items ?? []) as DailyLogWorkItem[];
+  const initialContract: DailyLogWorkItem[] = [];
+  const initialExtra: DailyLogWorkItem[] = [];
+  const initialUnsigned: DailyLogWorkItem[] = [];
+  for (const w of logWorkItems) {
+    const t = itemTypeById.get(w.work_item_id);
+    if (t === "extra") initialExtra.push(w);
+    else if (t === "unsigned") initialUnsigned.push(w);
+    else initialContract.push(w);   // 包含找不到對應 case_work_items 的 dangling 引用
+  }
 
   // 計算這份日誌在當案當日是第幾份(編輯時序號不變)
   const { count: dayCount } = await supabase
@@ -297,7 +336,9 @@ export default async function EditLogPage({
           manpowerTodayTotal: l.manpower?.today_total ?? 0,
           subcontractors: l.manpower?.subcontractors ?? [],
           machines: l.manpower?.machines ?? [],
-          workItems: l.work_items ?? [],
+          workItems: initialContract,
+          pickedExtra: initialExtra,
+          pickedUnsigned: initialUnsigned,
           extraItems: l.extra_items ?? [],
           unsignedItems: l.unsigned_items ?? [],
           photos: initialPhotosSigned,

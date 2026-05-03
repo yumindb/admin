@@ -86,12 +86,16 @@ export default async function CasesOverviewPage() {
     });
   }
 
-  // 工項數(僅葉節點:item / spec)
+  // 工項數(僅葉節點:item / spec / manual)+ 案件級的合約外/未簽約計數
   for (const it of allItems) {
     const s = statsByCase.get(it.case_id);
     if (!s) continue;
-    if (it.item_type === "item" || it.item_type === "spec") {
+    if (it.item_type === "item" || it.item_type === "spec" || it.item_type === "manual") {
       s.itemCount += 1;
+    } else if (it.item_type === "extra") {
+      s.extraCount += 1;
+    } else if (it.item_type === "unsigned") {
+      s.unsignedCount += 1;
     }
   }
 
@@ -110,6 +114,7 @@ export default async function CasesOverviewPage() {
     const s = statsByCase.get(log.case_id);
     if (!s) continue;
     s.logCount += 1;
+    // 舊資料相容:legacy jsonb 內的 free-form 合約外/未簽約 也計入(避免雙重計算的話可省略)
     s.extraCount += ((log.extra_items ?? []) as DailyLogExtraItem[]).length;
     const unsigned = (log.unsigned_items ?? []) as DailyLogUnsignedItem[];
     s.unsignedCount += unsigned.length;

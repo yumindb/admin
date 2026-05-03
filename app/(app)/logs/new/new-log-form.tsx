@@ -13,6 +13,11 @@ import {
 } from "@/components/work-items-picker";
 import type { WorkItemAggregateMap } from "@/lib/work-item-aggregates";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
+import {
+  AddTempWorkItemDialog,
+  type AddTempCreated,
+} from "@/components/add-temp-work-item-dialog";
+import { Plus } from "lucide-react";
 import { NextStepHint } from "@/components/next-step-hint";
 import { getCompanyShort } from "@/lib/companies";
 import { PhotoLightbox } from "@/components/photo-lightbox";
@@ -48,7 +53,9 @@ export type CaseOption = {
   company: string;
   location: string | null;
   expectedEnd: string | null;
-  workItems: PickerItem[];
+  workItems: PickerItem[];          // 合約內(item/spec/manual,含 section parent)
+  extraWorkItems: PickerItem[];     // 合約外(case_work_items.item_type='extra';扁平)
+  unsignedWorkItems: PickerItem[];  // 未簽約(case_work_items.item_type='unsigned';扁平)
 };
 
 export type PendingFieldReport = {
@@ -126,8 +133,12 @@ export function NewLogForm({
     subcontractors: DailyLogSubcontractor[];
     machines: DailyLogMachine[];
     workItems: PickerValue[];
-    extraItems: DailyLogExtraItem[];
-    unsignedItems: DailyLogUnsignedItem[];
+    /** 編輯時:已選的 合約外 工項(從 work_items jsonb + case_work_items.item_type='extra' 解出) */
+    pickedExtra?: PickerValue[];
+    /** 編輯時:已選的 未簽約 工項(同上) */
+    pickedUnsigned?: PickerValue[];
+    extraItems: DailyLogExtraItem[];          // 舊資料相容
+    unsignedItems: DailyLogUnsignedItem[];    // 舊資料相容
     photos: LogPhoto[];
     vendorNotices: string;
     notes: string;
@@ -141,9 +152,10 @@ export function NewLogForm({
   //   client hydrate 拿得到 → 不同值,React hydration mismatch。
   //   改在 useEffect on-mount 拿,用 setters 覆寫初始值。
   // v2:photos schema 從 string[] 改為 { path, caption }[],舊草稿不相容直接捨棄
+  // v3:合約外/未簽約 從 jsonb editor → picker(case_work_items),舊草稿不相容捨棄
   // 「複製日誌」場景:傳 skipDraftRestore,直接不讀 / 不寫 localStorage,
   //   讓 server 端傳的 initial 完全當主。
-  const draftKey = logId || skipDraftRestore ? null : "yumin-newlog-draft-v2";
+  const draftKey = logId || skipDraftRestore ? null : "yumin-newlog-draft-v3";
 
   const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
   // logDate 也不能用 new Date() 當初值(server/client 跨午夜 UTC 會不同),
@@ -160,6 +172,19 @@ export function NewLogForm({
     initial?.machines ?? []
   );
   const [picked, setPicked] = useState<PickerValue[]>(initial?.workItems ?? []);
+  // 合約外 / 未簽約 在新架構是 picker(同 schema 走 daily_logs.work_items)
+  const [pickedExtra, setPickedExtra] = useState<PickerValue[]>(
+    initial?.pickedExtra ?? [],
+  );
+  const [pickedUnsigned, setPickedUnsigned] = useState<PickerValue[]>(
+    initial?.pickedUnsigned ?? [],
+  );
+  // 「新增臨時項」即時加入的 extra/unsigned 工項;case 切換時會重設
+  const [extraAdded, setExtraAdded] = useState<PickerItem[]>([]);
+  const [unsignedAdded, setUnsignedAdded] = useState<PickerItem[]>([]);
+  // 新增臨時項 dialog 控制
+  const [tempDialogKind, setTempDialogKind] = useState<"extra" | "unsigned" | null>(null);
+  // 舊資料相容用:legacy editor(目前僅 read-only 顯示舊草稿 / 來源日誌的 free-form jsonb,新流程不用)
   const [extras, setExtras] = useState<DailyLogExtraItem[]>(
     initial?.extraItems ?? []
   );
@@ -213,6 +238,8 @@ export function NewLogForm({
       if (draft.subcontractors !== undefined) setSubcontractors(draft.subcontractors);
       if (draft.machines !== undefined) setMachines(draft.machines);
       if (draft.picked !== undefined) setPicked(draft.picked);
+      if (draft.pickedExtra !== undefined) setPickedExtra(draft.pickedExtra);
+      if (draft.pickedUnsigned !== undefined) setPickedUnsigned(draft.pickedUnsigned);
       if (draft.extras !== undefined) setExtras(draft.extras);
       if (draft.unsigned !== undefined) setUnsigned(draft.unsigned);
       if (draft.photos !== undefined) setPhotos(draft.photos);
@@ -239,7 +266,8 @@ export function NewLogForm({
           draftKey,
           JSON.stringify({
             caseId, logDate, weather, todayTotal,
-            subcontractors, machines, picked, extras, unsigned,
+            subcontractors, machines, picked, pickedExtra, pickedUnsigned,
+            extras, unsigned,
             photos, vendorNotices, notes,
             mergedReportIds, mergedReportSnapshots,
           })
@@ -252,7 +280,8 @@ export function NewLogForm({
     return () => clearTimeout(t);
   }, [
     draftKey, hydrated, caseId, logDate, weather, todayTotal,
-    subcontractors, machines, picked, extras, unsigned, photos,
+    subcontractors, machines, picked, pickedExtra, pickedUnsigned,
+    extras, unsigned, photos,
     vendorNotices, notes, mergedReportIds, mergedReportSnapshots,
   ]);
 
@@ -261,6 +290,18 @@ export function NewLogForm({
     [cases, caseId]
   );
   const items = selectedCase?.workItems ?? [];
+
+  // 案件 picker 內的 extra/unsigned PickerItem 列表 = 案件原有 + 本次新增的臨時項
+  // 用 useMemo 而非 useEffect 避免 setState-in-effect 的 cascading render
+  const extraItemsExtra = useMemo(
+    () => [...(selectedCase?.extraWorkItems ?? []), ...extraAdded],
+    [selectedCase, extraAdded],
+  );
+  const unsignedItemsExtra = useMemo(
+    () => [...(selectedCase?.unsignedWorkItems ?? []), ...unsignedAdded],
+    [selectedCase, unsignedAdded],
+  );
+
   const remainingDays = getRemainingDays(selectedCase?.expectedEnd, logDate);
 
   // 累計出工人次 = 之前 submitted/approved 日誌的 today_total 加總 + 本日輸入。
@@ -358,11 +399,41 @@ export function NewLogForm({
       : "—（請先選案件）";
   const weekdayLabel = logDate ? getWeekdayLabel(logDate) : "";
 
-  // 切案件時重設工項勾選 + 清掉前一個案的回報勾選
+  // 切案件時重設工項勾選 + 清掉前一個案的回報勾選與臨時項
   function changeCase(next: string) {
     setCaseId(next);
     setPicked([]);
+    setPickedExtra([]);
+    setPickedUnsigned([]);
+    setExtraAdded([]);
+    setUnsignedAdded([]);
     setSelectedReportIds(new Set());
+  }
+
+  // 新增臨時項成功後:把新工項加到 picker 列表 + 自動勾選(qty=0 等待輸入)
+  function handleTempCreated(kind: "extra" | "unsigned", created: AddTempCreated) {
+    const newItem: PickerItem = {
+      id: created.id,
+      parentId: null,
+      depth: 0,
+      itemType: "item",
+      tenderCode: null,
+      name: created.name,
+      unit: created.unit,
+      totalQuantity: created.quantity,
+    };
+    const newValue: PickerValue = {
+      work_item_id: created.id,
+      qty: 0,
+      qty_mode: defaultPickerMode(created.unit),
+    };
+    if (kind === "extra") {
+      setExtraAdded((prev) => [...prev, newItem]);
+      setPickedExtra((prev) => [...prev, newValue]);
+    } else {
+      setUnsignedAdded((prev) => [...prev, newItem]);
+      setPickedUnsigned((prev) => [...prev, newValue]);
+    }
   }
 
   // 從已合併進來的現場回報中,挑出「曾被併入但目前不在 photos 裡」的照片;
@@ -572,8 +643,10 @@ export function NewLogForm({
       setError("請選擇案件");
       return;
     }
-    if (intent === "submit" && picked.length === 0) {
-      setError("送出前至少要選 1 個工項");
+    const totalPicked =
+      picked.length + pickedExtra.length + pickedUnsigned.length;
+    if (intent === "submit" && totalPicked === 0) {
+      setError("送出前至少要選 1 個工項(合約內 / 合約外 / 未簽約 任一)");
       return;
     }
 
@@ -615,6 +688,10 @@ export function NewLogForm({
         accumulated: accumulatedMachine(m).total,
       }));
 
+      // 合約內 + 合約外 + 未簽約 都進同一個 work_items jsonb
+      // (server-side 透過 case_work_items.item_type 判類別)
+      const allWorkItems: PickerValue[] = [...picked, ...pickedExtra, ...pickedUnsigned];
+
       const res = await saveLogAction({
         logId,
         caseId,
@@ -626,7 +703,7 @@ export function NewLogForm({
           subcontractors: subcontractorsToSave,
           machines: machinesToSave,
         },
-        workItems: picked,
+        workItems: allWorkItems,
         extraItems: extras,
         unsignedItems: unsigned,
         photos,
@@ -951,34 +1028,122 @@ export function NewLogForm({
         />
       </Section>
 
-      {/* 工項 */}
+      {/* 四、合約外(extra) — picker 從案件級工項撈,可即時新增臨時項 */}
       <Section
-        title={`四、非合約內施工項目${extras.length > 0 ? ` (${extras.length})` : ""}`}
-        hint="非合約內,但實際有施工的項目(甲方臨時交辦等)"
+        title={`四、合約外項目（已簽約追加）${pickedExtra.length > 0 ? ` (${pickedExtra.length})` : ""}`}
+        hint="已簽約追加但不在原合約內的工項。可累計進度,完成後自動隱藏。"
       >
-        <ExtraItemsEditor<DailyLogExtraItem>
-          rows={extras}
-          onChange={setExtras}
-          empty={EMPTY_EXTRA}
-          columns={EXTRA_COLS}
-          addLabel="+ 新增合約外項目"
-          emptyHint="今天沒有合約外項目就不用填"
-        />
+        {!caseId ? (
+          <p className="text-sm text-muted-foreground">先選案件才能勾合約外項目</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setTempDialogKind("extra")}
+                className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
+              >
+                <Plus className="size-3.5" /> 新增合約外項目
+              </button>
+            </div>
+            {extraItemsExtra.length === 0 ? (
+              <p className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2] px-4 py-6 text-center text-sm text-muted-foreground">
+                此案件目前沒有合約外項目。需要追加時點上方「新增合約外項目」即時建立。
+              </p>
+            ) : (
+              <WorkItemsPicker
+                items={extraItemsExtra}
+                value={pickedExtra}
+                onChange={setPickedExtra}
+                aggregates={priorAggregates?.[caseId]}
+              />
+            )}
+          </div>
+        )}
       </Section>
 
+      {/* 五、未簽約(unsigned) — picker + 新增臨時項;報價由辦公室之後補 */}
       <Section
-        title={`五、未簽約施工內容${unsigned.length > 0 ? ` (${unsigned.length})` : ""}`}
-        hint="尚未追加合約 / 未報價的施工內容(點工或變更追加)"
+        title={`五、未簽約施工內容${pickedUnsigned.length > 0 ? ` (${pickedUnsigned.length})` : ""}`}
+        hint="尚未追加合約 / 未報價,但現場有施工。報價由辦公室助理事後補,簽約後會自動歸到合約外項目。"
       >
-        <ExtraItemsEditor<DailyLogUnsignedItem>
-          rows={unsigned}
-          onChange={setUnsigned}
-          empty={EMPTY_UNSIGNED}
-          columns={UNSIGNED_COLS}
-          addLabel="+ 新增未簽約項目"
-          emptyHint="今天沒有未簽約項目就不用填"
-        />
+        {!caseId ? (
+          <p className="text-sm text-muted-foreground">先選案件才能勾未簽約項目</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setTempDialogKind("unsigned")}
+                className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
+              >
+                <Plus className="size-3.5" /> 新增未簽約項目
+              </button>
+            </div>
+            {unsignedItemsExtra.length === 0 ? (
+              <p className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2] px-4 py-6 text-center text-sm text-muted-foreground">
+                此案件目前沒有未簽約項目。現場臨時施工時點上方「新增未簽約項目」即時建立。
+              </p>
+            ) : (
+              <WorkItemsPicker
+                items={unsignedItemsExtra}
+                value={pickedUnsigned}
+                onChange={setPickedUnsigned}
+                aggregates={priorAggregates?.[caseId]}
+              />
+            )}
+          </div>
+        )}
       </Section>
+
+      {tempDialogKind && caseId && (
+        <AddTempWorkItemDialog
+          open={!!tempDialogKind}
+          onClose={() => setTempDialogKind(null)}
+          caseId={caseId}
+          kind={tempDialogKind}
+          onCreated={(item) => handleTempCreated(tempDialogKind, item)}
+        />
+      )}
+
+      {/* 舊資料相容:legacy jsonb editor — 只在編輯既有日誌且帶有舊資料時才顯示 */}
+      {(extras.length > 0 || unsigned.length > 0) && (
+        <Section
+          title="（舊資料）合約外 / 未簽約 — 來自升等前的日誌格式"
+          hint="這些是日誌升級前用 free-form 表填的內容,僅作 read-only 保留,新項目請改用上方 picker 填寫。"
+        >
+          {extras.length > 0 && (
+            <div className="mb-4">
+              <div className="mb-1 text-sm font-medium text-muted-foreground">
+                合約外（舊）
+              </div>
+              <ExtraItemsEditor<DailyLogExtraItem>
+                rows={extras}
+                onChange={setExtras}
+                empty={EMPTY_EXTRA}
+                columns={EXTRA_COLS}
+                addLabel="+ 新增合約外項目（舊格式）"
+                emptyHint=""
+              />
+            </div>
+          )}
+          {unsigned.length > 0 && (
+            <div>
+              <div className="mb-1 text-sm font-medium text-muted-foreground">
+                未簽約（舊）
+              </div>
+              <ExtraItemsEditor<DailyLogUnsignedItem>
+                rows={unsigned}
+                onChange={setUnsigned}
+                empty={EMPTY_UNSIGNED}
+                columns={UNSIGNED_COLS}
+                addLabel="+ 新增未簽約項目（舊格式）"
+                emptyHint=""
+              />
+            </div>
+          )}
+        </Section>
+      )}
 
       <Section title={`照片區${photos.length > 0 ? ` (${photos.length})` : ""}`}>
         <input
@@ -1398,6 +1563,16 @@ function Section({
 const EMPTY_EXTRA: DailyLogExtraItem = { name: "" };
 const EMPTY_UNSIGNED: DailyLogUnsignedItem = { name: "" };
 
+// 跟 work-items-picker 內 PERCENT_DEFAULT_UNITS 一致;新增臨時項時用同一套規則
+const PERCENT_DEFAULT_UNITS = new Set([
+  "組", "式", "套", "個", "處", "批", "戶", "棟",
+  "件", "台", "部", "項", "座", "間",
+]);
+function defaultPickerMode(unit: string | null): "absolute" | "percent" {
+  if (!unit) return "absolute";
+  return PERCENT_DEFAULT_UNITS.has(unit.trim()) ? "percent" : "absolute";
+}
+
 type StoredDraft = {
   caseId?: string;
   logDate?: string;
@@ -1406,6 +1581,8 @@ type StoredDraft = {
   subcontractors?: DailyLogSubcontractor[];
   machines?: DailyLogMachine[];
   picked?: PickerValue[];
+  pickedExtra?: PickerValue[];
+  pickedUnsigned?: PickerValue[];
   extras?: DailyLogExtraItem[];
   unsigned?: DailyLogUnsignedItem[];
   photos?: LogPhoto[];
