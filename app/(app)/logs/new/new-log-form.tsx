@@ -17,6 +17,7 @@ import {
   AddTempWorkItemDialog,
   type AddTempCreated,
 } from "@/components/add-temp-work-item-dialog";
+import { createExtraOrUnsignedAction } from "@/app/(app)/cases/[id]/work-items-actions";
 import { Plus } from "lucide-react";
 import { NextStepHint } from "@/components/next-step-hint";
 import { getCompanyShort } from "@/lib/companies";
@@ -78,8 +79,8 @@ const MERGE_DEST_OPTIONS: {
   requiresText: boolean;
 }[] = [
   { value: "notes", label: "重要事項紀錄", requiresText: true },
-  { value: "extra", label: "非合約內", requiresText: true },
-  { value: "unsigned", label: "未簽約", requiresText: true },
+  { value: "extra", label: "合約外項目", requiresText: true },
+  { value: "unsigned", label: "未簽約項目", requiresText: true },
   { value: "photos-only", label: "只合併照片", requiresText: false },
 ];
 
@@ -472,8 +473,12 @@ export function NewLogForm({
     });
   }
 
-  function mergeSelectedReports() {
+  async function mergeSelectedReports() {
     if (selectedReportIds.size === 0) return;
+    if (!caseId) {
+      setError("先選案件再合併現場回報");
+      return;
+    }
     const picked = availableReports.filter((r) => selectedReportIds.has(r.id));
     if (picked.length === 0) return;
 
@@ -493,30 +498,35 @@ export function NewLogForm({
       }
       return lines.join("\n");
     }
+    function reportName(r: PendingFieldReport): string {
+      const firstLine = (r.note ?? "").split("\n")[0]?.trim() ?? "";
+      if (!firstLine) return `現場回報 ${fmtTs(r.createdAt)}`;
+      return firstLine.length > 30 ? firstLine.slice(0, 30) + "…" : firstLine;
+    }
 
-    // 1. 文字目的地:重要事項 / 非合約內 / 未簽約 / 只合併照片(捨棄文字)
+    setError(null);
+
+    // 1. 文字目的地分流:
+    //    notes → 合併到「重要事項」textarea
+    //    extra / unsigned → 即時 createExtraOrUnsignedAction 建 case_work_items
+    //                        並 append 到對應 picker(同「+ 新增臨時項」流程)
+    //    photos-only → 不處理文字
     const noteBlocks: string[] = [];
-    const newExtras: DailyLogExtraItem[] = [];
-    const newUnsigned: DailyLogUnsignedItem[] = [];
+    type CreateJob = {
+      kind: "extra" | "unsigned";
+      report: PendingFieldReport;
+      name: string;
+      block: string;
+    };
+    const createJobs: CreateJob[] = [];
     for (const r of picked) {
       const dest: MergeDest = reportDest.get(r.id) ?? defaultDestFor(r);
-      if (dest === "photos-only") continue; // 只併照片,文字不處理
+      if (dest === "photos-only") continue;
       const block = buildBlock(r);
       if (dest === "notes") {
         noteBlocks.push(block);
-      } else {
-        const firstLine = (r.note ?? "").split("\n")[0]?.trim() ?? "";
-        const name =
-          firstLine.length > 0
-            ? firstLine.length > 30
-              ? firstLine.slice(0, 30) + "…"
-              : firstLine
-            : `現場回報 ${fmtTs(r.createdAt)}`;
-        if (dest === "extra") {
-          newExtras.push({ name, reason: block });
-        } else {
-          newUnsigned.push({ name, reason: block });
-        }
+      } else if (dest === "extra" || dest === "unsigned") {
+        createJobs.push({ kind: dest, report: r, name: reportName(r), block });
       }
     }
 
@@ -524,30 +534,66 @@ export function NewLogForm({
       const joined = noteBlocks.join("\n\n");
       setNotes((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${joined}` : joined));
     }
-    if (newExtras.length > 0) {
-      setExtras((prev) => [...prev, ...newExtras]);
-    }
-    if (newUnsigned.length > 0) {
-      setUnsigned((prev) => [...prev, ...newUnsigned]);
-    }
 
-    // 2. photos: 帶上 caption 一起合併,不重覆 path(共用 storage、不複製)
-    const incoming: LogPhoto[] = picked.flatMap((r) =>
-      r.photos.map((p) => ({ path: p.path, caption: p.caption ?? "" }))
-    );
-    if (incoming.length) {
-      setPhotos((prev) => {
-        const existing = new Set(prev.map((p) => p.path));
-        const additions = incoming.filter((p) => !existing.has(p.path));
-        return [...prev, ...additions];
+    // 2. 對 createJobs 依序呼叫 server action(失敗的 report 不算合併,保留在待整合清單)
+    const successfullyMergedIds = new Set<string>();
+    for (const r of picked) successfullyMergedIds.add(r.id);  // 預設都合併;失敗的下面會剔除
+    if (createJobs.length > 0) {
+      startTransition(async () => {
+        const failures: string[] = [];
+        for (const job of createJobs) {
+          const fd = new FormData();
+          fd.set("case_id", caseId);
+          fd.set("kind", job.kind);
+          fd.set("name", job.name);
+          fd.set("unit", "");
+          fd.set("quantity", "");
+          fd.set("unit_price", "");
+          // brand_note 限 500 字,把 block 塞進去當「事由」紀錄
+          fd.set("brand_note", job.block.slice(0, 500));
+          const res = await createExtraOrUnsignedAction(fd);
+          if (!res.ok) {
+            failures.push(`${job.report.authorName}:${res.error}`);
+            successfullyMergedIds.delete(job.report.id);
+            continue;
+          }
+          handleTempCreated(job.kind, {
+            id: res.workItemId,
+            name: job.name,
+            unit: null,
+            quantity: null,
+          });
+        }
+        if (failures.length > 0) {
+          setError(`部分回報合併失敗:\n${failures.join("\n")}`);
+        }
+        // 把成功的 reports 標為 merged
+        const merged = picked.filter((r) => successfullyMergedIds.has(r.id));
+        finalizeMergeBookkeeping(merged);
       });
+    } else {
+      // 沒有要建工項,純 notes / photos-only,直接收尾
+      finalizeMergeBookkeeping(picked);
     }
 
-    // 3. 紀錄已合併的 report ids,送出時帶到 server action
-    setMergedReportIds((prev) => [...prev, ...picked.map((r) => r.id)]);
-    setMergedReportSnapshots((prev) => [...prev, ...picked]);
-    setSelectedReportIds(new Set());
-    setReportDest(new Map());
+    function finalizeMergeBookkeeping(merged: PendingFieldReport[]) {
+      // 3. photos: 帶上 caption 一起合併,不重覆 path(共用 storage、不複製)
+      const incoming: LogPhoto[] = merged.flatMap((r) =>
+        r.photos.map((p) => ({ path: p.path, caption: p.caption ?? "" }))
+      );
+      if (incoming.length) {
+        setPhotos((prev) => {
+          const existing = new Set(prev.map((p) => p.path));
+          const additions = incoming.filter((p) => !existing.has(p.path));
+          return [...prev, ...additions];
+        });
+      }
+      // 4. 紀錄已合併的 report ids,送出時帶到 server action
+      setMergedReportIds((prev) => [...prev, ...merged.map((r) => r.id)]);
+      setMergedReportSnapshots((prev) => [...prev, ...merged]);
+      setSelectedReportIds(new Set());
+      setReportDest(new Map());
+    }
   }
 
   function setDestForReport(id: string, dest: MergeDest) {
@@ -920,10 +966,12 @@ export function NewLogForm({
             <Button
               type="button"
               onClick={mergeSelectedReports}
-              disabled={selectedReportIds.size === 0}
+              disabled={selectedReportIds.size === 0 || isPending}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              合併到此日誌 ({selectedReportIds.size})
+              {isPending
+                ? "合併中…"
+                : `合併到此日誌 (${selectedReportIds.size})`}
             </Button>
           </div>
         </details>
