@@ -272,7 +272,6 @@ export default async function LogsPage({
                               aria-label={`複製 ${formatDateTW(l.log_date)} 的日誌為新日誌`}
                               title="複製為新日誌"
                               className="absolute right-1.5 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-[#E0DCD6] hover:bg-white hover:text-accent md:right-3"
-                              onClick={(e) => e.stopPropagation()}
                             >
                               <CopyIcon />
                             </Link>
