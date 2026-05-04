@@ -33,6 +33,7 @@ export type WorkItemEditTarget = {
   unitPrice: number | null;
   brandNote: string | null;
   itemType: WorkItemType;
+  parentId?: string | null;  // 編輯 manual 項目時要能改上層分類,需帶現值
 };
 
 type Props = {
@@ -86,6 +87,8 @@ export function WorkItemEditModal({
       setQuantity(target.quantity != null ? String(target.quantity) : "");
       setUnitPrice(target.unitPrice != null ? String(target.unitPrice) : "");
       setBrandNote(target.brandNote ?? "");
+      // 編輯時也允許 manual 項目改上層分類(其他類型仍鎖)
+      setParentId(target.parentId ?? "");
     } else {
       setName("");
       setUnit("");
@@ -130,6 +133,10 @@ export function WorkItemEditModal({
       fd.set("quantity", quantity);
       fd.set("unit_price", unitPrice);
       fd.set("brand_note", brandNote);
+      // 編輯 manual 項目允許改 parent;空字串表示放最上層
+      if (target.itemType === "manual") {
+        fd.set("parent_id", parentId);
+      }
     }
 
     startTransition(async () => {
@@ -187,7 +194,12 @@ export function WorkItemEditModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          {mode === "create" && !extraUnsignedKind && (
+          {/* 上層分類:
+                - create 模式 + 非 extra/unsigned → 顯示
+                - edit 模式 + manual 項目 → 也顯示(允許搬到不同 section 底下)
+                - extra/unsigned 都是扁平 root,不顯示 */}
+          {((mode === "create" && !extraUnsignedKind) ||
+            (mode === "edit" && target?.itemType === "manual")) && (
             <Field label="上層分類">
               <select
                 value={parentId}

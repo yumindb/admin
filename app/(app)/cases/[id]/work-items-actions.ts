@@ -46,6 +46,8 @@ const UpdateSchema = z.object({
   quantity: NumberLike,
   unit_price: NumberLike,
   brand_note: z.string().trim().max(500).nullable(),
+  /** 只有 item_type='manual' 時 server 才會套用;其他類型仍保留結構 */
+  parent_id: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
 });
 
 const DeleteSchema = z.object({
@@ -179,6 +181,7 @@ export async function updateWorkItemAction(
   try {
     await requireRole(["office_staff", "owner"]);
 
+    const rawParentId = formData.get("parent_id");
     const parsed = UpdateSchema.safeParse({
       work_item_id: String(formData.get("work_item_id") ?? ""),
       name: String(formData.get("name") ?? ""),
@@ -186,6 +189,11 @@ export async function updateWorkItemAction(
       quantity: (formData.get("quantity") as string) || null,
       unit_price: (formData.get("unit_price") as string) || null,
       brand_note: (formData.get("brand_note") as string) || null,
+      // 只有當 client 有送來 parent_id 才解析(沒送時保留原值)
+      parent_id:
+        rawParentId === null || rawParentId === undefined
+          ? undefined
+          : String(rawParentId),
     });
     if (!parsed.success) {
       const first =
@@ -235,6 +243,64 @@ export async function updateWorkItemAction(
       modified_by_user: true,
     };
     if (quoteStatus !== undefined) updatePayload.quote_status = quoteStatus;
+
+    // 只有 manual 項目允許改 parent — 把 client 傳來的 parent_id 套上,
+    // 並重算 depth + sort_path 讓樹狀結構維持一致。
+    if (row.item_type === "manual" && data.parent_id !== undefined) {
+      const newParent = data.parent_id || null;  // "" → null = 放最上層
+      if (newParent) {
+        // 驗 parent 屬於同 case + 是 section
+        const { data: parentRow } = await supabase
+          .from("case_work_items")
+          .select("id, case_id, item_type, depth, sort_path")
+          .eq("id", newParent)
+          .maybeSingle();
+        if (
+          !parentRow ||
+          parentRow.case_id !== row.case_id ||
+          parentRow.item_type !== "section"
+        ) {
+          return { ok: false, error: "上層分類無效" };
+        }
+        // 找 parent 底下最大 sort_path 末段 +1
+        const { data: kid } = await supabase
+          .from("case_work_items")
+          .select("sort_path")
+          .eq("case_id", row.case_id)
+          .eq("parent_id", newParent)
+          .neq("id", data.work_item_id)
+          .order("sort_path", { ascending: false })
+          .limit(1);
+        let next = 1;
+        if (kid && kid.length > 0) {
+          const segs = (kid[0].sort_path as string).split(".");
+          const n = parseInt(segs[segs.length - 1] ?? "0", 10);
+          if (Number.isFinite(n)) next = n + 1;
+        }
+        updatePayload.parent_id = newParent;
+        updatePayload.depth = (parentRow.depth as number) + 1;
+        updatePayload.sort_path = `${parentRow.sort_path as string}.${String(next).padStart(4, "0")}`;
+      } else {
+        // 改放最上層
+        const { data: rootKid } = await supabase
+          .from("case_work_items")
+          .select("sort_path")
+          .eq("case_id", row.case_id)
+          .is("parent_id", null)
+          .neq("id", data.work_item_id)
+          .order("sort_path", { ascending: false })
+          .limit(1);
+        let next = 1;
+        if (rootKid && rootKid.length > 0) {
+          const seg = (rootKid[0].sort_path as string).split(".")[0] ?? "0";
+          const n = parseInt(seg, 10);
+          if (Number.isFinite(n)) next = n + 1;
+        }
+        updatePayload.parent_id = null;
+        updatePayload.depth = 0;
+        updatePayload.sort_path = String(next).padStart(4, "0");
+      }
+    }
 
     const { error } = await supabase
       .from("case_work_items")

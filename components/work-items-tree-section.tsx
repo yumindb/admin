@@ -137,6 +137,7 @@ export function WorkItemsTreeSection({
       unitPrice: it.unitPrice,
       brandNote: it.brandNote,
       itemType: it.itemType,
+      parentId: it.parentId,
     });
     setFeedback(null);
     setModalOpen(true);

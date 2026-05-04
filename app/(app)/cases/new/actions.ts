@@ -82,6 +82,10 @@ const ManualItemSchema = z.object({
     .union([z.string(), z.null()])
     .transform((v) => (typeof v === "string" ? v.trim() : null))
     .transform((v) => v || null),
+  parent_tender_code: z
+    .union([z.string(), z.null()])
+    .transform((v) => (typeof v === "string" ? v.trim() : null))
+    .transform((v) => v || null),
 });
 
 export async function createCaseAction(
@@ -206,34 +210,99 @@ export async function createCaseAction(
     }
   }
 
-  // 手動新增工項 → 排在標單匯入項之後,depth=0、parent=null、item_type='manual'
+  // 手動新增工項 → 預設放最上層;若指定 parent_tender_code 就掛到該 section 底下
   if (manualItems.length > 0) {
-    // 找目前 case 內最大 root sort_path,接續往後放
-    const { data: existing } = await supabase
+    // 1) 撈所有 root + sections 的 sort_path / depth / id,給 parent 對應 + 算下一個 sort_path 用
+    const referencedTenderCodes = Array.from(
+      new Set(
+        manualItems
+          .map((m) => m.parent_tender_code)
+          .filter((c): c is string => !!c),
+      ),
+    );
+
+    type SectionInfo = { id: string; sort_path: string; depth: number };
+    const sectionByTenderCode = new Map<string, SectionInfo>();
+    if (referencedTenderCodes.length > 0) {
+      const { data: secs } = await supabase
+        .from("case_work_items")
+        .select("id, sort_path, depth, tender_code")
+        .eq("case_id", caseId)
+        .eq("item_type", "section")
+        .in("tender_code", referencedTenderCodes);
+      for (const s of secs ?? []) {
+        const tc = s.tender_code as string | null;
+        if (tc) {
+          sectionByTenderCode.set(tc, {
+            id: s.id as string,
+            sort_path: s.sort_path as string,
+            depth: s.depth as number,
+          });
+        }
+      }
+    }
+
+    // 2) 根層 next sort_path(同先前邏輯)
+    const { data: rootRows } = await supabase
       .from("case_work_items")
       .select("sort_path")
       .eq("case_id", caseId)
       .is("parent_id", null)
       .order("sort_path", { ascending: false })
       .limit(1);
-    let nextSeq = 1;
-    if (existing && existing.length > 0) {
-      const sp = (existing[0].sort_path as string) ?? "";
-      const seg = sp.split(".")[0];
-      const n = parseInt(seg, 10);
-      if (Number.isFinite(n)) nextSeq = n + 1;
+    let rootNextSeq = 1;
+    if (rootRows && rootRows.length > 0) {
+      const sp = (rootRows[0].sort_path as string) ?? "";
+      const n = parseInt(sp.split(".")[0], 10);
+      if (Number.isFinite(n)) rootNextSeq = n + 1;
     }
 
-    const rows = manualItems.map((m, i) => {
+    // 3) 為每個指定 parent 的 section 撈當前最大子項 sort_path(分別計算)
+    const childNextSeqByParent = new Map<string, number>();
+    for (const sec of sectionByTenderCode.values()) {
+      const { data: kidRows } = await supabase
+        .from("case_work_items")
+        .select("sort_path")
+        .eq("case_id", caseId)
+        .eq("parent_id", sec.id)
+        .order("sort_path", { ascending: false })
+        .limit(1);
+      let next = 1;
+      if (kidRows && kidRows.length > 0) {
+        const segs = (kidRows[0].sort_path as string).split(".");
+        const lastSeg = segs[segs.length - 1] ?? "";
+        const n = parseInt(lastSeg, 10);
+        if (Number.isFinite(n)) next = n + 1;
+      }
+      childNextSeqByParent.set(sec.id, next);
+    }
+
+    const rows = manualItems.map((m) => {
       const totalPrice =
         m.quantity !== null && m.unit_price !== null
           ? Number((m.quantity * m.unit_price).toFixed(2))
           : null;
+      const sec = m.parent_tender_code
+        ? sectionByTenderCode.get(m.parent_tender_code)
+        : null;
+      let parentId: string | null = null;
+      let depth = 0;
+      let sortPath: string;
+      if (sec) {
+        parentId = sec.id;
+        depth = sec.depth + 1;
+        const seq = childNextSeqByParent.get(sec.id) ?? 1;
+        childNextSeqByParent.set(sec.id, seq + 1);
+        sortPath = `${sec.sort_path}.${String(seq).padStart(4, "0")}`;
+      } else {
+        sortPath = String(rootNextSeq).padStart(4, "0");
+        rootNextSeq += 1;
+      }
       return {
         case_id: caseId,
-        parent_id: null,
-        sort_path: String(nextSeq + i).padStart(4, "0"),
-        depth: 0,
+        parent_id: parentId,
+        sort_path: sortPath,
+        depth,
         item_type: "manual" as const,
         tender_code: null,
         name: m.name,

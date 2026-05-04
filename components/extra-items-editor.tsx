@@ -11,7 +11,12 @@ export type ColumnDef<T> = {
   key: keyof T & string;
   label: string;
   type?: "text" | "number" | "select";
-  options?: string[];           // for select
+  /** for select with value === label (簡單 enum) */
+  options?: string[];
+  /** for select with distinct value/label(例:value=section.id, label=「壹  土木工程」) */
+  selectOptions?: { value: string; label: string }[];
+  /** 自訂 select 的「無選項」label,預設 "—" */
+  selectEmptyLabel?: string;
   inputMode?: "decimal" | "numeric" | "text";
   placeholder?: string;
   width?: string;               // CSS class for width
@@ -98,12 +103,18 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                         }
                         className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                       >
-                        <option value="">—</option>
-                        {col.options?.map((o) => (
-                          <option key={o} value={o}>
-                            {o}
-                          </option>
-                        ))}
+                        <option value="">{col.selectEmptyLabel ?? "—"}</option>
+                        {col.selectOptions
+                          ? col.selectOptions.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))
+                          : col.options?.map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
                       </select>
                     ) : col.type === "number" ? (
                       <input

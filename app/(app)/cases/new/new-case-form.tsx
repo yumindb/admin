@@ -28,15 +28,12 @@ type ManualItemDraft = {
   quantity?: number;
   unit_price?: number;
   brand_note?: string;
+  /** 對應已上傳標單的某個 section 的 tender_code(例「壹.二.10」、「第1類」)。
+   *  伺服端用 (case_id, item_type='section', tender_code) 查到 server-side id 當作 parent_id。
+   *  空值 = 不指定上層分類,放最上層。 */
+  parent_tender_code?: string;
 };
 const EMPTY_MANUAL_ITEM: ManualItemDraft = { name: "" };
-const MANUAL_ITEM_COLS: ColumnDef<ManualItemDraft>[] = [
-  { key: "name", label: "工項名稱", required: true, placeholder: "例:配電盤升級" },
-  { key: "unit", label: "單位", placeholder: "式 / 組 / m" },
-  { key: "quantity", label: "數量", type: "number", inputMode: "decimal" },
-  { key: "unit_price", label: "單價", type: "number", inputMode: "decimal" },
-  { key: "brand_note", label: "備註", placeholder: "選填" },
-];
 
 export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) {
   const router = useRouter();
@@ -50,6 +47,40 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
   const [fieldsKey, setFieldsKey] = useState(0);
   // 手動新增的工項 (沒有標單時也能列幾筆,跟標單匯入並存無妨)
   const [manualItems, setManualItems] = useState<ManualItemDraft[]>([]);
+
+  // 從 parsed tender 抽出 section 列表,給「上層分類」dropdown 用
+  // value 用 tender_code(server 端可用 (case_id, item_type='section', tender_code) 查 id)
+  const sectionOptions = useMemo(() => {
+    if (!parsed) return [] as { value: string; label: string }[];
+    const flat = flattenTree(parsed.tree);
+    return flat
+      .filter((n) => n.type === "section" && n.tenderCode)
+      .map((n) => ({
+        value: n.tenderCode as string,
+        label: `${"  ".repeat(n.depth)}${n.tenderCode}  ${n.name}`,
+      }));
+  }, [parsed]);
+
+  // 動態組欄位:沒標單時隱藏「上層分類」,有標單時加進來放在最後
+  const manualItemCols = useMemo<ColumnDef<ManualItemDraft>[]>(() => {
+    const base: ColumnDef<ManualItemDraft>[] = [
+      { key: "name", label: "工項名稱", required: true, placeholder: "例:配電盤升級" },
+      { key: "unit", label: "單位", placeholder: "式 / 組 / m" },
+      { key: "quantity", label: "數量", type: "number", inputMode: "decimal" },
+      { key: "unit_price", label: "單價", type: "number", inputMode: "decimal" },
+      { key: "brand_note", label: "備註", placeholder: "選填" },
+    ];
+    if (sectionOptions.length > 0) {
+      base.push({
+        key: "parent_tender_code",
+        label: "上層分類（選填）",
+        type: "select",
+        selectOptions: sectionOptions,
+        selectEmptyLabel: "（不指定 — 放在最上層）",
+      });
+    }
+    return base;
+  }, [sectionOptions]);
 
   async function onFile(file: File | null) {
     setParseError(null);
@@ -185,7 +216,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
       );
     }
 
-    // 手動工項 — 過濾空 name 的 row
+    // 手動工項 — 過濾空 name 的 row;parent_client_id 對應 parsed.tree 的 section node id
     const validManual = manualItems
       .map((m) => ({
         name: typeof m.name === "string" ? m.name.trim() : "",
@@ -199,6 +230,10 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
             ? m.unit_price
             : null,
         brand_note: typeof m.brand_note === "string" ? m.brand_note.trim() : "",
+        parent_tender_code:
+          typeof m.parent_tender_code === "string" && m.parent_tender_code
+            ? m.parent_tender_code
+            : null,
       }))
       .filter((m) => m.name);
     if (validManual.length > 0) {
@@ -321,7 +356,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
           rows={manualItems}
           onChange={setManualItems}
           empty={EMPTY_MANUAL_ITEM}
-          columns={MANUAL_ITEM_COLS}
+          columns={manualItemCols}
           addLabel="+ 新增一項工項"
           emptyHint="留空也可以,之後在案件頁加"
         />
