@@ -93,9 +93,13 @@ export async function confirmImportAction(payload: ConfirmPayload) {
 
   // 3) 過濾使用者勾「略過」的 → 不寫入但記入 skipped_count
   const usable = payload.nodes.filter((n) => !n.skippedByUser && n.type !== "skip");
+  // importedCount/updatedCount 只算「真正工項」(item + spec),不算 section 分類層 —
+  // 案件詳情「最後匯入:新增 N 項」對應使用者眼中的工項數,而非 DB row 數
   let importedCount = 0;
   let updatedCount = 0;
-  const skippedFromUI = payload.nodes.filter((n) => n.skippedByUser).length;
+  const skippedFromUI = payload.nodes.filter(
+    (n) => n.skippedByUser && (n.type === "item" || n.type === "spec"),
+  ).length;
 
   // 4) Batch insert/update — 一次 round-trip 寫入所有 nodes,避免 N+1 超 Vercel 10s。
   //    策略:server-side 先把 clientId → serverId map 完整建好(已存在用 dup.id;
@@ -161,7 +165,7 @@ export async function confirmImportAction(payload: ConfirmPayload) {
         spec_text: n.specText,
         import_id: importId,
       });
-      updatedCount++;
+      if (itemType !== "section") updatedCount++;
     } else {
       const newId = randomUUID();
       idMap.set(n.id, newId);
@@ -182,17 +186,29 @@ export async function confirmImportAction(payload: ConfirmPayload) {
         spec_text: n.specText,
         import_id: importId,
       });
-      importedCount++;
+      if (itemType !== "section") importedCount++;
     }
   }
 
   // 4a) Batch insert 新項 — 因為 parent_id 已是 server UUID,FK self-reference 不會炸
   //     (parent 在同一 batch 內依 sort 順序排序;Postgres 接受同 statement 內的自引用 FK)。
+  //     大標單(2000+ 列)時若一次送會被 Supabase / PostgREST 默默截斷在 ~1000 筆。
+  //     拆成 500 筆 chunks 連續送 — 每個 chunk 內 sort_path 已遞增,parent 仍在同 chunk
+  //     或更早的 chunk 中(已存在 DB),FK 不會破。
   if (toInsert.length > 0) {
-    const { error: insErr } = await supabase
-      .from("case_work_items")
-      .insert(toInsert);
-    if (insErr) return { ok: false, error: "新增工項失敗：" + insErr.message };
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
+      const chunk = toInsert.slice(i, i + CHUNK_SIZE);
+      const { error: insErr } = await supabase
+        .from("case_work_items")
+        .insert(chunk);
+      if (insErr) {
+        return {
+          ok: false,
+          error: `新增工項失敗(第 ${i + 1}-${i + chunk.length} 列):${insErr.message}`,
+        };
+      }
+    }
   }
 
   // 4b) Batch update 既有未鎖項 — Supabase 沒原生 batch update,

@@ -133,8 +133,21 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
     }));
   }, [parsed, skippedIds]);
 
+  // 算「真正的工項數」— 只算 leaf(item + spec),不算 section 分類層;
+  // 略過數扣掉時也只扣 leaf 略過(section 略過邏輯上跟著子項走,但統計時已分開)
+  const skippedLeafCount = useMemo(() => {
+    if (!parsed) return 0;
+    const flat = flattenTree(parsed.tree);
+    let n = 0;
+    for (const node of flat) {
+      if (skippedIds.has(node.id) && (node.type === "item" || node.type === "spec")) {
+        n++;
+      }
+    }
+    return n;
+  }, [parsed, skippedIds]);
   const willImportCount = parsed
-    ? parsed.stats.sections + parsed.stats.items + parsed.stats.specs - skippedIds.size
+    ? parsed.stats.items + parsed.stats.specs - skippedLeafCount
     : 0;
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -277,7 +290,10 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-medium text-primary">工項預覽</div>
             <div className="text-xs text-muted-foreground">
-              將寫入 {willImportCount} 筆 · 勾略過 {skippedIds.size} 筆
+              工項 {willImportCount} 項
+              <span className="ml-1 opacity-70">
+                (另含 {parsed.stats.sections} 個分類層 · 勾略過 {skippedIds.size} 筆)
+              </span>
             </div>
           </div>
           <WorkItemsTree

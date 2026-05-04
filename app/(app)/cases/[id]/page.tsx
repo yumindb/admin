@@ -272,29 +272,36 @@ export default async function CaseDetailPage({
         </div>
       </div>
 
-      {/* 匯入資訊 */}
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">
-        <Stat
-          label="工項總數"
-          value={contractItems.length}
-          accent={contractItems.length > 0}
-        />
-        <Stat
-          label="已登記日誌"
-          value={allLogs.length}
-          accent={allLogs.length > 0}
-        />
-        <Stat
-          label="合約外項目"
-          value={extraItems.length}
-          accent={extraItems.length > 0}
-        />
-        <Stat
-          label="未簽約項目"
-          value={unsignedItems.length}
-          accent={unsignedItems.length > 0}
-        />
-      </div>
+      {/* 匯入資訊 — 工項總數只算 leaf(item/spec/manual),不算 section 分類層 */}
+      {(() => {
+        const leafCount = contractItems.filter(
+          (it) => it.item_type !== "section",
+        ).length;
+        return (
+          <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">
+            <Stat
+              label="工項總數"
+              value={leafCount}
+              accent={leafCount > 0}
+            />
+            <Stat
+              label="已登記日誌"
+              value={allLogs.length}
+              accent={allLogs.length > 0}
+            />
+            <Stat
+              label="合約外項目"
+              value={extraItems.length}
+              accent={extraItems.length > 0}
+            />
+            <Stat
+              label="未簽約項目"
+              value={unsignedItems.length}
+              accent={unsignedItems.length > 0}
+            />
+          </div>
+        );
+      })()}
 
       {lastImport && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#E0DCD6] bg-[#FAF7F2] px-5 py-4 text-base text-muted-foreground">
