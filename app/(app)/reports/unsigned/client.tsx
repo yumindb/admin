@@ -276,7 +276,12 @@ export function UnsignedReportClient({
                     </Link>
                   </Td>
                   <Td>
-                    <span className="block text-foreground">{r.caseName}</span>
+                    <Link
+                      href={`/cases/${r.caseId}`}
+                      className="block text-foreground hover:text-accent hover:underline underline-offset-2"
+                    >
+                      {r.caseName}
+                    </Link>
                     {r.caseCompany && (
                       <span className="block text-[11px] text-muted-foreground">
                         {r.caseCompany}
