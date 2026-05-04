@@ -11,7 +11,9 @@ export async function loginAction(
 ): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/") || "/";
+  const rawNext = String(formData.get("next") ?? "");
+  // Only allow relative paths to prevent open-redirect attacks
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
 
   if (!email || !password) {
     return { error: "請輸入 Email 與密碼" };
