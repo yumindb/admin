@@ -17,6 +17,7 @@ import {
   MonthlyReportXlsxButton,
 } from "./case-excel-buttons";
 import { NextStepHint } from "@/components/next-step-hint";
+import { CaseQrCodeButton } from "@/components/case-qr-code-button";
 import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
 import {
   ExtraUnsignedSection,
@@ -245,6 +246,9 @@ export default async function CaseDetailPage({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {(actor?.role === "site_supervisor" || actor?.role === "owner" || actor?.role === "office_staff") && (
+            <CaseQrCodeButton caseId={c.id} caseName={c.name} />
+          )}
           {canEditWorkItems && (
             <>
               <Button
