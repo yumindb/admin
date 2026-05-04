@@ -205,15 +205,15 @@ export function ExtraUnsignedSection({
           <table className="min-w-full text-base">
             <thead>
               <tr className="bg-primary text-primary-foreground">
-                <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">名稱</th>
-                <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">單位</th>
-                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">數量</th>
-                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">單價</th>
-                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">複價</th>
-                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">累計完成</th>
-                <th className="h-12 px-4 text-left text-sm font-medium tracking-wider">狀態</th>
+                <th className="h-12 px-4 text-left text-sm font-medium tracking-wider min-w-[8rem]">名稱</th>
+                <th className="h-12 px-4 text-left text-sm font-medium tracking-wider min-w-[3.5rem] whitespace-nowrap">單位</th>
+                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider min-w-[4rem] whitespace-nowrap">數量</th>
+                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider min-w-[4.5rem] whitespace-nowrap">單價</th>
+                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider min-w-[4.5rem] whitespace-nowrap">複價</th>
+                <th className="h-12 px-4 text-right text-sm font-medium tracking-wider min-w-[5rem] whitespace-nowrap">累計完成</th>
+                <th className="h-12 px-4 text-left text-sm font-medium tracking-wider min-w-[4.5rem] whitespace-nowrap">狀態</th>
                 {editable && (
-                  <th className="h-12 px-4 text-right text-sm font-medium tracking-wider">操作</th>
+                  <th className="h-12 px-4 text-right text-sm font-medium tracking-wider min-w-[6rem] whitespace-nowrap">操作</th>
                 )}
               </tr>
             </thead>
@@ -227,7 +227,7 @@ export function ExtraUnsignedSection({
                 const completed = ratio !== null && ratio >= 1 - PROGRESS_THRESHOLD;
                 return (
                   <tr key={row.id} className="border-b border-[#E0DCD6]">
-                    <td className="h-14 px-4 align-top">
+                    <td className="h-14 px-4 align-top min-w-[8rem] break-keep">
                       <div className="font-medium">{row.name}</div>
                       {row.brandNote && (
                         <div className="mt-0.5 text-xs text-muted-foreground">
@@ -245,21 +245,21 @@ export function ExtraUnsignedSection({
                         </div>
                       )}
                     </td>
-                    <td className="h-14 px-4 align-top">{row.unit ?? "—"}</td>
-                    <td className="h-14 px-4 text-right align-top tabular-nums">
+                    <td className="h-14 px-4 align-top whitespace-nowrap">{row.unit ?? "—"}</td>
+                    <td className="h-14 px-4 text-right align-top tabular-nums whitespace-nowrap">
                       {row.quantity ?? "—"}
                     </td>
-                    <td className="h-14 px-4 text-right align-top tabular-nums">
+                    <td className="h-14 px-4 text-right align-top tabular-nums whitespace-nowrap">
                       {row.unitPrice !== null
                         ? row.unitPrice.toLocaleString("zh-TW")
                         : "—"}
                     </td>
-                    <td className="h-14 px-4 text-right align-top tabular-nums">
+                    <td className="h-14 px-4 text-right align-top tabular-nums whitespace-nowrap">
                       {row.totalPrice !== null
                         ? row.totalPrice.toLocaleString("zh-TW")
                         : "—"}
                     </td>
-                    <td className="h-14 px-4 text-right align-top tabular-nums">
+                    <td className="h-14 px-4 text-right align-top tabular-nums whitespace-nowrap">
                       {showProgress ? (
                         <span
                           className={
@@ -278,7 +278,7 @@ export function ExtraUnsignedSection({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="h-14 px-4 align-top">
+                    <td className="h-14 px-4 align-top whitespace-nowrap">
                       {row.itemType === "unsigned" ? (
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs ${

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
+import { PencilIcon } from "lucide-react";
 import {
   type TreeItem,
   type ProgressMap,
@@ -251,13 +252,18 @@ export default async function CaseDetailPage({
           )}
           {canEditWorkItems && (
             <>
+              {/* 編輯 — 手機 icon-only，桌機顯示文字 */}
               <Button
                 asChild
-                size="lg"
+                size="sm"
                 variant="outline"
-                className="border-[#E0DCD6]"
+                className="border-[#E0DCD6] size-9 sm:h-9 sm:w-auto sm:px-4"
+                title="編輯案件"
               >
-                <Link href={`/cases/${id}/edit`}>編輯</Link>
+                <Link href={`/cases/${id}/edit`}>
+                  <PencilIcon className="size-4" aria-hidden />
+                  <span className="hidden sm:inline">編輯</span>
+                </Link>
               </Button>
               <DeleteCaseButton
                 caseId={c.id}
@@ -266,7 +272,7 @@ export default async function CaseDetailPage({
               />
               <Button
                 asChild
-                size="lg"
+                size="sm"
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <Link href={`/cases/${id}/import`}>匯入工項</Link>

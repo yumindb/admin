@@ -199,7 +199,7 @@ export function UnsignedReportClient({
           {cases.length === 0 ? (
             <span className="text-xs text-muted-foreground">沒有相關案件</span>
           ) : (
-            <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
+            <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-[#E0DCD6] bg-[#FAF7F2] p-2">
               {cases.map((c) => {
                 const active = selectedCases.has(c.id);
                 return (
@@ -250,15 +250,16 @@ export function UnsignedReportClient({
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-primary text-primary-foreground">
-                <Th>日期</Th>
-                <Th>案件</Th>
-                <Th>工地主任</Th>
-                <Th>類型</Th>
-                <Th>項目</Th>
-                <Th align="right">數量</Th>
-                <Th align="right">人數</Th>
-                <Th align="right">報價金額</Th>
-                <Th>事由 / 備註</Th>
+                <Th className="min-w-[5.5rem] whitespace-nowrap">日期</Th>
+                <Th className="min-w-[3rem] whitespace-nowrap">公司</Th>
+                <Th className="min-w-[8rem] break-keep">案件</Th>
+                <Th className="min-w-[5rem] break-keep">工地主任</Th>
+                <Th className="min-w-[4.5rem] whitespace-nowrap">類型</Th>
+                <Th className="min-w-[8rem] break-keep">項目</Th>
+                <Th align="right" className="min-w-[4rem] whitespace-nowrap">數量</Th>
+                <Th align="right" className="min-w-[3.5rem] whitespace-nowrap">人數</Th>
+                <Th align="right" className="min-w-[5rem] whitespace-nowrap">報價金額</Th>
+                <Th className="min-w-[6rem] break-keep">事由 / 備註</Th>
               </tr>
             </thead>
             <tbody>
@@ -276,17 +277,15 @@ export function UnsignedReportClient({
                     </Link>
                   </Td>
                   <Td>
+                    {r.caseCompany ? getCompanyShort(r.caseCompany) : "—"}
+                  </Td>
+                  <Td>
                     <Link
                       href={`/cases/${r.caseId}`}
                       className="block text-foreground hover:text-accent hover:underline underline-offset-2"
                     >
                       {r.caseName}
                     </Link>
-                    {r.caseCompany && (
-                      <span className="block text-[11px] text-muted-foreground">
-                        {getCompanyShort(r.caseCompany)}
-                      </span>
-                    )}
                   </Td>
                   <Td>{r.supervisorName}</Td>
                   <Td>
@@ -349,15 +348,17 @@ export function UnsignedReportClient({
 function Th({
   children,
   align = "left",
+  className = "",
 }: {
   children: React.ReactNode;
   align?: "left" | "right";
+  className?: string;
 }) {
   return (
     <th
       className={`h-11 px-3 text-xs font-medium tracking-wider ${
         align === "right" ? "text-right" : "text-left"
-      }`}
+      } ${className}`}
     >
       {children}
     </th>
@@ -367,15 +368,17 @@ function Th({
 function Td({
   children,
   align = "left",
+  className = "",
 }: {
   children: React.ReactNode;
   align?: "left" | "right";
+  className?: string;
 }) {
   return (
     <td
       className={`h-11 px-3 align-top py-2 ${
         align === "right" ? "text-right tabular-nums" : ""
-      }`}
+      } ${className}`}
     >
       {children}
     </td>

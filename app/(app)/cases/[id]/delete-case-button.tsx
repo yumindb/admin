@@ -33,10 +33,11 @@ export function DeleteCaseButton({
       type="button"
       onClick={onClick}
       disabled={isPending}
-      className="inline-flex items-center gap-1.5 rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm text-[#B91C1C] transition-colors hover:bg-[#FEF2F2] disabled:opacity-50"
+      title="刪除案件"
+      className="inline-flex size-9 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-[#B91C1C] transition-colors hover:bg-[#FEF2F2] disabled:opacity-50 sm:h-9 sm:w-auto sm:justify-start sm:gap-1.5 sm:px-3"
     >
-      <Trash2 className="size-4" />
-      {isPending ? "刪除中…" : "刪除案件"}
+      <Trash2 className="size-4 shrink-0" />
+      <span className="hidden sm:inline">{isPending ? "刪除中…" : "刪除案件"}</span>
     </button>
   );
 }

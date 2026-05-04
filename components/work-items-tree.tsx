@@ -339,7 +339,7 @@ function Row({
           </div>
         </td>
 
-        <td className="h-14 px-3 py-2 align-top md:px-4">
+        <td className="h-14 px-3 py-2 align-top md:px-4 min-w-[8rem] break-keep">
           <div
             className={cn(
               "whitespace-pre-line text-base",
@@ -365,8 +365,8 @@ function Row({
           )}
         </td>
 
-        <td className="h-14 px-3 align-top md:px-4 text-muted-foreground">{node.unit ?? "—"}</td>
-        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums">
+        <td className="h-14 px-3 align-top md:px-4 text-muted-foreground whitespace-nowrap">{node.unit ?? "—"}</td>
+        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums whitespace-nowrap">
           {node.quantity ?? "—"}
         </td>
         {progress && (
@@ -377,10 +377,10 @@ function Row({
             isSection={isSection}
           />
         )}
-        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums">
+        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums whitespace-nowrap">
           {node.unitPrice ?? "—"}
         </td>
-        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums">
+        <td className="h-14 px-3 align-top md:px-4 text-right tabular-nums whitespace-nowrap">
           {node.totalPrice ?? "—"}
         </td>
         <td className="h-14 px-3 align-top md:px-4 text-center">

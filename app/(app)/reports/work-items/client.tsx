@@ -116,7 +116,7 @@ export function WorkItemsReportClient({
               </button>
             </div>
           </div>
-          <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
+          <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-[#E0DCD6] bg-[#FAF7F2] p-2">
             {cases.map((c) => {
               const active = selectedCases.has(c.id);
               return (
@@ -204,14 +204,14 @@ export function WorkItemsReportClient({
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-primary text-primary-foreground">
-                <Th>公司</Th>
-                <Th>案件</Th>
-                <Th>編碼</Th>
-                <Th>工項</Th>
-                <Th>單位</Th>
-                <Th align="right">契約量</Th>
-                <Th align="right">累計完成</Th>
-                <Th align="right">完成 %</Th>
+                <Th className="min-w-[3rem] whitespace-nowrap">公司</Th>
+                <Th className="min-w-[8rem] break-keep">案件</Th>
+                <Th className="min-w-[4rem] whitespace-nowrap">編碼</Th>
+                <Th className="min-w-[8rem] break-keep">工項</Th>
+                <Th className="min-w-[3.5rem] whitespace-nowrap">單位</Th>
+                <Th align="right" className="min-w-[4rem] whitespace-nowrap">契約量</Th>
+                <Th align="right" className="min-w-[5rem] whitespace-nowrap">累計完成</Th>
+                <Th align="right" className="min-w-[4rem] whitespace-nowrap">完成 %</Th>
               </tr>
             </thead>
             <tbody>
@@ -222,8 +222,8 @@ export function WorkItemsReportClient({
                     key={`${r.caseId}-${r.workItemId}`}
                     className="border-b border-[#E0DCD6]"
                   >
-                    <Td>{r.caseCompany ? getCompanyShort(r.caseCompany) : "—"}</Td>
-                    <Td>
+                    <Td className="whitespace-nowrap">{r.caseCompany ? getCompanyShort(r.caseCompany) : "—"}</Td>
+                    <Td className="break-keep">
                       <Link
                         href={`/cases/${r.caseId}`}
                         className="text-foreground hover:text-accent hover:underline underline-offset-2"
@@ -231,14 +231,14 @@ export function WorkItemsReportClient({
                         {r.caseName}
                       </Link>
                     </Td>
-                    <Td>{r.workItemCode ?? "—"}</Td>
-                    <Td>{r.workItemName}</Td>
-                    <Td>{r.workItemUnit ?? "—"}</Td>
-                    <Td align="right">
+                    <Td className="whitespace-nowrap">{r.workItemCode ?? "—"}</Td>
+                    <Td className="break-keep">{r.workItemName}</Td>
+                    <Td className="whitespace-nowrap">{r.workItemUnit ?? "—"}</Td>
+                    <Td align="right" className="whitespace-nowrap">
                       {r.contractQty !== null ? r.contractQty : "—"}
                     </Td>
-                    <Td align="right">{r.doneQty}</Td>
-                    <Td align="right">
+                    <Td align="right" className="whitespace-nowrap">{r.doneQty}</Td>
+                    <Td align="right" className="whitespace-nowrap">
                       {r.donePct === null ? (
                         "—"
                       ) : (
@@ -261,15 +261,17 @@ export function WorkItemsReportClient({
 function Th({
   children,
   align = "left",
+  className = "",
 }: {
   children: React.ReactNode;
   align?: "left" | "right";
+  className?: string;
 }) {
   return (
     <th
       className={`h-11 px-3 text-xs font-medium tracking-wider ${
         align === "right" ? "text-right" : "text-left"
-      }`}
+      } ${className}`}
     >
       {children}
     </th>
@@ -279,15 +281,17 @@ function Th({
 function Td({
   children,
   align = "left",
+  className = "",
 }: {
   children: React.ReactNode;
   align?: "left" | "right";
+  className?: string;
 }) {
   return (
     <td
       className={`h-11 px-3 align-middle ${
         align === "right" ? "text-right tabular-nums" : ""
-      }`}
+      } ${className}`}
     >
       {children}
     </td>
