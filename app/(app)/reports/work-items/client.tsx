@@ -222,7 +222,7 @@ export function WorkItemsReportClient({
                     key={`${r.caseId}-${r.workItemId}`}
                     className="border-b border-[#E0DCD6]"
                   >
-                    <Td>{r.caseCompany || "—"}</Td>
+                    <Td>{r.caseCompany ? getCompanyShort(r.caseCompany) : "—"}</Td>
                     <Td>
                       <Link
                         href={`/cases/${r.caseId}`}

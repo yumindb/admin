@@ -284,7 +284,7 @@ export function UnsignedReportClient({
                     </Link>
                     {r.caseCompany && (
                       <span className="block text-[11px] text-muted-foreground">
-                        {r.caseCompany}
+                        {getCompanyShort(r.caseCompany)}
                       </span>
                     )}
                   </Td>
