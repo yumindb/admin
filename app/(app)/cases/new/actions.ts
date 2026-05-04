@@ -51,6 +51,39 @@ type TenderPayload = {
   nodes: IncomingNode[];
 };
 
+/** 手動新增工項 — client 把過濾過的 list 用 JSON 帶在 formData.manualItems */
+const ManualItemSchema = z.object({
+  name: z.string().trim().min(1, "工項名稱必填").max(500),
+  unit: z
+    .union([z.string(), z.null()])
+    .transform((v) => (typeof v === "string" ? v.trim() : null))
+    .transform((v) => v || null),
+  quantity: z
+    .union([z.number(), z.string(), z.null()])
+    .transform((v) => {
+      if (typeof v === "number") return Number.isFinite(v) ? v : null;
+      if (typeof v === "string") {
+        const n = Number(v.trim());
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    }),
+  unit_price: z
+    .union([z.number(), z.string(), z.null()])
+    .transform((v) => {
+      if (typeof v === "number") return Number.isFinite(v) ? v : null;
+      if (typeof v === "string") {
+        const n = Number(v.trim());
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    }),
+  brand_note: z
+    .union([z.string(), z.null()])
+    .transform((v) => (typeof v === "string" ? v.trim() : null))
+    .transform((v) => v || null),
+});
+
 export async function createCaseAction(
   _prev: NewCaseState,
   formData: FormData
@@ -80,6 +113,22 @@ export async function createCaseAction(
       tender = JSON.parse(rawPayload) as TenderPayload;
     } catch {
       return { error: "工項資料無法解析，請重新上傳。" };
+    }
+  }
+
+  // 手動新增工項 payload(可選) — client 已過濾空 name 的 row,這裡再 zod 驗一次
+  const rawManual = formData.get("manualItems");
+  let manualItems: z.infer<typeof ManualItemSchema>[] = [];
+  if (typeof rawManual === "string" && rawManual) {
+    try {
+      const list = JSON.parse(rawManual) as unknown[];
+      const validated = list
+        .map((x) => ManualItemSchema.safeParse(x))
+        .filter((r) => r.success)
+        .map((r) => r.data);
+      manualItems = validated;
+    } catch {
+      return { error: "手動工項資料無法解析,請檢查格式。" };
     }
   }
 
@@ -152,6 +201,58 @@ export async function createCaseAction(
     if (!importRes.ok) {
       return {
         error: `案件已建立，但工項匯入失敗：${importRes.error}。請至案件頁面重試匯入。`,
+        caseId,
+      };
+    }
+  }
+
+  // 手動新增工項 → 排在標單匯入項之後,depth=0、parent=null、item_type='manual'
+  if (manualItems.length > 0) {
+    // 找目前 case 內最大 root sort_path,接續往後放
+    const { data: existing } = await supabase
+      .from("case_work_items")
+      .select("sort_path")
+      .eq("case_id", caseId)
+      .is("parent_id", null)
+      .order("sort_path", { ascending: false })
+      .limit(1);
+    let nextSeq = 1;
+    if (existing && existing.length > 0) {
+      const sp = (existing[0].sort_path as string) ?? "";
+      const seg = sp.split(".")[0];
+      const n = parseInt(seg, 10);
+      if (Number.isFinite(n)) nextSeq = n + 1;
+    }
+
+    const rows = manualItems.map((m, i) => {
+      const totalPrice =
+        m.quantity !== null && m.unit_price !== null
+          ? Number((m.quantity * m.unit_price).toFixed(2))
+          : null;
+      return {
+        case_id: caseId,
+        parent_id: null,
+        sort_path: String(nextSeq + i).padStart(4, "0"),
+        depth: 0,
+        item_type: "manual" as const,
+        tender_code: null,
+        name: m.name,
+        unit: m.unit,
+        quantity: m.quantity,
+        unit_price: m.unit_price,
+        total_price: totalPrice,
+        brand_note: m.brand_note,
+        modified_by_user: true,
+        created_by: user.id,
+      };
+    });
+
+    const { error: insErr } = await supabase
+      .from("case_work_items")
+      .insert(rows);
+    if (insErr) {
+      return {
+        error: `案件已建立${tender ? "(標單也已匯入)" : ""},但手動工項插入失敗:${insErr.message}。請至案件頁面手動補建。`,
         caseId,
       };
     }

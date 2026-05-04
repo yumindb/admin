@@ -8,6 +8,10 @@ import { CaseFormFields, type CaseFormDefaults } from "@/components/case-form";
 import { NextStepHint } from "@/components/next-step-hint";
 import { WorkItemsTree, type TreeItem } from "@/components/work-items-tree";
 import {
+  ExtraItemsEditor,
+  type ColumnDef,
+} from "@/components/extra-items-editor";
+import {
   parseTenderArrayBuffer,
   flattenTree,
   type ParsedNode,
@@ -16,6 +20,23 @@ import {
 import { createCaseAction, type NewCaseState } from "./actions";
 
 type ParsedState = ParseResult & { sheetName: string; fileName: string };
+
+/** 手動新增工項 — 開新案表單上的小型編輯器 (選填,無標單時也能列幾筆) */
+type ManualItemDraft = {
+  name: string;
+  unit?: string;
+  quantity?: number;
+  unit_price?: number;
+  brand_note?: string;
+};
+const EMPTY_MANUAL_ITEM: ManualItemDraft = { name: "" };
+const MANUAL_ITEM_COLS: ColumnDef<ManualItemDraft>[] = [
+  { key: "name", label: "工項名稱", required: true, placeholder: "例:配電盤升級" },
+  { key: "unit", label: "單位", placeholder: "式 / 組 / m" },
+  { key: "quantity", label: "數量", type: "number", inputMode: "decimal" },
+  { key: "unit_price", label: "單價", type: "number", inputMode: "decimal" },
+  { key: "brand_note", label: "備註", placeholder: "選填" },
+];
 
 export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) {
   const router = useRouter();
@@ -27,6 +48,8 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
   const [isPending, startTransition] = useTransition();
   // 用 key 強制 fields 在 defaults 改變時 re-mount（內部用 defaultValue）
   const [fieldsKey, setFieldsKey] = useState(0);
+  // 手動新增的工項 (沒有標單時也能列幾筆,跟標單匯入並存無妨)
+  const [manualItems, setManualItems] = useState<ManualItemDraft[]>([]);
 
   async function onFile(file: File | null) {
     setParseError(null);
@@ -149,6 +172,26 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
       );
     }
 
+    // 手動工項 — 過濾空 name 的 row
+    const validManual = manualItems
+      .map((m) => ({
+        name: typeof m.name === "string" ? m.name.trim() : "",
+        unit: typeof m.unit === "string" ? m.unit.trim() : "",
+        quantity:
+          typeof m.quantity === "number" && Number.isFinite(m.quantity)
+            ? m.quantity
+            : null,
+        unit_price:
+          typeof m.unit_price === "number" && Number.isFinite(m.unit_price)
+            ? m.unit_price
+            : null,
+        brand_note: typeof m.brand_note === "string" ? m.brand_note.trim() : "",
+      }))
+      .filter((m) => m.name);
+    if (validManual.length > 0) {
+      formData.set("manualItems", JSON.stringify(validManual));
+    }
+
     startTransition(async () => {
       const res = await createCaseAction(undefined, formData);
       if (!res) return; // server action redirected — this branch shouldn't run
@@ -160,12 +203,17 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
     });
   }
 
-  const submitLabel = parsed
-    ? isPending
-      ? `建立中…（將匯入 ${willImportCount} 項）`
-      : `建立案件並匯入 ${willImportCount} 項工項`
-    : isPending
-      ? "建立中…"
+  // 計算 submit 按鈕 label:標單 + 手動 兩邊都納入
+  const manualValidCount = manualItems.filter(
+    (m) => typeof m.name === "string" && m.name.trim(),
+  ).length;
+  const totalImportCount = willImportCount + manualValidCount;
+  const submitLabel = isPending
+    ? totalImportCount > 0
+      ? `建立中…（將匯入 ${totalImportCount} 項）`
+      : "建立中…"
+    : totalImportCount > 0
+      ? `建立案件並匯入 ${totalImportCount} 項工項`
       : "建立案件";
 
   return (
@@ -240,15 +288,38 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
         </section>
       )}
 
+      {/* 4) 手動新增工項 — 沒標單也能列幾筆;跟標單匯入並存無妨 */}
+      <section className="rounded-md border border-[#E0DCD6] bg-card p-4 md:p-5">
+        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+          <div className="text-sm font-medium text-primary">
+            手動新增工項{manualValidCount > 0 ? `（${manualValidCount}）` : "（選填）"}
+          </div>
+          <span className="text-xs text-muted-foreground">
+            沒有標單可在這裡列幾筆;之後也可在案件頁繼續加
+          </span>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          手動工項會以 item_type=&quot;manual&quot; 寫入,排在標單匯入項之後。空名稱的列會被忽略。
+        </p>
+        <ExtraItemsEditor<ManualItemDraft>
+          rows={manualItems}
+          onChange={setManualItems}
+          empty={EMPTY_MANUAL_ITEM}
+          columns={MANUAL_ITEM_COLS}
+          addLabel="+ 新增一項工項"
+          emptyHint="留空也可以,之後在案件頁加"
+        />
+      </section>
+
       {submitState?.error && (
         <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
           {submitState.error}
         </p>
       )}
 
-      {!parsed && (
+      {!parsed && manualValidCount === 0 && (
         <NextStepHint tone="info">
-          沒有標單也可只建立案件之後再到案件頁補匯入；有標單會一次帶入工項，最省事。
+          沒有標單也可以只建立案件,之後再到案件頁補匯入;或在上方「手動新增工項」直接列幾筆。
         </NextStepHint>
       )}
 
