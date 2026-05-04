@@ -1,9 +1,18 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { NewCaseForm } from "./new-case-form";
 import { createClient } from "@/lib/supabase/server";
 import { getNextCaseCode } from "@/lib/case-codes";
+import { tryGetActor } from "@/lib/auth/require-role";
 
 export default async function NewCasePage() {
+  // 開新案只給 office_staff / owner
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  if (actor.role !== "office_staff" && actor.role !== "owner") {
+    redirect("/cases");
+  }
+
   const supabase = await createClient();
   const suggestedCode = await getNextCaseCode(supabase);
 

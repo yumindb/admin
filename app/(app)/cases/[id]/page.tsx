@@ -245,26 +245,30 @@ export default async function CaseDetailPage({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            asChild
-            size="lg"
-            variant="outline"
-            className="border-[#E0DCD6]"
-          >
-            <Link href={`/cases/${id}/edit`}>編輯</Link>
-          </Button>
-          <DeleteCaseButton
-            caseId={c.id}
-            caseName={c.name}
-            workItemCount={items.length}
-          />
-          <Button
-            asChild
-            size="lg"
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            <Link href={`/cases/${id}/import`}>匯入工項</Link>
-          </Button>
+          {canEditWorkItems && (
+            <>
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="border-[#E0DCD6]"
+              >
+                <Link href={`/cases/${id}/edit`}>編輯</Link>
+              </Button>
+              <DeleteCaseButton
+                caseId={c.id}
+                caseName={c.name}
+                workItemCount={items.length}
+              />
+              <Button
+                asChild
+                size="lg"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Link href={`/cases/${id}/import`}>匯入工項</Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -304,16 +308,18 @@ export default async function CaseDetailPage({
               （新增 {lastImport.imported_count} 項，略過 {lastImport.skipped_count} 項）
             </span>
           </div>
-          <form action={undoImportAction}>
-            <input type="hidden" name="caseId" value={c.id} />
-            <input type="hidden" name="importId" value={lastImport.id} />
-            <button
-              type="submit"
-              className="text-sm text-[#B91C1C] underline-offset-2 hover:underline"
-            >
-              撤銷此次匯入
-            </button>
-          </form>
+          {canEditWorkItems && (
+            <form action={undoImportAction}>
+              <input type="hidden" name="caseId" value={c.id} />
+              <input type="hidden" name="importId" value={lastImport.id} />
+              <button
+                type="submit"
+                className="text-sm text-[#B91C1C] underline-offset-2 hover:underline"
+              >
+                撤銷此次匯入
+              </button>
+            </form>
+          )}
         </div>
       )}
 

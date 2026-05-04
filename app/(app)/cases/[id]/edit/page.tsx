@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { EditCaseForm } from "./edit-case-form";
 import type { Case } from "@/lib/types";
 
@@ -10,6 +11,13 @@ export default async function EditCasePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  // 案件編輯只給 office_staff / owner;其他角色直接導回 case 詳情(避免 500)
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  if (actor.role !== "office_staff" && actor.role !== "owner") {
+    redirect(`/cases/${id}`);
+  }
+
   const supabase = await createClient();
   const { data: caseRow } = await supabase
     .from("cases")

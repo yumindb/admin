@@ -5,6 +5,7 @@ import { getSignedUrls } from "@/lib/supabase/storage";
 import { Button } from "@/components/ui/button";
 import { CasesOverviewList } from "@/components/cases-overview-list";
 import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
+import { tryGetActor } from "@/lib/auth/require-role";
 import {
   CasesKpiBar,
   type CasesKpis,
@@ -23,6 +24,9 @@ const PHOTO_PREVIEW_MAX = 4;
 
 export default async function CasesOverviewPage() {
   const supabase = await createClient();
+  const actor = await tryGetActor();
+  const canCreateCase =
+    actor?.role === "office_staff" || actor?.role === "owner";
 
   const [
     { data: cases, error },
@@ -226,13 +230,15 @@ export default async function CasesOverviewPage() {
             裕民工務目前管理的案件,可依公司／狀態篩選與排序
           </p>
         </div>
-        <Button
-          asChild
-          size="lg"
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Link href="/cases/new">+ 開新案</Link>
-        </Button>
+        {canCreateCase && (
+          <Button
+            asChild
+            size="lg"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Link href="/cases/new">+ 開新案</Link>
+          </Button>
+        )}
       </div>
 
       <CasesKpiBar kpis={kpis} />

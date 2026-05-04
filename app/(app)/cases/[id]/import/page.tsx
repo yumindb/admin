@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { ImportPreview } from "@/components/import-preview";
 import type { Case } from "@/lib/types";
 
@@ -10,6 +11,13 @@ export default async function ImportPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  // 匯入工項只給 office_staff / owner
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  if (actor.role !== "office_staff" && actor.role !== "owner") {
+    redirect(`/cases/${id}`);
+  }
+
   const supabase = await createClient();
   const { data: caseRow } = await supabase
     .from("cases")
