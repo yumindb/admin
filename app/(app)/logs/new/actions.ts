@@ -229,11 +229,12 @@ export async function saveLogAction(payload: SaveLogPayload) {
   // ============================================================
   // draft / submit 分支(原邏輯)
   // ============================================================
-  // 四關正式流程:submit 時 status='submitted' + current_stage='review'(第一關)。
+  // 三關流程:submit 時 status='submitted' + current_stage='audit'(辦公室審核)。
   // draft 時兩個欄位都 null。
-  // 重送被退回的日誌(rejected → submit)也會回到 review 起點。
+  // 重送被退回的日誌(rejected → submit)同樣直接進 audit。
+  // 若未來需要加回主任複核關,改這裡為 'review' 並恢復 NEXT_STAGE fill→review 即可。
   const status = payload.intent === "submit" ? "submitted" : "draft";
-  const currentStage = payload.intent === "submit" ? "review" : null;
+  const currentStage = payload.intent === "submit" ? "audit" : null;
   const submittedAt = payload.intent === "submit" ? new Date().toISOString() : null;
 
   let logId = payload.logId;

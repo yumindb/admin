@@ -8,29 +8,34 @@ import { generatePdfForLog } from "@/lib/pdf/generate";
 import type { ApprovalStage, UserRole } from "@/lib/types";
 
 /**
- * 四關正式簽核流(Phase 2.3 起,Phase 2.5 起每關都收簽名):
+ * 三關正式簽核流(Phase 2.3 起,Phase 2.5 起每關都收簽名):
  *   stage='fill'    → site_supervisor 送出時即簽(寫在 saveLogAction)
- *   stage='review'  → site_supervisor(主任複核,可自核)
- *   stage='audit'   → office_staff(辦公室助理審核)
+ *   stage='audit'   → office_staff(辦公室助理審核)   ← fill 後直接進這關
  *   stage='approve' → owner(老闆核定)
+ *
+ *   stage='review' 保留於 type / STAGE_FOR_ROLE / NEXT_STAGE 但目前未啟用。
+ *   若未來需要加回主任複核關,只要:
+ *     1. saveLogAction 的 currentStage 改回 'review'
+ *     2. 下方 NEXT_STAGE fill 改回 'review'
+ *   不需要修改其他邏輯。
  *
  * 規則:
  *   - 操作者的 role 必須對應當前 stage(role-stage map 見下方),否則拒絕
- *   - review / audit / approve 三關都要附簽名圖(2.5 起統一)
+ *   - audit / approve 兩關都要附簽名圖
  *   - 通過 → 推進到下一 stage(approve 通過則 status='approved' + current_stage=null)
- *   - 退回 → status='rejected' + current_stage=null,supervisor 編輯後重送回 review
+ *   - 退回 → status='rejected' + current_stage=null,supervisor 編輯後重送回 audit
  */
 
 const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
-  site_supervisor: "review",
+  site_supervisor: "review", // review 目前未啟用;改回三關時此值生效
   office_staff: "audit",
   owner: "approve",
   field_assistant: null,
 };
 
 const NEXT_STAGE: Record<ApprovalStage, ApprovalStage | null> = {
-  fill: "review",          // submitted → enters review queue
-  review: "audit",
+  fill: "audit",           // 三關流:fill → 直接進 audit(略過 review)
+  review: "audit",         // 保留:若啟用四關時 review → audit
   audit: "approve",
   approve: null,           // owner approves → done
 };
