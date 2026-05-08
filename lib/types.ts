@@ -206,9 +206,27 @@ export type CaseWorkItem = {
   import_id: string | null;
   // 以下為 migration-2.13 新增欄位,僅 item_type IN ('extra','unsigned') 使用
   quote_status: QuoteStatus | null;        // 待報價/已報價;有單價即視為已報價
-  contract_signed_at: string | null;       // 未簽約 → 合約外的時間戳
-  contract_note: string | null;            // 簽約備註
+  contract_signed_at: string | null;       // 未簽約 → 合約外的時間戳(legacy:已搬到 extra_contracts.signed_at,但欄位保留)
+  contract_note: string | null;            // 簽約備註(legacy:已搬到 extra_contracts.note)
   created_by: string | null;               // 誰建立(標單匯入為 null;手動新增帶 auth.uid)
+  // migration-2.16 新增:item_type='extra' 必有,指向所屬「追加合約」
+  extra_contract_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
+ * 追加合約 — 把多筆「未簽約」工項一次包成一份報價單/合約(以合約為單位)。
+ * bundle_price 為整份的優惠後總價;若 null 則回退用各品項 total_price 加總。
+ */
+export type ExtraContract = {
+  id: string;
+  case_id: string;
+  name: string;
+  bundle_price: number | null;
+  note: string | null;
+  signed_at: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 };

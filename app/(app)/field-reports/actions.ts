@@ -102,22 +102,81 @@ export async function updateFieldReportAction(payload: ReportPayload & { reportI
   return { ok: true, reportId: payload.reportId };
 }
 
+/**
+ * 刪除回報 — 兩條路徑:
+ *   1. 作者本人,status='pending':寫錯了想砍掉
+ *   2. 辦公室助理 / 老闆:處理過(下載照片或併入日誌)後想清掉,任何狀態都能刪
+ *
+ * 已 merged 進日誌的回報請改用「封存」(archiveFieldReportAction),
+ * 因為 daily_logs 還靠這筆 record 顯示「來自哪份回報」的審計連結。
+ */
 export async function deleteFieldReportAction(formData: FormData) {
   const reportId = String(formData.get("reportId") ?? "");
   if (!reportId) return;
-  const ctx = await requireReporter();
-  if (!ctx.ok) return;
-  const { supabase, userId } = ctx;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const role = profile?.role as UserRole | undefined;
 
-  // 只能刪自己的 pending
-  await supabase
+  const { data: existing } = await supabase
     .from("field_reports")
-    .delete()
+    .select("author_id, status")
     .eq("id", reportId)
-    .eq("author_id", userId)
-    .eq("status", "pending");
+    .maybeSingle();
+  if (!existing) return;
+
+  const isOfficeOrOwner = role === "office_staff" || role === "owner";
+  const isAuthorPending =
+    existing.author_id === user.id && existing.status === "pending";
+  if (!isOfficeOrOwner && !isAuthorPending) return;
+
+  // merged 的不允許實刪 — 改用封存。讓辦公室助理改按「封存」按鈕。
+  if (existing.status === "merged") return;
+
+  await supabase.from("field_reports").delete().eq("id", reportId);
 
   revalidatePath("/field-reports");
   revalidatePath("/logs/new");
   redirect("/field-reports");
+}
+
+/**
+ * 封存回報(辦公室助理 / 老闆專用)— 標 archived 不刪。
+ * 用在已合併進日誌、或想暫存當審計紀錄但不再進整合流程的情境。
+ */
+export async function archiveFieldReportAction(formData: FormData) {
+  const reportId = String(formData.get("reportId") ?? "");
+  if (!reportId) return { ok: false, error: "缺少回報編號" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "未登入" };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const role = profile?.role as UserRole | undefined;
+  if (role !== "office_staff" && role !== "owner") {
+    return { ok: false, error: "只有辦公室助理或老闆可以封存回報" };
+  }
+
+  const { error } = await supabase
+    .from("field_reports")
+    .update({ status: "archived" })
+    .eq("id", reportId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/field-reports");
+  revalidatePath(`/field-reports/${reportId}`);
+  return { ok: true };
 }

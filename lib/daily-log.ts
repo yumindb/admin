@@ -17,6 +17,21 @@ export function isBackfilledLog(log: {
 }
 
 /**
+ * 比較某個 timestamp(UTC ISO 字串)在台灣時區下,是否與目標 logDate(YYYY-MM-DD)
+ * 是同一天。施工日誌與現場回報用日期匹配時都走這個比對。
+ */
+export function sameLocalDate(
+  iso: string | null | undefined,
+  logDate: string,
+): boolean {
+  if (!iso || !logDate) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const local = d.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+  return local === logDate;
+}
+
+/**
  * Daily log 的 photos 欄位歷史上是 string[](僅 path)。新版改成
  * { path, caption }[]。讀取時統一過這個函式,UI 與 PDF 都用 LogPhoto。
  */

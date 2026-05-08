@@ -106,12 +106,41 @@ export default async function AppLayout({
           </div>
 
           <div className="flex items-center gap-4 text-sm">
-            <div className="hidden text-right md:block">
-              <div className="text-base text-[#E8E4DE]">{fullName}</div>
+            <Link
+              href="/account"
+              className="hidden text-right md:block hover:opacity-90"
+              title="我的帳號 / 修改密碼"
+            >
+              <div className="text-base text-[#E8E4DE] underline-offset-4 hover:underline">
+                {fullName}
+              </div>
               <div className="text-sm text-[#A07850]">
                 {company} · {roleLabel}
               </div>
-            </div>
+            </Link>
+            {/* 手機版:小頭像連結 — 點開到 /account 改密碼 / 看身份。
+                桌機版上方那塊 Link 已負責,所以這顆 md:hidden。 */}
+            <Link
+              href="/account"
+              aria-label="我的帳號"
+              title="我的帳號"
+              className="inline-flex size-9 items-center justify-center rounded-full border border-[#A07850]/40 text-[#E8E4DE] transition-colors hover:bg-white/5 md:hidden"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </Link>
             <form action={logoutAction}>
               <LogoutButton />
             </form>
@@ -190,6 +219,7 @@ function navByRole(
           { href: "/approvals", label: "待審核", badge: approvalsBadge },
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/logs", label: "日誌" },
+          { href: "/field-reports", label: "現場回報" },
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
         ],
@@ -197,6 +227,7 @@ function navByRole(
           { href: "/cases", label: "案件", icon: "folder" },
           { href: "/approvals", label: "待審核", icon: "check" },
           { href: "/logs", label: "日誌", icon: "file" },
+          { href: "/field-reports", label: "現場", icon: "camera" },
           { href: "/staff", label: "人員", icon: "users" },
         ],
       };

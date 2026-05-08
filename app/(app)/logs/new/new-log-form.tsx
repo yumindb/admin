@@ -10,6 +10,7 @@ import {
   WorkItemsPicker,
   type PickerItem,
   type PickerValue,
+  type OverflowAttempt,
 } from "@/components/work-items-picker";
 import type { WorkItemAggregateMap } from "@/lib/work-item-aggregates";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
@@ -31,6 +32,7 @@ import {
   buildReportNumber,
   getRemainingDays,
   getWeekdayLabel,
+  sameLocalDate,
   serializeWeather,
   WEATHER_OPTIONS,
   subcontractorKey,
@@ -145,6 +147,9 @@ export function NewLogForm({
     photos: LogPhoto[];
     vendorNotices: string;
     notes: string;
+    /** migration-2.16 後:歷史日誌可能引用 extra 工項(現在已歸到追加合約),
+     *  picker 不顯示這些,但儲存時要原樣帶回 daily_logs.work_items 不丟失。 */
+    preservedExtraWorkItems?: import("@/lib/types").DailyLogWorkItem[];
   };
   logId?: string;
 }) {
@@ -187,6 +192,10 @@ export function NewLogForm({
   const [unsignedAdded, setUnsignedAdded] = useState<PickerItem[]>([]);
   // 新增臨時項 dialog 控制
   const [tempDialogKind, setTempDialogKind] = useState<"extra" | "unsigned" | null>(null);
+  // 主任輸入超過契約量時的 dialog 控制(item 1 of 2026-05-08 業主回饋)
+  // overflow:此次想填多少 qty,cap:剩餘可填,mode:absolute / percent
+  const [overflowAttempt, setOverflowAttempt] = useState<OverflowAttempt | null>(null);
+  const [splittingOverflow, setSplittingOverflow] = useState(false);
   // 舊資料相容用:legacy editor(目前僅 read-only 顯示舊草稿 / 來源日誌的 free-form jsonb,新流程不用)
   const [extras, setExtras] = useState<DailyLogExtraItem[]>(
     initial?.extraItems ?? []
@@ -294,14 +303,12 @@ export function NewLogForm({
   );
   const items = selectedCase?.workItems ?? [];
 
-  // 案件 picker 內的 extra/unsigned PickerItem 列表 = 案件原有 + 本次新增的臨時項
+  // 案件 picker 內的 unsigned PickerItem 列表 = 案件原有 + 本次新增的臨時項
   // 用 useMemo 而非 useEffect 避免 setState-in-effect 的 cascading render
   // 去重必要:server action 成功後 Next.js auto-revalidate 當前 route → server props
-  // 已含新項,但 client 的 extraAdded state 仍帶同一筆 id → 不去重會雙胞胎
-  const extraItemsExtra = useMemo(
-    () => dedupById([...(selectedCase?.extraWorkItems ?? []), ...extraAdded]),
-    [selectedCase, extraAdded],
-  );
+  // 已含新項,但 client 的 unsignedAdded state 仍帶同一筆 id → 不去重會雙胞胎
+  // (migration-2.16:extra picker 已下架,extraAdded / extraItemsExtra 不再用,但保留 state
+  //  以維持 handleOverflow 觸發 createExtraOrUnsignedAction 的相容性 — 也因此 no-op)
   const unsignedItemsExtra = useMemo(
     () => dedupById([...(selectedCase?.unsignedWorkItems ?? []), ...unsignedAdded]),
     [selectedCase, unsignedAdded],
@@ -441,6 +448,90 @@ export function NewLogForm({
     }
   }
 
+  // 主任在合約內 picker 輸入超出剩餘量(累計 + 本日 > 契約量)時,開 dialog 詢問是否
+  // 把超出部分另建一筆同名「未簽約」工項。dedupe:若已有 modal 開著,忽略後續事件。
+  function handleOverflow(attempt: OverflowAttempt) {
+    if (overflowAttempt || splittingOverflow) return;
+    setOverflowAttempt(attempt);
+  }
+
+  // 確認分割:呼叫 server 建一筆 unsigned 工項,把超出量分配到那邊。
+  // 原工項已被 picker 自動 cap 在 fillCap,所以這邊只需要建 + 加 picker value。
+  async function confirmOverflowSplit() {
+    if (!overflowAttempt || !caseId) return;
+    const { item, requested, cap, mode } = overflowAttempt;
+    const overflow = Math.max(0, requested - cap);
+    if (overflow <= 0) {
+      setOverflowAttempt(null);
+      return;
+    }
+
+    setSplittingOverflow(true);
+    try {
+      // 名稱加「(追加)」後綴 — 跟原工項做識別,辦公室助理事後較容易看懂。
+      // 同名重複追加(同案多次超量)時,server 端不擋,各自獨立一筆。
+      const newName = `${item.name} (追加)`;
+      // 帶過去的 quantity:若原工項是 percent mode,沒有具體單位數量,
+      // 預估值帶超出比例(0-1) × 原契約量(若有);否則就帶 overflow 絕對值。
+      let estQuantity: number | null = null;
+      if (mode === "percent" && item.totalQuantity != null) {
+        estQuantity = Number((overflow * item.totalQuantity).toFixed(3));
+      } else if (mode === "absolute") {
+        estQuantity = overflow;
+      }
+
+      const fd = new FormData();
+      fd.set("case_id", caseId);
+      fd.set("kind", "unsigned");
+      fd.set("name", newName);
+      fd.set("unit", item.unit ?? "");
+      fd.set("quantity", estQuantity != null ? String(estQuantity) : "");
+      fd.set("unit_price", "");
+      fd.set("brand_note", `自動建立:由「${item.name}」超量轉入,等候辦公室補報價`);
+      const { createExtraOrUnsignedAction } = await import(
+        "@/app/(app)/cases/[id]/work-items-actions"
+      );
+      const r = await createExtraOrUnsignedAction(fd);
+      if (!r.ok) {
+        setError(`建立追加工項失敗:${r.error}`);
+        setOverflowAttempt(null);
+        setSplittingOverflow(false);
+        return;
+      }
+
+      // 新工項放進「未簽約」picker:預設用 absolute mode + 帶上本日超出量。
+      const newItem: PickerItem = {
+        id: r.workItemId,
+        parentId: null,
+        depth: 0,
+        itemType: "item",
+        tenderCode: null,
+        name: newName,
+        unit: item.unit,
+        totalQuantity: estQuantity,
+      };
+      const newQtyForPicker =
+        mode === "percent" && item.totalQuantity != null
+          ? Number((overflow * item.totalQuantity).toFixed(3))
+          : overflow;
+      const newValue: PickerValue = {
+        work_item_id: r.workItemId,
+        qty: newQtyForPicker,
+        qty_mode: "absolute",
+      };
+      setUnsignedAdded((prev) => [...prev, newItem]);
+      setPickedUnsigned((prev) => [...prev, newValue]);
+      setError(null);
+    } finally {
+      setOverflowAttempt(null);
+      setSplittingOverflow(false);
+    }
+  }
+
+  function dismissOverflow() {
+    setOverflowAttempt(null);
+  }
+
   // 從已合併進來的現場回報中,挑出「曾被併入但目前不在 photos 裡」的照片;
   // 給使用者一個「加回來」的退路(避免不小心刪掉就再也找不到)
   const missingMergedPhotos = useMemo(() => {
@@ -459,12 +550,26 @@ export function NewLogForm({
     return out;
   }, [mergedReportSnapshots, photos]);
 
-  // 該案件下未合併過、且使用者本次也還沒勾過合併的回報
+  // 該案件下未合併過、且使用者本次也還沒勾過合併的回報。
+  // 還要與當前 logDate 同日 — 補填日誌時(logDate ≠ 今天)只看當天的回報,
+  // 其它日子的回報留給辦公室助理另行處理,避免主任誤合別日的內容。
+  // logDate 為空(初始尚未補上今天)時退回不過濾,等 mount 補完日期再 re-filter。
   const availableReports = useMemo<PendingFieldReport[]>(() => {
     if (!caseId) return [];
     const list = pendingReportsByCase?.[caseId] ?? [];
-    return list.filter((r) => !mergedReportIds.includes(r.id));
-  }, [caseId, pendingReportsByCase, mergedReportIds]);
+    const filtered = list.filter((r) => !mergedReportIds.includes(r.id));
+    if (!logDate) return filtered;
+    return filtered.filter((r) => sameLocalDate(r.createdAt, logDate));
+  }, [caseId, pendingReportsByCase, mergedReportIds, logDate]);
+
+  // 該案件下「其他日期」的待整合回報筆數 — 用來在區塊頂端做提示
+  const otherDateReportsCount = useMemo<number>(() => {
+    if (!caseId || !logDate) return 0;
+    const list = pendingReportsByCase?.[caseId] ?? [];
+    return list.filter(
+      (r) => !mergedReportIds.includes(r.id) && !sameLocalDate(r.createdAt, logDate),
+    ).length;
+  }, [caseId, pendingReportsByCase, mergedReportIds, logDate]);
 
   function toggleReportSelection(id: string) {
     setSelectedReportIds((prev) => {
@@ -669,9 +774,23 @@ export function NewLogForm({
         accumulated: accumulatedMachine(m).total,
       }));
 
-      // 合約內 + 合約外 + 未簽約 都進同一個 work_items jsonb
+      // 合約內 + 未簽約 + (歷史 extra 引用) 都進同一個 work_items jsonb
       // (server-side 透過 case_work_items.item_type 判類別)
-      const allWorkItems: PickerValue[] = [...picked, ...pickedExtra, ...pickedUnsigned];
+      // migration-2.16:extra 工項已歸到追加合約,新日誌不會再勾它們,但編輯舊日誌時
+      // 用 preservedExtraWorkItems 把舊引用原樣帶回避免進度斷掉。
+      const preservedExtraValues: PickerValue[] = (
+        initial?.preservedExtraWorkItems ?? []
+      ).map((w) => ({
+        work_item_id: w.work_item_id,
+        qty: w.qty,
+        qty_mode: w.qty_mode,
+        note: w.note ?? "",
+      }));
+      const allWorkItems: PickerValue[] = [
+        ...picked,
+        ...pickedUnsigned,
+        ...preservedExtraValues,
+      ];
 
       const res = await saveLogAction({
         logId,
@@ -771,7 +890,7 @@ export function NewLogForm({
         )}
       </Section>
 
-      {/* 待整合的現場回報 — 只在選了案件 + 該案有 pending 回報時出現 */}
+      {/* 待整合的現場回報 — 只在選了案件 + 該案有當日 pending 回報時出現 */}
       {caseId && availableReports.length > 0 && (
         <details
           open
@@ -779,12 +898,17 @@ export function NewLogForm({
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
             <h2 className="text-base font-semibold text-[#92400E] md:text-lg">
-              待整合的現場回報 ({availableReports.length})
+              {logDate ? `${logDate} 的現場回報 (${availableReports.length})` : `待整合的現場回報 (${availableReports.length})`}
             </h2>
             <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
           </summary>
           <p className="mt-1 mb-4 text-sm text-[#92400E]/80">
-            勾選後選文字要併到哪一節,再按「合併到此日誌」。照片帶 caption 一起進照片區,被合併的回報會標為「已併入」不再出現在這。
+            只列出與本日誌日期相符的回報。勾選後選文字要併到哪一節,再按「合併到此日誌」。照片帶 caption 一起進照片區,被合併的回報會標為「已併入」不再出現在這。
+            {otherDateReportsCount > 0 && (
+              <span className="ml-1 text-[#92400E]">
+                (此案件還有 {otherDateReportsCount} 筆其他日期的回報未顯示)
+              </span>
+            )}
           </p>
           <ul className="space-y-2">
             {availableReports.map((r) => {
@@ -971,6 +1095,7 @@ export function NewLogForm({
             value={picked}
             onChange={setPicked}
             aggregates={priorAggregates?.[caseId]}
+            onOverflow={handleOverflow}
           />
         )}
       </Section>
@@ -1009,44 +1134,12 @@ export function NewLogForm({
         />
       </Section>
 
-      {/* 四、合約外(extra) — picker 從案件級工項撈,可即時新增臨時項 */}
+      {/* 四、未簽約(unsigned) — picker + 新增臨時項;報價由辦公室之後打包成追加合約。
+          (migration-2.16:原本第四節「合約外」改由辦公室助理在案件總覽以「追加合約」管理,
+           不再出現在主任的日誌 picker。) */}
       <Section
-        title={`四、合約外項目（已簽約追加）${pickedExtra.length > 0 ? ` (${pickedExtra.length})` : ""}`}
-        hint="已簽約追加但不在原合約內的工項。可累計進度,完成後自動隱藏。"
-      >
-        {!caseId ? (
-          <p className="text-sm text-muted-foreground">先選案件才能勾合約外項目</p>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setTempDialogKind("extra")}
-                className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
-              >
-                <Plus className="size-3.5" /> 新增合約外項目
-              </button>
-            </div>
-            {extraItemsExtra.length === 0 ? (
-              <p className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2] px-4 py-6 text-center text-sm text-muted-foreground">
-                此案件目前沒有合約外項目。需要追加時點上方「新增合約外項目」即時建立。
-              </p>
-            ) : (
-              <WorkItemsPicker
-                items={extraItemsExtra}
-                value={pickedExtra}
-                onChange={setPickedExtra}
-                aggregates={priorAggregates?.[caseId]}
-              />
-            )}
-          </div>
-        )}
-      </Section>
-
-      {/* 五、未簽約(unsigned) — picker + 新增臨時項;報價由辦公室之後補 */}
-      <Section
-        title={`五、未簽約施工內容${pickedUnsigned.length > 0 ? ` (${pickedUnsigned.length})` : ""}`}
-        hint="尚未追加合約 / 未報價,但現場有施工。報價由辦公室助理事後補,簽約後會自動歸到合約外項目。"
+        title={`四、未簽約施工內容${pickedUnsigned.length > 0 ? ` (${pickedUnsigned.length})` : ""}`}
+        hint="尚未報價/打包成追加合約,但現場有施工。報價由辦公室助理事後補,可一次選多筆建立追加合約。"
       >
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾未簽約項目</p>
@@ -1084,6 +1177,17 @@ export function NewLogForm({
           caseId={caseId}
           kind={tempDialogKind}
           onCreated={(item) => handleTempCreated(tempDialogKind, item)}
+        />
+      )}
+
+      {/* 主任輸入超過契約量時的引導 dialog —
+          確認後自動建一筆同名「未簽約」工項並把超出量帶過去,讓報價流程接手。 */}
+      {overflowAttempt && (
+        <OverflowSplitDialog
+          attempt={overflowAttempt}
+          isPending={splittingOverflow}
+          onConfirm={confirmOverflowSplit}
+          onCancel={dismissOverflow}
         />
       )}
 
@@ -1729,3 +1833,100 @@ const UNSIGNED_COLS: ColumnDef<DailyLogUnsignedItem>[] = [
 const EMPTY_SUBCONTRACTOR: DailyLogSubcontractor = { trade: "" };
 const EMPTY_MACHINE: DailyLogMachine = { name: "" };
 
+/**
+ * 主任在合約內 picker 試圖填超過契約量時的引導 dialog。
+ * 視覺強調「超出量」+「將去向」,確認後由父元件 server action 建一筆同名「未簽約」工項。
+ */
+function OverflowSplitDialog({
+  attempt,
+  isPending,
+  onConfirm,
+  onCancel,
+}: {
+  attempt: OverflowAttempt;
+  isPending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { item, requested, cap, mode } = attempt;
+  const overflow = Math.max(0, requested - cap);
+  const fmt = (n: number) =>
+    mode === "percent" ? `${Math.round(n * 100)}%` : `${n}${item.unit ?? ""}`;
+  const overflowLabel = fmt(overflow);
+  const capLabel = fmt(cap);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4"
+    >
+      <div className="w-full max-w-md rounded-lg border border-[#A07850]/40 bg-card shadow-lg">
+        <div className="border-b border-[#E0DCD6] bg-[#FAF7F2] px-5 py-3">
+          <h3 className="text-lg font-semibold text-primary">
+            超出契約量 — 是否建立追加工項?
+          </h3>
+        </div>
+        <div className="space-y-4 px-5 py-5 text-sm leading-relaxed text-foreground">
+          <div className="rounded-md border border-[#E0DCD6] bg-white px-4 py-3">
+            <div className="text-xs text-muted-foreground">原工項</div>
+            <div className="mt-0.5 break-words font-medium">{item.name}</div>
+            {item.tenderCode && (
+              <div className="mt-0.5 font-mono text-xs text-muted-foreground">
+                {item.tenderCode}
+              </div>
+            )}
+          </div>
+
+          <ul className="space-y-2">
+            <li className="flex items-start gap-2">
+              <span className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-[#A07850]" />
+              <span>
+                此工項剩餘可填:
+                <span className="ml-1 font-medium text-foreground">{capLabel}</span>
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-[#A07850]" />
+              <span>
+                你輸入的數量超出:
+                <span className="ml-1 font-semibold text-accent">{overflowLabel}</span>
+              </span>
+            </li>
+          </ul>
+
+          <div className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
+            <div className="font-medium">確認建立後,系統會:</div>
+            <ol className="mt-1 list-decimal space-y-1 pl-5">
+              <li>在「未簽約施工內容」自動建一筆同名追加工項({item.name} (追加))</li>
+              <li>把超出量 {overflowLabel} 帶到那筆,留待辦公室助理補報價</li>
+              <li>原工項本日數量自動夾在 {capLabel} 不變</li>
+            </ol>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            若只是手滑打錯,點「不,只填到剩餘量」就會把本日數量留在 {capLabel}。
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
+          >
+            不,只填到剩餘量
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {isPending ? "建立中…" : "建立追加工項"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -24,6 +24,10 @@ import {
   ExtraUnsignedSection,
   type ExtraUnsignedRow,
 } from "@/components/extra-unsigned-section";
+import {
+  ExtraContractsSection,
+  type ContractWithItems,
+} from "@/components/extra-contracts-section";
 import { normalizeLogPhotos } from "@/lib/daily-log";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import type {
@@ -34,6 +38,7 @@ import type {
   DailyLogWorkItem,
   DailyLogExtraItem,
   DailyLogUnsignedItem,
+  ExtraContract,
   QuoteStatus,
 } from "@/lib/types";
 
@@ -60,6 +65,7 @@ export default async function CaseDetailPage({
     { data: workItems },
     { data: imports },
     { data: logs },
+    { data: contracts },
   ] = await Promise.all([
     supabase.from("cases").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -82,6 +88,12 @@ export default async function CaseDetailPage({
       .eq("case_id", id)
       .in("status", ["submitted", "approved"])
       .order("log_date", { ascending: false }),
+    // migration-2.16:追加合約清單,工項屬於合約者透過 extra_contract_id join
+    supabase
+      .from("extra_contracts")
+      .select("*")
+      .eq("case_id", id)
+      .order("signed_at", { ascending: false }),
   ]);
 
   if (caseErr || !caseRow) notFound();
@@ -124,22 +136,7 @@ export default async function CaseDetailPage({
     }
   }
 
-  // 案件級的合約外/未簽約工項 — 升等後的主資料,從 case_work_items 撈
-  const extraItems: ExtraUnsignedRow[] = items
-    .filter((it) => it.item_type === "extra")
-    .map((it) => ({
-      id: it.id,
-      name: it.name,
-      unit: it.unit,
-      quantity: it.quantity,
-      unitPrice: it.unit_price,
-      totalPrice: it.total_price,
-      brandNote: it.brand_note,
-      itemType: "extra",
-      quoteStatus: (it.quote_status as QuoteStatus | null) ?? null,
-      contractSignedAt: it.contract_signed_at,
-      contractNote: it.contract_note,
-    }));
+  // 案件級的未簽約工項 — flat 列表(合約外現在以「合約」為單位呈現,見下方 contractList)
   const unsignedItems: ExtraUnsignedRow[] = items
     .filter((it) => it.item_type === "unsigned")
     .map((it) => ({
@@ -155,6 +152,54 @@ export default async function CaseDetailPage({
       contractSignedAt: null,
       contractNote: null,
     }));
+
+  // 把 extra 工項按 extra_contract_id 分組,組成 ContractWithItems 給新版區塊用
+  // 沒掛 contract 的 extra 工項(legacy 殘留)獨立成一個「未掛合約的合約外」群,
+  // 顯示提示讓 office staff 補綁(罕見;migration-2.16 已搬完絕大多數)
+  const extraItems = items.filter((it) => it.item_type === "extra");
+  const contractList = (contracts ?? []) as ExtraContract[];
+  const itemsByContract = new Map<string, CaseWorkItem[]>();
+  const orphanExtraItems: CaseWorkItem[] = [];
+  for (const it of extraItems) {
+    if (it.extra_contract_id) {
+      const arr = itemsByContract.get(it.extra_contract_id) ?? [];
+      arr.push(it);
+      itemsByContract.set(it.extra_contract_id, arr);
+    } else {
+      orphanExtraItems.push(it);
+    }
+  }
+  const contractsForUI: ContractWithItems[] = contractList.map((c) => ({
+    id: c.id,
+    name: c.name,
+    bundlePrice: c.bundle_price,
+    note: c.note,
+    signedAt: c.signed_at,
+    items: (itemsByContract.get(c.id) ?? []).map((it) => ({
+      id: it.id,
+      name: it.name,
+      unit: it.unit,
+      quantity: it.quantity,
+      unitPrice: it.unit_price,
+      totalPrice: it.total_price,
+      brandNote: it.brand_note,
+    })),
+  }));
+  // 沒掛任何合約、又是 extra 的(理論上不會有 — migration-2.16 全 backfill 過,
+  // 此處留 fallback 給 future regression)— 用舊的 ExtraUnsignedSection 顯示
+  const orphanExtraRows: ExtraUnsignedRow[] = orphanExtraItems.map((it) => ({
+    id: it.id,
+    name: it.name,
+    unit: it.unit,
+    quantity: it.quantity,
+    unitPrice: it.unit_price,
+    totalPrice: it.total_price,
+    brandNote: it.brand_note,
+    itemType: "extra",
+    quoteStatus: (it.quote_status as QuoteStatus | null) ?? null,
+    contractSignedAt: it.contract_signed_at,
+    contractNote: it.contract_note,
+  }));
 
   // 舊資料相容:從舊日誌 jsonb 蒐集合約外/未簽約(只有舊資料才會有)
   const legacyExtraRows: LegacyExtraRow[] = [];
@@ -300,9 +345,9 @@ export default async function CaseDetailPage({
               accent={allLogs.length > 0}
             />
             <Stat
-              label="合約外項目"
-              value={extraItems.length}
-              accent={extraItems.length > 0}
+              label="追加合約"
+              value={contractsForUI.length}
+              accent={contractsForUI.length > 0}
             />
             <Stat
               label="未簽約項目"
@@ -399,16 +444,16 @@ export default async function CaseDetailPage({
         <PhotoGallery photos={allPhotosSigned} layout="grid" />
       )}
 
-      {/* 合約外項目 — 案件級工項,可編輯報價、看進度 */}
-      <ExtraUnsignedSection
-        kind="extra"
-        rows={extraItems}
+      {/* 追加合約 — 以「合約」為單位呈現(migration-2.16 後),
+          每份合約可包多筆工項,有自己的 bundle 優惠價 */}
+      <ExtraContractsSection
+        contracts={contractsForUI}
         progress={progress}
         caseId={c.id}
         editable={canEditWorkItems}
       />
 
-      {/* 未簽約施工內容 — 案件級工項,可補報價、標記簽約 */}
+      {/* 未簽約施工內容 — 案件級工項,可補報價、多筆打包成追加合約 */}
       <ExtraUnsignedSection
         kind="unsigned"
         rows={unsignedItems}
@@ -416,6 +461,18 @@ export default async function CaseDetailPage({
         caseId={c.id}
         editable={canEditWorkItems}
       />
+
+      {/* 罕見路徑:沒掛合約的 extra 工項(理論上 migration-2.16 已全部搬完);
+          仍顯示舊版區塊讓 office 補綁,但通常為 0 筆 */}
+      {orphanExtraRows.length > 0 && (
+        <ExtraUnsignedSection
+          kind="extra"
+          rows={orphanExtraRows}
+          progress={progress}
+          caseId={c.id}
+          editable={canEditWorkItems}
+        />
+      )}
 
       {/* 舊資料相容:來自舊日誌的 jsonb 合約外/未簽約清單,只在還有舊資料時顯示 */}
       {legacyExtraRows.length > 0 && (

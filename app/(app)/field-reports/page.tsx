@@ -62,8 +62,8 @@ export default async function FieldReportsPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profile?.role === "office_staff") redirect("/");
-
+  // 2026-05-08:office_staff 從清單退出 redirect 拿掉,辦公室助理要定期處理回報
+  // (下載照片、封存、刪除)。原 redirect 是早期 POC 的偷懶設定,已不符實際流程。
   const isFieldAssistant = profile?.role === "field_assistant";
   const canCreate = !!profile && REPORTERS.includes(profile.role as UserRole);
 

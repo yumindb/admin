@@ -51,23 +51,24 @@ export default async function NewLogPage({
         .order("sort_path", { ascending: true })
     : { data: [] };
 
-  // 把每案的 case_work_items 拆三組:合約內(section/item/spec/manual)、合約外(extra)、未簽約(unsigned)
+  // 把每案的 case_work_items 拆兩組:合約內(section/item/spec/manual)、未簽約(unsigned)
+  // migration-2.16 起,合約外(extra)已升等成「追加合約」由辦公室助理在案件總覽操作,
+  // 不再出現在主任填日誌的 picker。原本 extraWorkItems 路徑保留為空陣列以維持 prop 結構。
   const groupedContract = new Map<string, PickerItem[]>();
-  const groupedExtra = new Map<string, PickerItem[]>();
   const groupedUnsigned = new Map<string, PickerItem[]>();
   for (const w of workItems ?? []) {
     const baseType = w.item_type as
       | "section" | "item" | "spec" | "manual" | "extra" | "unsigned";
-    // extra/unsigned 在 picker 視作 'item'(扁平、可勾選),只有合約內保留原 type
+    // extra 工項已歸到追加合約,日誌不再顯示 — 直接略過
+    if (baseType === "extra") continue;
+    // unsigned 在 picker 視作 'item'(扁平、可勾選),只有合約內保留原 type
     const pickerType: PickerItem["itemType"] =
-      baseType === "extra" || baseType === "unsigned" ? "item" : baseType;
+      baseType === "unsigned" ? "item" : baseType;
     const item: PickerItem = {
       id: w.id as string,
       parentId:
-        baseType === "extra" || baseType === "unsigned"
-          ? null
-          : (w.parent_id as string | null),
-      depth: baseType === "extra" || baseType === "unsigned" ? 0 : (w.depth as number),
+        baseType === "unsigned" ? null : (w.parent_id as string | null),
+      depth: baseType === "unsigned" ? 0 : (w.depth as number),
       itemType: pickerType,
       tenderCode: w.tender_code as string | null,
       name: w.name as string,
@@ -75,11 +76,7 @@ export default async function NewLogPage({
       totalQuantity: w.quantity as number | null,
     };
     const caseId = w.case_id as string;
-    if (baseType === "extra") {
-      const arr = groupedExtra.get(caseId) ?? [];
-      arr.push(item);
-      groupedExtra.set(caseId, arr);
-    } else if (baseType === "unsigned") {
+    if (baseType === "unsigned") {
       const arr = groupedUnsigned.get(caseId) ?? [];
       arr.push(item);
       groupedUnsigned.set(caseId, arr);
@@ -98,7 +95,7 @@ export default async function NewLogPage({
     location: c.location as string | null,
     expectedEnd: c.expected_end as string | null,
     workItems: groupedContract.get(c.id as string) ?? [],
-    extraWorkItems: groupedExtra.get(c.id as string) ?? [],
+    extraWorkItems: [], // legacy prop,保留結構;追加合約已不在日誌 picker 出現
     unsignedWorkItems: groupedUnsigned.get(c.id as string) ?? [],
   }));
 
@@ -233,7 +230,7 @@ export default async function NewLogPage({
       }
       const srcWorkItems = (s.work_items ?? []) as DailyLogWorkItem[];
       const cloneContract: DailyLogWorkItem[] = [];
-      const cloneExtra: DailyLogWorkItem[] = [];
+      const cloneExtra: DailyLogWorkItem[] = []; // 不會再被使用(extra 不在 picker),保留以維持 prop 結構
       const cloneUnsigned: DailyLogWorkItem[] = [];
       for (const w of srcWorkItems) {
         const t = itemTypeBySrcId.get(w.work_item_id);
@@ -243,8 +240,9 @@ export default async function NewLogPage({
           qty_mode: w.qty_mode ?? "absolute",
           note: w.note ?? "",
         };
-        if (t === "extra") cloneExtra.push(v);
-        else if (t === "unsigned") cloneUnsigned.push(v);
+        // extra 已歸到追加合約,複製日誌時不帶過來(來源若有引用,留在 server-side 紀錄但不 prefill picker)
+        if (t === "extra") continue;
+        if (t === "unsigned") cloneUnsigned.push(v);
         else cloneContract.push(v);
       }
       cloneInitial = {

@@ -8,6 +8,8 @@ import { PhotoGallery } from "@/components/photo-gallery";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { NewReportForm, type CaseOption } from "../new-report-form";
 import { deleteFieldReportAction } from "../actions";
+// migration-2.16:office_staff/owner 處理回報的工具(下載照片、封存、刪除)
+import { OfficeReportTools } from "./office-report-tools";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -55,6 +57,12 @@ export default async function FieldReportDetailPage({
 
   const isAuthor = r.author_id === user.id;
   const canEdit = isAuthor && r.status === "pending";
+  const isOfficeOrOwner =
+    profile?.role === "office_staff" || profile?.role === "owner";
+  // 辦公室助理 / 老闆:處理過後想清掉。merged 的不能實刪(daily log 反向引用),
+  // 改提供「封存」按鈕讓它從 pending 列表退場。
+  const canOfficeDelete = isOfficeOrOwner && r.status !== "merged";
+  const canOfficeArchive = isOfficeOrOwner && r.status === "pending";
   const status = STATUS[r.status];
 
   // Storage 已轉 private — 對 r.photos 一次 sign(5 min)
@@ -156,6 +164,18 @@ export default async function FieldReportDetailPage({
           )}
         </div>
       </div>
+
+      {/* 辦公室助理 / 老闆專屬:下載全部照片 + 封存 / 刪除。
+          客製需求:主任沒併進日誌的回報要能下載照片 + 處理完刪除。
+          沒有照片時仍顯示(讓 office 能刪純文字回報);下載按鈕內部會自動 disable。 */}
+      {isOfficeOrOwner && !editFlag && (
+        <OfficeReportTools
+          reportId={id}
+          photos={signedPhotos.map((p) => ({ path: p.path, caption: p.caption }))}
+          canDelete={canOfficeDelete}
+          canArchive={canOfficeArchive}
+        />
+      )}
 
       {r.status === "merged" && r.merged_log && (
         <div className="mb-6">

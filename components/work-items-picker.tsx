@@ -50,15 +50,31 @@ function defaultModeForUnit(unit: string | null): "absolute" | "percent" {
   return PERCENT_DEFAULT_UNITS.has(unit.trim()) ? "percent" : "absolute";
 }
 
+/**
+ * 工地主任輸入超量(累計 + 本日 > 契約量)時的事件。父元件接到後可以彈
+ * 「是否建立追加工項?」dialog,確認後把超量分到新建的未簽約工項。
+ */
+export type OverflowAttempt = {
+  item: PickerItem;
+  /** 使用者剛才按下的「想填的數量」(已 normalize 到絕對量;百分比模式為 0-1 fraction) */
+  requested: number;
+  /** 此工項剩餘可填的量(0 表示已填滿)。requested 一定 > cap。 */
+  cap: number;
+  /** 此次填寫的模式:absolute / percent */
+  mode: "absolute" | "percent";
+};
+
 type Props = {
   items: PickerItem[];
   value: PickerValue[];
   onChange: (next: PickerValue[]) => void;
   /** workItemId → 歷史累計與鎖定模式;若該工項從未被填過則無條目,UI 自由切換模式 */
   aggregates?: Record<string, WorkItemAggregate>;
+  /** 主任輸入超出剩餘量時觸發 — 父元件可以彈 dialog 詢問是否建立追加工項 */
+  onOverflow?: (attempt: OverflowAttempt) => void;
 };
 
-export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
+export function WorkItemsPicker({ items, value, onChange, aggregates, onOverflow }: Props) {
   const [query, setQuery] = useState("");
   const [browserOpen, setBrowserOpen] = useState(value.length === 0);
 
@@ -285,6 +301,7 @@ export function WorkItemsPicker({ items, value, onChange, aggregates }: Props) {
                   onChangeQty={(qty) => setQty(item.id, qty)}
                   onToggleMode={() => toggleMode(item.id)}
                   onRemove={() => toggle(item.id, false)}
+                  onOverflow={onOverflow}
                 />
               </li>
             ))}
@@ -375,6 +392,7 @@ function SelectedItemCard({
   onChangeQty,
   onToggleMode,
   onRemove,
+  onOverflow,
 }: {
   item: PickerItem;
   parentPath: string[];
@@ -383,6 +401,8 @@ function SelectedItemCard({
   onChangeQty: (qty: number) => void;
   onToggleMode: () => void;
   onRemove: () => void;
+  /** 父元件監聽超量輸入(只在 cap 是有限值時才會觸發) */
+  onOverflow?: (attempt: OverflowAttempt) => void;
 }) {
   const isPct = v.qty_mode === "percent";
   const modeLocked = !!aggregate;
@@ -393,9 +413,16 @@ function SelectedItemCard({
     : item.totalQuantity != null
       ? Math.max(0, item.totalQuantity - priorTotal)
       : null;
-  const clampStored = (n: number) => {
+  // clampStored:把 stored 值夾在 [0, fillCap] 之間。
+  // 第二參數 emit:超出 cap 時是否要觸發 onOverflow(false 用在不是使用者主動輸入的情境)。
+  const clampStored = (n: number, emit: boolean = true) => {
     if (n < 0) return 0;
-    if (fillCap != null && n > fillCap) return fillCap;
+    if (fillCap != null && n > fillCap) {
+      if (emit && onOverflow) {
+        onOverflow({ item, requested: n, cap: fillCap, mode: v.qty_mode ?? "absolute" });
+      }
+      return fillCap;
+    }
     return n;
   };
   const display = isPct ? Math.round((v.qty ?? 0) * 100) : v.qty;
@@ -403,16 +430,18 @@ function SelectedItemCard({
   const onMinus = () => {
     const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
     const next = Math.max(0, cur - step);
-    onChangeQty(clampStored(isPct ? next / 100 : next));
+    onChangeQty(clampStored(isPct ? next / 100 : next, false));
   };
+  // +/- 按鈕不觸發 overflow dialog — 只是夾在 cap 上,避免使用者多按一下就跳 dialog。
+  // overflow 由「直接輸入超過 cap 的數字」觸發(例如打 100 但剩 80),才比較貼近現場行為。
   const onPlus = () => {
     const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
     const next = cur + step;
-    onChangeQty(clampStored(isPct ? next / 100 : next));
+    onChangeQty(clampStored(isPct ? next / 100 : next, false));
   };
-  const inputMax = isPct
-    ? Math.round(Math.max(0, 1 - priorTotal) * 100)
-    : fillCap ?? undefined;
+  // 數字輸入框拿掉 max 限制 — 讓使用者能打超過 cap 的數字觸發 dialog。
+  // 仍給 step+min,避免負數/非數字。
+  const inputMax = undefined;
 
   // 進度條:percent 模式以 1 為分母,absolute 模式以標單數量為分母。
   // 沒有分母時(absolute 模式且無標單量)不顯示進度條。

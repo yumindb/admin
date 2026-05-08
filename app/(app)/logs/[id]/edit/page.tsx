@@ -82,25 +82,23 @@ export default async function EditLogPage({
         .order("sort_path", { ascending: true })
     : { data: [] };
 
-  // 與 /logs/new 同樣分三組;extra/unsigned 在 picker 視作 'item'(扁平)
+  // 與 /logs/new 同樣分組:合約內、未簽約。extra(追加合約)不在日誌出現,跳過。
   const groupedContract = new Map<string, PickerItem[]>();
-  const groupedExtra = new Map<string, PickerItem[]>();
   const groupedUnsigned = new Map<string, PickerItem[]>();
-  // 同時建一個 work_item_id → item_type 的查表,讓下方把 log 的 work_items 拆三組
+  // 同時建一個 work_item_id → item_type 的查表,讓下方把 log 的 work_items 拆組
   const itemTypeById = new Map<string, string>();
   for (const w of workItems ?? []) {
     const baseType = w.item_type as
       | "section" | "item" | "spec" | "manual" | "extra" | "unsigned";
     itemTypeById.set(w.id as string, baseType);
+    if (baseType === "extra") continue; // 追加合約已不在日誌 picker 出現
     const pickerType: PickerItem["itemType"] =
-      baseType === "extra" || baseType === "unsigned" ? "item" : baseType;
+      baseType === "unsigned" ? "item" : baseType;
     const item: PickerItem = {
       id: w.id as string,
       parentId:
-        baseType === "extra" || baseType === "unsigned"
-          ? null
-          : (w.parent_id as string | null),
-      depth: baseType === "extra" || baseType === "unsigned" ? 0 : (w.depth as number),
+        baseType === "unsigned" ? null : (w.parent_id as string | null),
+      depth: baseType === "unsigned" ? 0 : (w.depth as number),
       itemType: pickerType,
       tenderCode: w.tender_code as string | null,
       name: w.name as string,
@@ -108,11 +106,7 @@ export default async function EditLogPage({
       totalQuantity: w.quantity as number | null,
     };
     const caseId = w.case_id as string;
-    if (baseType === "extra") {
-      const arr = groupedExtra.get(caseId) ?? [];
-      arr.push(item);
-      groupedExtra.set(caseId, arr);
-    } else if (baseType === "unsigned") {
+    if (baseType === "unsigned") {
       const arr = groupedUnsigned.get(caseId) ?? [];
       arr.push(item);
       groupedUnsigned.set(caseId, arr);
@@ -131,19 +125,24 @@ export default async function EditLogPage({
     location: c.location as string | null,
     expectedEnd: c.expected_end as string | null,
     workItems: groupedContract.get(c.id as string) ?? [],
-    extraWorkItems: groupedExtra.get(c.id as string) ?? [],
+    extraWorkItems: [], // 追加合約已不在日誌 picker 出現,保留結構
     unsignedWorkItems: groupedUnsigned.get(c.id as string) ?? [],
   }));
 
-  // 把當前 log 的 work_items 依 item_type 拆三組,塞給三個 picker
+  // 把當前 log 的 work_items 依 item_type 拆組:合約內、未簽約、保留的 extra 引用。
+  // extra(追加合約)的 historical 引用仍保留在 server 紀錄,但 picker 不顯示;
+  // 用 preservedExtraWorkItems 帶回去儲存時原樣保留,讓進度與審計不丟失。
   const logWorkItems = (l.work_items ?? []) as DailyLogWorkItem[];
   const initialContract: DailyLogWorkItem[] = [];
-  const initialExtra: DailyLogWorkItem[] = [];
   const initialUnsigned: DailyLogWorkItem[] = [];
+  const initialPreservedExtra: DailyLogWorkItem[] = [];
   for (const w of logWorkItems) {
     const t = itemTypeById.get(w.work_item_id);
-    if (t === "extra") initialExtra.push(w);
-    else if (t === "unsigned") initialUnsigned.push(w);
+    if (t === "extra") {
+      initialPreservedExtra.push(w);
+      continue;
+    }
+    if (t === "unsigned") initialUnsigned.push(w);
     else initialContract.push(w);   // 包含找不到對應 case_work_items 的 dangling 引用
   }
 
@@ -337,13 +336,14 @@ export default async function EditLogPage({
           subcontractors: l.manpower?.subcontractors ?? [],
           machines: l.manpower?.machines ?? [],
           workItems: initialContract,
-          pickedExtra: initialExtra,
+          pickedExtra: [], // 追加合約已不在日誌 picker 出現
           pickedUnsigned: initialUnsigned,
           extraItems: l.extra_items ?? [],
           unsignedItems: l.unsigned_items ?? [],
           photos: initialPhotosSigned,
           vendorNotices: l.vendor_notices ?? "",
           notes: l.notes ?? "",
+          preservedExtraWorkItems: initialPreservedExtra,
         }}
       />
     </div>

@@ -81,11 +81,13 @@ export function PhotoLightbox({
         />
       </div>
 
-      {/* 照片說明 — 圖下方,點不會關閉。空字串 / null 不渲染。 */}
+      {/* 照片說明 — 圖下方,點不會關閉。空字串 / null 不渲染。
+          手機優先:文字加大為 base/lg,讓現場拿手機看的人不用瞇眼;
+          有捲軸時改為左對齊讀起來比較順。 */}
       {caption && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="mt-3 max-h-[28vh] w-full max-w-3xl overflow-y-auto rounded-md bg-black/60 px-4 py-2.5 text-center text-sm leading-relaxed text-white whitespace-pre-line"
+          className="mt-3 max-h-[32vh] w-full max-w-3xl overflow-y-auto rounded-md bg-black/65 px-4 py-3 text-left text-base leading-relaxed text-white whitespace-pre-line md:text-lg"
         >
           {caption}
         </div>
