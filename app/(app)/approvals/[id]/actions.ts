@@ -94,19 +94,11 @@ export async function approveStageAction(payload: ActPayload) {
     return { ok: false as const, error: "請先簽名" };
   }
 
-  // 寫 approval 紀錄
-  const { error: insErr } = await supabase.from("log_approvals").insert({
-    log_id: payload.logId,
-    stage: log.current_stage,
-    approver_id: user.id,
-    decision: "approved",
-    comment: payload.comment?.trim() || null,
-    signature_url: payload.signatureUrl ?? null,
-  });
-  if (insErr) return { ok: false as const, error: "寫入失敗:" + insErr.message };
-
-  // 推進 status / current_stage — 加 conditional update 守 race condition:
-  // 兩個簽核者同時進同一份日誌時,只有第一個成功;第二個 update 會 0 rows 命中。
+  // 寫入順序:先 conditional update 日誌 → 成功才寫 approval 紀錄。
+  // (1) Race 守護:兩個簽核者同時點,只有第一個 UPDATE 成功推進 stage;
+  //     第二個 0 rows,直接 return,不會留下孤兒 approval 紀錄。
+  // (2) Retry 守護:網路失敗使用者重點,第二次 UPDATE 也 0 rows(stage 已推進),
+  //     不會寫第二筆 approval。
   const nextStage = NEXT_STAGE[log.current_stage];
   const expectedStage = log.current_stage;
   if (nextStage === null) {
@@ -178,6 +170,23 @@ export async function approveStageAction(payload: ActPayload) {
     }
   }
 
+  // UPDATE 已確保 stage 推進(這個請求是「贏家」),才寫 approval 紀錄。
+  // 若這裡失敗,日誌已推進但 audit trail 缺一筆 — log 出來給管理者,後續可補。
+  const { error: insErr } = await supabase.from("log_approvals").insert({
+    log_id: payload.logId,
+    stage: expectedStage,
+    approver_id: user.id,
+    decision: "approved",
+    comment: payload.comment?.trim() || null,
+    signature_url: payload.signatureUrl ?? null,
+  });
+  if (insErr) {
+    console.error(
+      "[approveStageAction] approval insert failed AFTER log advanced:",
+      { logId: payload.logId, stage: expectedStage, err: insErr.message },
+    );
+  }
+
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);
   return { ok: true as const };
@@ -204,17 +213,7 @@ export async function rejectStageAction(payload: ActPayload) {
     return { ok: false as const, error: "你的角色不負責當前關卡" };
   }
 
-  const { error: insErr } = await supabase.from("log_approvals").insert({
-    log_id: payload.logId,
-    stage: log.current_stage,
-    approver_id: user.id,
-    decision: "rejected",
-    comment: payload.comment.trim(),
-    signature_url: payload.signatureUrl ?? null,
-  });
-  if (insErr) return { ok: false as const, error: "寫入失敗:" + insErr.message };
-
-  // conditional update — 守住「自己當下看到的 stage」,被改過就拒絕
+  // 寫入順序同 approveStageAction:先 conditional update → 成功才寫 approval 紀錄。
   const expectedStage = log.current_stage;
   const { data: rows, error: updErr } = await supabase
     .from("daily_logs")
@@ -229,6 +228,21 @@ export async function rejectStageAction(payload: ActPayload) {
       ok: false as const,
       error: "日誌狀態已被他人變更,請重新整理",
     };
+  }
+
+  const { error: insErr } = await supabase.from("log_approvals").insert({
+    log_id: payload.logId,
+    stage: expectedStage,
+    approver_id: user.id,
+    decision: "rejected",
+    comment: payload.comment.trim(),
+    signature_url: payload.signatureUrl ?? null,
+  });
+  if (insErr) {
+    console.error(
+      "[rejectStageAction] approval insert failed AFTER log rejected:",
+      { logId: payload.logId, stage: expectedStage, err: insErr.message },
+    );
   }
 
   revalidatePath("/approvals");

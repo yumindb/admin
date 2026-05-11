@@ -22,30 +22,48 @@ import type {
 
 const PHOTO_PREVIEW_MAX = 4;
 
-export default async function CasesOverviewPage() {
+type Search = Promise<{ all?: string }>;
+
+export default async function CasesOverviewPage({
+  searchParams,
+}: {
+  searchParams: Search;
+}) {
+  const params = await searchParams;
+  const showAll = params.all === "1";
+
   const supabase = await createClient();
   const actor = await tryGetActor();
   const canCreateCase =
     actor?.role === "office_staff" || actor?.role === "owner";
 
-  const [
-    { data: cases, error },
-    { data: workItems },
-    { data: logs },
-  ] = await Promise.all([
-    supabase.from("cases").select("*"),
-    supabase
-      .from("case_work_items")
-      .select("id, case_id, item_type, quantity"),
-    supabase
-      .from("daily_logs")
-      .select(
-        "case_id, status, work_items, extra_items, unsigned_items, photos, log_date",
-      )
-      .in("status", ["submitted", "approved"])
-      .order("log_date", { ascending: false })
-      .order("created_at", { ascending: false }),
-  ]);
+  // 1) 案件:預設只 active + paused(進行中),showAll=1 才撈 closed
+  //    closed 案件通常 90% 的列表時間都不需要看,排除掉就大幅減少後續日誌與工項的撈取量。
+  let caseQuery = supabase.from("cases").select("*");
+  if (!showAll) {
+    caseQuery = caseQuery.in("status", ["active", "paused"]);
+  }
+  const { data: cases, error } = await caseQuery;
+  const caseIds = (cases ?? []).map((c) => c.id as string);
+
+  // 2) 工項 / 日誌只撈這些 case 的(進度需要全期日誌才能算累計完成量,不限時間)
+  const [{ data: workItems }, { data: logs }] = caseIds.length
+    ? await Promise.all([
+        supabase
+          .from("case_work_items")
+          .select("id, case_id, item_type, quantity")
+          .in("case_id", caseIds),
+        supabase
+          .from("daily_logs")
+          .select(
+            "case_id, status, work_items, extra_items, unsigned_items, photos, log_date",
+          )
+          .in("case_id", caseIds)
+          .in("status", ["submitted", "approved"])
+          .order("log_date", { ascending: false })
+          .order("created_at", { ascending: false }),
+      ])
+    : [{ data: [] }, { data: [] }];
 
   const allCases = (cases ?? []) as Case[];
   const allItems = (workItems ?? []) as Pick<
@@ -242,6 +260,30 @@ export default async function CasesOverviewPage() {
       </div>
 
       <CasesKpiBar kpis={kpis} />
+
+      <div className="mb-4 flex items-center justify-end gap-3 text-sm">
+        {showAll ? (
+          <>
+            <span className="text-muted-foreground">顯示全部(含已結案)</span>
+            <Link
+              href="/cases"
+              className="text-[#A07850] underline-offset-2 hover:underline"
+            >
+              只看進行中
+            </Link>
+          </>
+        ) : (
+          <>
+            <span className="text-muted-foreground">只看進行中</span>
+            <Link
+              href="/cases?all=1"
+              className="text-[#A07850] underline-offset-2 hover:underline"
+            >
+              顯示全部(含已結案)
+            </Link>
+          </>
+        )}
+      </div>
 
       {error && (
         <p className="mb-4 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">

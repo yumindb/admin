@@ -24,6 +24,9 @@
 | 18 | [`migration-2.14.sql`](migration-2.14.sql) | 開放 site_supervisor INSERT case_work_items(限 item_type IN ('extra','unsigned'))— 解 2.13「新增臨時項 RLS 擋」 | 必跑(配 2.13) |
 | 19 | [`migration-2.15.sql`](migration-2.15.sql) | field_reports 加 office_staff/owner DELETE policy(限 status='pending'/'archived')— 配 2026-05-08 業主回饋:辦公室助理可定期清掉處理過的回報 | 必跑 |
 | 20 | [`migration-2.16.sql`](migration-2.16.sql) | extra_contracts 表(以「合約」為單位的追加合約)+ case_work_items.extra_contract_id FK + RLS;舊 'extra' 工項自動轉成單品項合約。配 2026-05-08「合約外 → 追加合約」需求 | 必跑 |
+| 21 | [`migration-2.17.sql`](migration-2.17.sql) | login_attempts 表(登入速率限制)— 3 次失敗 15 分鐘鎖,配 2026-05-11 健檢 A5 | 必跑 |
+| 22 | [`migration-2.18.sql`](migration-2.18.sql) | signatures bucket SELECT 收緊(只讀自己 folder)— 配 2026-05-11 健檢 B4(縮小) | 必跑 |
+| 23 | [`migration-2.19.sql`](migration-2.19.sql) | audit_logs 表 + trigger(profiles / case_work_items 財務欄 / extra_contracts)— 配 2026-05-11 健檢 B1 | 必跑 |
 
 ## 排錯
 

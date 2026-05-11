@@ -17,13 +17,27 @@ import { WorkItemsReportClient } from "./client";
  * server side:撈出該角色可看的所有 cases 與其 work items + log work_items,
  * 算出 row 後丟給 client component 做篩選顯示。
  */
-export default async function WorkItemsReportPage() {
+type Search = Promise<{ all?: string }>;
+
+export default async function WorkItemsReportPage({
+  searchParams,
+}: {
+  searchParams: Search;
+}) {
+  const params = await searchParams;
+  const showAll = params.all === "1";
+
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
   if (actor.role === "field_assistant") redirect("/");
 
   const supabase = await createClient();
-  const { data: allCases } = await supabase.from("cases").select("*");
+  // 預設只看 active + paused;showAll=1 才撈 closed
+  let caseQuery = supabase.from("cases").select("*");
+  if (!showAll) {
+    caseQuery = caseQuery.in("status", ["active", "paused"]);
+  }
+  const { data: allCases } = await caseQuery;
   let cases = (allCases ?? []) as Case[];
 
   if (actor.role === "site_supervisor") {
@@ -91,6 +105,29 @@ export default async function WorkItemsReportPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <Header />
+      <div className="mb-4 flex items-center justify-end gap-3 text-sm">
+        {showAll ? (
+          <>
+            <span className="text-muted-foreground">顯示全部(含已結案)</span>
+            <Link
+              href="/reports/work-items"
+              className="text-[#A07850] underline-offset-2 hover:underline"
+            >
+              只看進行中
+            </Link>
+          </>
+        ) : (
+          <>
+            <span className="text-muted-foreground">只看進行中</span>
+            <Link
+              href="/reports/work-items?all=1"
+              className="text-[#A07850] underline-offset-2 hover:underline"
+            >
+              顯示全部(含已結案)
+            </Link>
+          </>
+        )}
+      </div>
       <WorkItemsReportClient
         rows={rows}
         cases={cases.map((c) => ({

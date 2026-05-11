@@ -21,13 +21,27 @@ import { CasesOverviewReportClient, type CaseOverviewRow } from "./client";
  * 角色:office_staff / owner / site_supervisor(只看自己有送過 daily_logs 的案件)。
  *      field_assistant 擋掉。
  */
-export default async function CasesOverviewReportPage() {
+type Search = Promise<{ all?: string }>;
+
+export default async function CasesOverviewReportPage({
+  searchParams,
+}: {
+  searchParams: Search;
+}) {
+  const params = await searchParams;
+  const showAll = params.all === "1";
+
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
   if (actor.role === "field_assistant") redirect("/");
 
   const supabase = await createClient();
-  const { data: allCases } = await supabase.from("cases").select("*");
+  // 預設只看 active + paused;showAll=1 才撈 closed
+  let caseQuery = supabase.from("cases").select("*");
+  if (!showAll) {
+    caseQuery = caseQuery.in("status", ["active", "paused"]);
+  }
+  const { data: allCases } = await caseQuery;
   let cases = (allCases ?? []) as Case[];
 
   if (actor.role === "site_supervisor") {
@@ -145,6 +159,29 @@ export default async function CasesOverviewReportPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <Header />
+      <div className="mb-4 flex items-center justify-end gap-3 text-sm">
+        {showAll ? (
+          <>
+            <span className="text-muted-foreground">顯示全部(含已結案)</span>
+            <Link
+              href="/reports/cases-overview"
+              className="text-[#A07850] underline-offset-2 hover:underline"
+            >
+              只看進行中
+            </Link>
+          </>
+        ) : (
+          <>
+            <span className="text-muted-foreground">只看進行中</span>
+            <Link
+              href="/reports/cases-overview?all=1"
+              className="text-[#A07850] underline-offset-2 hover:underline"
+            >
+              顯示全部(含已結案)
+            </Link>
+          </>
+        )}
+      </div>
       <CasesOverviewReportClient rows={rows} />
     </div>
   );

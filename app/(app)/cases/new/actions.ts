@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/require-role";
 import { confirmImportAction } from "@/app/(app)/cases/[id]/import/actions";
 import { getNextCaseCode } from "@/lib/case-codes";
 import { COMPANIES } from "@/lib/companies";
@@ -136,11 +137,8 @@ export async function createCaseAction(
     }
   }
 
+  const actor = await requireRole(["office_staff", "owner"]);
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "未登入" };
 
   // 編號決策：
   //   - 使用者手填(data.code 非空) → 用該值,撞號就直接報錯讓他改
@@ -164,7 +162,7 @@ export async function createCaseAction(
         started_at: data.started_at || null,
         expected_end: data.expected_end || null,
         notes: data.notes || null,
-        created_by: user.id,
+        created_by: actor.id,
       })
       .select("id")
       .single();
@@ -312,7 +310,7 @@ export async function createCaseAction(
         total_price: totalPrice,
         brand_note: m.brand_note,
         modified_by_user: true,
-        created_by: user.id,
+        created_by: actor.id,
       };
     });
 

@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/cleanup-orphan-photos",
       "schedule": "30 15 * * *"
+    },
+    {
+      "path": "/api/cron/recheck-stuck-pdfs",
+      "schedule": "0 * * * *"
     }
   ]
 }
