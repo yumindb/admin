@@ -23,6 +23,9 @@ import { CasesOverviewReportClient, type CaseOverviewRow } from "./client";
  */
 type Search = Promise<{ all?: string }>;
 
+// 防爆上限,同 /cases 邏輯
+const CASE_HARD_LIMIT = 200;
+
 export default async function CasesOverviewReportPage({
   searchParams,
 }: {
@@ -36,13 +39,18 @@ export default async function CasesOverviewReportPage({
   if (actor.role === "field_assistant") redirect("/");
 
   const supabase = await createClient();
-  // 預設只看 active + paused;showAll=1 才撈 closed
-  let caseQuery = supabase.from("cases").select("*");
+  // 預設只看 active + paused;showAll=1 才撈 closed;再加 HARD_LIMIT 防爆
+  let caseQuery = supabase
+    .from("cases")
+    .select("*")
+    .order("started_at", { ascending: false, nullsFirst: false })
+    .limit(CASE_HARD_LIMIT);
   if (!showAll) {
     caseQuery = caseQuery.in("status", ["active", "paused"]);
   }
   const { data: allCases } = await caseQuery;
   let cases = (allCases ?? []) as Case[];
+  const hitLimit = cases.length >= CASE_HARD_LIMIT;
 
   if (actor.role === "site_supervisor") {
     const { data: myLogs } = await supabase
@@ -159,6 +167,12 @@ export default async function CasesOverviewReportPage({
   return (
     <div className="mx-auto max-w-6xl">
       <Header />
+      {hitLimit && (
+        <div className="mb-4 rounded-md border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-sm text-[#92400E]">
+          <strong>已達顯示上限:</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
+          (依開工日排序)。案件總數已超出,請通知開發者升級為真正的分頁。
+        </div>
+      )}
       <div className="mb-4 flex items-center justify-end gap-3 text-sm">
         {showAll ? (
           <>

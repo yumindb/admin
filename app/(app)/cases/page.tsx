@@ -21,6 +21,9 @@ import type {
 } from "@/lib/types";
 
 const PHOTO_PREVIEW_MAX = 4;
+// 防爆上限:資料長大到這個量級時,目前的 client-side stats 計算會慢到不可用,
+// 但網頁不會直接掛 — 顯示 banner 提醒管理員「該升級分頁了」。
+const CASE_HARD_LIMIT = 200;
 
 type Search = Promise<{ all?: string }>;
 
@@ -39,12 +42,18 @@ export default async function CasesOverviewPage({
 
   // 1) 案件:預設只 active + paused(進行中),showAll=1 才撈 closed
   //    closed 案件通常 90% 的列表時間都不需要看,排除掉就大幅減少後續日誌與工項的撈取量。
-  let caseQuery = supabase.from("cases").select("*");
+  //    再加 HARD_LIMIT 防爆:萬一資料長到極端,query 不會爆量。
+  let caseQuery = supabase
+    .from("cases")
+    .select("*")
+    .order("started_at", { ascending: false, nullsFirst: false })
+    .limit(CASE_HARD_LIMIT);
   if (!showAll) {
     caseQuery = caseQuery.in("status", ["active", "paused"]);
   }
   const { data: cases, error } = await caseQuery;
   const caseIds = (cases ?? []).map((c) => c.id as string);
+  const hitLimit = (cases ?? []).length >= CASE_HARD_LIMIT;
 
   // 2) 工項 / 日誌只撈這些 case 的(進度需要全期日誌才能算累計完成量,不限時間)
   const [{ data: workItems }, { data: logs }] = caseIds.length
@@ -260,6 +269,13 @@ export default async function CasesOverviewPage({
       </div>
 
       <CasesKpiBar kpis={kpis} />
+
+      {hitLimit && (
+        <div className="mb-4 rounded-md border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-sm text-[#92400E]">
+          <strong>已達顯示上限:</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
+          (依開工日排序)。案件總數已超出,請通知開發者升級為真正的分頁。
+        </div>
+      )}
 
       <div className="mb-4 flex items-center justify-end gap-3 text-sm">
         {showAll ? (
