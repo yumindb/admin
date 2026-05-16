@@ -10,7 +10,8 @@ export type IconName =
   | "folder"
   | "camera"
   | "users"
-  | "file";
+  | "file"
+  | "clock";
 
 export type BottomTab = {
   href: string;
@@ -133,6 +134,13 @@ function Icon({ name }: { name: IconName }) {
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg {...props} aria-hidden>
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
         </svg>
       );
   }

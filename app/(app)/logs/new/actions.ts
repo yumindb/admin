@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { evaluateGeofence } from "@/lib/geo";
 import type {
   ApprovalStage,
   DailyLogManpower,
@@ -14,6 +15,13 @@ import type {
   LogPhoto,
   UserRole,
 } from "@/lib/types";
+
+/** 隱式 GPS 戳記(migration-2.22)— 送出時 client 帶過來,僅在「首次送出」寫入 */
+export type SubmitLocationInput = {
+  lat: number;
+  lng: number;
+  accuracy_m: number | null;
+};
 
 type SaveLogPayload = {
   logId?: string;        // 編輯時帶
@@ -31,6 +39,7 @@ type SaveLogPayload = {
   fillSignatureUrl?: string;  // submit 時必帶 — 填表人手寫簽名;post_edit 不需要
   mergedReportIds?: string[]; // 整合的現場回報 ids,送出時翻 merged
   editReason?: string;        // post_edit 用,目前 UI 暫不收集,預留欄位
+  submitLocation?: SubmitLocationInput | null;  // 送出時的位置(可選;client 沒授權時為 null)
 };
 
 const EDITABLE_FIELDS: DailyLogEditableField[] = [
@@ -237,49 +246,93 @@ export async function saveLogAction(payload: SaveLogPayload) {
   const currentStage = payload.intent === "submit" ? "audit" : null;
   const submittedAt = payload.intent === "submit" ? new Date().toISOString() : null;
 
+  // 隱式 GPS 戳記:只在「首次送出」時計算並寫入。
+  // - draft → submit:寫
+  // - rejected → submit(重送):也寫(視為一次新的送出)
+  // - draft 持續存草稿:不寫
+  // - post_edit:在上方 post_edit 分支處理,完全不動 submit_* 欄位
+  let submitLocFields: {
+    submit_lat: number | null;
+    submit_lng: number | null;
+    submit_accuracy_m: number | null;
+    submit_distance_m: number | null;
+    submit_within_geofence: boolean | null;
+  } | null = null;
+
+  if (payload.intent === "submit" && payload.submitLocation) {
+    const loc = payload.submitLocation;
+    // 撈案件座標算距離
+    const { data: caseRow } = await supabase
+      .from("cases")
+      .select("lat, lng, geofence_radius_m")
+      .eq("id", payload.caseId)
+      .maybeSingle();
+    const evald = evaluateGeofence(
+      {
+        lat: (caseRow?.lat as number | null) ?? null,
+        lng: (caseRow?.lng as number | null) ?? null,
+        geofence_radius_m: (caseRow?.geofence_radius_m as number) ?? 200,
+      },
+      { lat: loc.lat, lng: loc.lng },
+    );
+    submitLocFields = {
+      submit_lat: loc.lat,
+      submit_lng: loc.lng,
+      submit_accuracy_m: loc.accuracy_m,
+      submit_distance_m: evald.distanceM,
+      submit_within_geofence: evald.withinGeofence,
+    };
+  }
+
   let logId = payload.logId;
 
   if (logId) {
     // 更新既有
+    const updatePayload: Record<string, unknown> = {
+      case_id: payload.caseId,
+      log_date: payload.logDate,
+      weather: payload.weather || null,
+      manpower: payload.manpower,
+      work_items: payload.workItems,
+      extra_items: payload.extraItems,
+      unsigned_items: payload.unsignedItems,
+      photos: payload.photos,
+      vendor_notices: payload.vendorNotices || null,
+      notes: payload.notes || null,
+      status,
+      current_stage: currentStage,
+    };
+    if (submittedAt) updatePayload.submitted_at = submittedAt;
+    if (submitLocFields) Object.assign(updatePayload, submitLocFields);
+
     const { error } = await supabase
       .from("daily_logs")
-      .update({
-        case_id: payload.caseId,
-        log_date: payload.logDate,
-        weather: payload.weather || null,
-        manpower: payload.manpower,
-        work_items: payload.workItems,
-        extra_items: payload.extraItems,
-        unsigned_items: payload.unsignedItems,
-        photos: payload.photos,
-        vendor_notices: payload.vendorNotices || null,
-        notes: payload.notes || null,
-        status,
-        current_stage: currentStage,
-        submitted_at: submittedAt ?? undefined,
-      })
+      .update(updatePayload)
       .eq("id", logId)
       .eq("supervisor_id", user.id);
     if (error) return { ok: false, error: "儲存失敗:" + error.message };
   } else {
+    const insertPayload: Record<string, unknown> = {
+      case_id: payload.caseId,
+      supervisor_id: user.id,
+      log_date: payload.logDate,
+      weather: payload.weather || null,
+      manpower: payload.manpower,
+      work_items: payload.workItems,
+      extra_items: payload.extraItems,
+      unsigned_items: payload.unsignedItems,
+      photos: payload.photos,
+      vendor_notices: payload.vendorNotices || null,
+      notes: payload.notes || null,
+      status,
+      current_stage: currentStage,
+      submitted_at: submittedAt,
+    };
+    if (submitLocFields) Object.assign(insertPayload, submitLocFields);
+
     const { data, error } = await supabase
       .from("daily_logs")
-      .insert({
-        case_id: payload.caseId,
-        supervisor_id: user.id,
-        log_date: payload.logDate,
-        weather: payload.weather || null,
-        manpower: payload.manpower,
-        work_items: payload.workItems,
-        extra_items: payload.extraItems,
-        unsigned_items: payload.unsignedItems,
-        photos: payload.photos,
-        vendor_notices: payload.vendorNotices || null,
-        notes: payload.notes || null,
-        status,
-        current_stage: currentStage,
-        submitted_at: submittedAt,
-      })
+      .insert(insertPayload)
       .select("id")
       .single();
     if (error || !data) return { ok: false, error: "建立失敗:" + error?.message };

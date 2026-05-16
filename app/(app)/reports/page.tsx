@@ -5,6 +5,7 @@ import {
   FileWarning,
   ListChecks,
   ShieldCheck,
+  MapPin,
 } from "lucide-react";
 import { tryGetActor } from "@/lib/auth/require-role";
 
@@ -49,6 +50,12 @@ export default async function ReportsHomePage() {
           title="案件進度總覽"
           description="所有案件的進度 %、累計日誌、落後標記。可依進度、開工日期排序"
           icon={<ListChecks className="size-6" strokeWidth={1.75} />}
+        />
+        <ReportCard
+          href="/reports/attendance"
+          title="現場出勤"
+          description="工地主任、現場助理的 GPS 打卡紀錄。可依日期、案件、人員篩選並下載 Excel"
+          icon={<MapPin className="size-6" strokeWidth={1.75} />}
         />
         <ReportCard
           href="#"

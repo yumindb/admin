@@ -3,7 +3,15 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { evaluateGeofence } from "@/lib/geo";
 import type { FieldReportPhoto, UserRole } from "@/lib/types";
+
+/** 隱式 GPS 戳記(migration-2.22) */
+export type SubmitLocationInput = {
+  lat: number;
+  lng: number;
+  accuracy_m: number | null;
+};
 
 const REPORTERS: UserRole[] = ["field_assistant", "site_supervisor", "owner"];
 
@@ -28,6 +36,7 @@ type ReportPayload = {
   caseId: string;
   note: string;
   photos: FieldReportPhoto[];
+  submitLocation?: SubmitLocationInput | null;  // 隱式 GPS 戳記
 };
 
 export async function createFieldReportAction(payload: ReportPayload) {
@@ -41,14 +50,38 @@ export async function createFieldReportAction(payload: ReportPayload) {
     return { ok: false, error: "至少要寫文字或加照片" };
   }
 
+  // 隱式 GPS 戳記 — 算距離 + within
+  const insertPayload: Record<string, unknown> = {
+    case_id: payload.caseId,
+    author_id: userId,
+    note: trimmedNote || null,
+    photos: payload.photos,
+  };
+  if (payload.submitLocation) {
+    const loc = payload.submitLocation;
+    const { data: caseRow } = await supabase
+      .from("cases")
+      .select("lat, lng, geofence_radius_m")
+      .eq("id", payload.caseId)
+      .maybeSingle();
+    const evald = evaluateGeofence(
+      {
+        lat: (caseRow?.lat as number | null) ?? null,
+        lng: (caseRow?.lng as number | null) ?? null,
+        geofence_radius_m: (caseRow?.geofence_radius_m as number) ?? 200,
+      },
+      { lat: loc.lat, lng: loc.lng },
+    );
+    insertPayload.submit_lat = loc.lat;
+    insertPayload.submit_lng = loc.lng;
+    insertPayload.submit_accuracy_m = loc.accuracy_m;
+    insertPayload.submit_distance_m = evald.distanceM;
+    insertPayload.submit_within_geofence = evald.withinGeofence;
+  }
+
   const { data, error } = await supabase
     .from("field_reports")
-    .insert({
-      case_id: payload.caseId,
-      author_id: userId,
-      note: trimmedNote || null,
-      photos: payload.photos,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
   if (error || !data) {

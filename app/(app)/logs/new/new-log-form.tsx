@@ -23,6 +23,7 @@ import { NextStepHint } from "@/components/next-step-hint";
 import { getCompanyShort } from "@/lib/companies";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { saveLogAction } from "./actions";
+import { useSilentLocationOnce } from "@/lib/use-geolocation";
 import {
   deletePhotoAction,
   uploadPhotoAction,
@@ -228,6 +229,8 @@ export function NewLogForm({
   const [hydrated, setHydrated] = useState(false);
   const [isPending, startTransition] = useTransition();
   const sigRef = useRef<SignatureCanvas>(null);
+  // 隱式 GPS 戳記:已授權才靜默取(未授權不彈視窗、不擋送出)
+  const silentLoc = useSilentLocationOnce();
   // 追蹤本次工作階段「在這個表單內上傳」的照片 path,
   // 供使用者按 × 或「取消」時清掉 Storage 內的暫存檔(避免孤兒檔累積)。
   // 不含 initial.photos(那些是已送出記錄、不可亂刪),
@@ -792,6 +795,11 @@ export function NewLogForm({
         ...preservedExtraValues,
       ];
 
+      // 隱式 GPS 戳記只在 submit 時帶(post_edit / draft 都不寫)
+      const submitLocation =
+        intent === "submit" && silentLoc
+          ? { lat: silentLoc.lat, lng: silentLoc.lng, accuracy_m: silentLoc.accuracy_m }
+          : null;
       const res = await saveLogAction({
         logId,
         caseId,
@@ -812,6 +820,7 @@ export function NewLogForm({
         intent,
         fillSignatureUrl: signatureUrl,
         mergedReportIds,
+        submitLocation,
       });
       if (!res.ok) {
         setError(res.error ?? "儲存失敗");

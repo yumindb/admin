@@ -111,6 +111,12 @@ export type DailyLog = {
   pdf_path: string | null;                  // 核定通過後產生的 PDF 在 daily-log-pdfs bucket 的路徑
   pdf_status: PdfStatus;                    // PDF 產生狀態(migration-2.11 起)
   pdf_error: string | null;                 // 失敗原因(pdf_status='failed' 時填)
+  // migration-2.22:首次送出時的 GPS 戳記。post-edit 不重寫,保留原始送出位置。
+  submit_lat: number | null;
+  submit_lng: number | null;
+  submit_accuracy_m: number | null;
+  submit_distance_m: number | null;
+  submit_within_geofence: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -181,6 +187,10 @@ export type Case = {
   started_at: string | null;
   expected_end: string | null;
   notes: string | null;
+  // migration-2.20:打卡座標。lat/lng 必須同時 null 或同時有值;radius 預設 200 m。
+  lat: number | null;
+  lng: number | null;
+  geofence_radius_m: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -248,8 +258,37 @@ export type FieldReport = {
   merged_into_log_id: string | null;
   merged_by: string | null;
   merged_at: string | null;
+  // migration-2.22:建立時的 GPS 戳記。後續編輯不重寫。
+  submit_lat: number | null;
+  submit_lng: number | null;
+  submit_accuracy_m: number | null;
+  submit_distance_m: number | null;
+  submit_within_geofence: boolean | null;
   created_at: string;
   updated_at: string;
+};
+
+/**
+ * 打卡事件(migration-2.21)。
+ * 上班 / 下班 各寫一筆 row,immutable(無 update / delete)。
+ * case_id 為 null 表示「在公司 / 跨工地移動」,note 應在 UI 強制填。
+ */
+export type AttendanceEventType = "clock_in" | "clock_out";
+
+export type AttendanceEvent = {
+  id: string;
+  user_id: string;
+  case_id: string | null;
+  event_type: AttendanceEventType;
+  lat: number;
+  lng: number;
+  accuracy_m: number | null;
+  distance_m: number | null;
+  within_geofence: boolean | null;
+  source: "web" | "liff";
+  user_agent: string | null;
+  note: string | null;
+  created_at: string;
 };
 
 export type TenderImport = {

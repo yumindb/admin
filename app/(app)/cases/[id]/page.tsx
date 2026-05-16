@@ -20,6 +20,7 @@ import {
 import { NextStepHint } from "@/components/next-step-hint";
 import { CaseQrCodeButton } from "@/components/case-qr-code-button";
 import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
+import { AttendanceTimeline, type TimelineEvent } from "@/components/attendance-timeline";
 import {
   ExtraUnsignedSection,
   type ExtraUnsignedRow,
@@ -60,12 +61,16 @@ export default async function CaseDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
+  // 取最近 14 天的打卡事件(顯示在案件底部)— 200 筆硬上限與其他列表一致
+  const since14d = new Date(Date.now() - 14 * 86_400_000).toISOString();
+
   const [
     { data: caseRow, error: caseErr },
     { data: workItems },
     { data: imports },
     { data: logs },
     { data: contracts },
+    { data: attendanceRows },
   ] = await Promise.all([
     supabase.from("cases").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -94,10 +99,60 @@ export default async function CaseDetailPage({
       .select("*")
       .eq("case_id", id)
       .order("signed_at", { ascending: false }),
+    // migration-2.21:打卡事件 — 近 14 天此案件全部出勤
+    supabase
+      .from("attendance_events")
+      .select("id, event_type, lat, lng, accuracy_m, distance_m, within_geofence, note, created_at, user_id")
+      .eq("case_id", id)
+      .gte("created_at", since14d)
+      .order("created_at", { ascending: false })
+      .limit(200),
   ]);
 
   if (caseErr || !caseRow) notFound();
   const c = caseRow as Case;
+
+  // 打卡時間軸:撈出現過的 user 名字
+  const attendanceUserIds = Array.from(
+    new Set(((attendanceRows ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)),
+  );
+  const attendanceUserMap = new Map<string, string>();
+  if (attendanceUserIds.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", attendanceUserIds);
+    for (const p of profs ?? []) {
+      attendanceUserMap.set(p.id as string, (p.full_name as string) ?? "未命名");
+    }
+  }
+  const timelineEvents: TimelineEvent[] = (attendanceRows ?? []).map((r) => {
+    const row = r as {
+      id: string;
+      event_type: "clock_in" | "clock_out";
+      lat: number;
+      lng: number;
+      accuracy_m: number | null;
+      distance_m: number | null;
+      within_geofence: boolean | null;
+      note: string | null;
+      created_at: string;
+      user_id: string;
+    };
+    return {
+      id: row.id,
+      event_type: row.event_type,
+      user_name: attendanceUserMap.get(row.user_id) ?? "未命名",
+      case_label: null,
+      lat: row.lat,
+      lng: row.lng,
+      accuracy_m: row.accuracy_m,
+      distance_m: row.distance_m,
+      within_geofence: row.within_geofence,
+      note: row.note,
+      created_at: row.created_at,
+    };
+  });
   const actor = await tryGetActor();
   const canEditWorkItems =
     actor?.role === "office_staff" || actor?.role === "owner";
@@ -426,6 +481,23 @@ export default async function CaseDetailPage({
           editable={canEditWorkItems}
         />
       )}
+
+      {/* 工地出勤 — 近 14 天打卡時間軸(migration-2.21) */}
+      <div className="mt-10 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">
+          工地出勤
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            近 14 天 · {timelineEvents.length} 筆
+          </span>
+        </h2>
+        <Link
+          href={`/reports/attendance?case=${c.id}`}
+          className="text-sm text-accent underline-offset-2 hover:underline"
+        >
+          完整出勤報表 →
+        </Link>
+      </div>
+      <AttendanceTimeline events={timelineEvents} showUser showCase={false} emptyText="近 14 天無打卡紀錄" />
 
       {/* 跨日誌彙整:照片 */}
       <div className="mt-10 mb-4 flex items-center justify-between">

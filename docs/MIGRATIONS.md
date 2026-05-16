@@ -27,6 +27,9 @@
 | 21 | [`migration-2.17.sql`](migration-2.17.sql) | login_attempts 表(登入速率限制)— 3 次失敗 15 分鐘鎖,配 2026-05-11 健檢 A5 | 必跑 |
 | 22 | [`migration-2.18.sql`](migration-2.18.sql) | signatures bucket SELECT 收緊(只讀自己 folder)— 配 2026-05-11 健檢 B4(縮小) | 必跑 |
 | 23 | [`migration-2.19.sql`](migration-2.19.sql) | audit_logs 表 + trigger(profiles / case_work_items 財務欄 / extra_contracts)— 配 2026-05-11 健檢 B1 | 必跑 |
+| 24 | [`migration-2.20.sql`](migration-2.20.sql) | cases 加 lat / lng numeric(9,6) + geofence_radius_m int default 200(GPS 打卡基礎)| 必跑 |
+| 25 | [`migration-2.21.sql`](migration-2.21.sql) | attendance_events 表(上下班打卡事件)+ RLS(read-all + insert-own,不可改/刪)| 必跑 |
+| 26 | [`migration-2.22.sql`](migration-2.22.sql) | daily_logs / field_reports 加 submit_lat/lng/accuracy_m/distance_m/within_geofence(隱式 GPS 戳記)| 必跑 |
 
 ## 排錯
 

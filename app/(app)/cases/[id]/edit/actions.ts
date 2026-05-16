@@ -9,17 +9,52 @@ import { wrapDbError } from "@/lib/db/wrap-error";
 import { COMPANIES } from "@/lib/companies";
 import type { CaseFormState } from "@/components/case-form";
 
-const EditCaseSchema = z.object({
-  caseId: z.string().uuid(),
-  name: z.string().trim().min(1, "案件名稱必填").max(200),
-  code: z.string().trim().max(60).optional().or(z.literal("")),
-  company: z.enum(COMPANIES, { message: "請選擇承接公司" }),
-  location: z.string().trim().max(200).optional().or(z.literal("")),
-  client: z.string().trim().max(120).optional().or(z.literal("")),
-  started_at: z.string().trim().optional().or(z.literal("")),
-  expected_end: z.string().trim().optional().or(z.literal("")),
-  notes: z.string().trim().max(2000).optional().or(z.literal("")),
-});
+// 座標欄(migration-2.20):與 new-case 同規則
+const LatLngSchema = z
+  .string()
+  .trim()
+  .transform((v) => (v === "" ? null : v))
+  .pipe(
+    z.union([
+      z.null(),
+      z
+        .string()
+        .regex(/^-?\d{1,3}(?:\.\d+)?$/, "座標格式錯誤")
+        .transform((s) => Number(s)),
+    ]),
+  );
+
+const EditCaseSchema = z
+  .object({
+    caseId: z.string().uuid(),
+    name: z.string().trim().min(1, "案件名稱必填").max(200),
+    code: z.string().trim().max(60).optional().or(z.literal("")),
+    company: z.enum(COMPANIES, { message: "請選擇承接公司" }),
+    location: z.string().trim().max(200).optional().or(z.literal("")),
+    client: z.string().trim().max(120).optional().or(z.literal("")),
+    started_at: z.string().trim().optional().or(z.literal("")),
+    expected_end: z.string().trim().optional().or(z.literal("")),
+    notes: z.string().trim().max(2000).optional().or(z.literal("")),
+    lat: LatLngSchema,
+    lng: LatLngSchema,
+    geofence_radius_m: z
+      .string()
+      .trim()
+      .transform((v) => (v === "" ? 200 : Number(v)))
+      .pipe(z.number().int().min(10).max(5000)),
+  })
+  .refine((d) => (d.lat === null) === (d.lng === null), {
+    message: "經緯度必須同時提供或同時留空",
+    path: ["lat"],
+  })
+  .refine((d) => d.lat === null || (d.lat >= -90 && d.lat <= 90), {
+    message: "緯度需介於 -90 到 90",
+    path: ["lat"],
+  })
+  .refine((d) => d.lng === null || (d.lng >= -180 && d.lng <= 180), {
+    message: "經度需介於 -180 到 180",
+    path: ["lng"],
+  });
 
 export async function updateCaseAction(
   _prev: CaseFormState,
@@ -47,6 +82,9 @@ export async function updateCaseAction(
       started_at: data.started_at || null,
       expected_end: data.expected_end || null,
       notes: data.notes || null,
+      lat: data.lat,
+      lng: data.lng,
+      geofence_radius_m: data.geofence_radius_m,
     })
     .eq("id", caseId);
 

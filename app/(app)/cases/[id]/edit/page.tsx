@@ -21,7 +21,9 @@ export default async function EditCasePage({
   const supabase = await createClient();
   const { data: caseRow } = await supabase
     .from("cases")
-    .select("id, name, code, company, location, client, started_at, expected_end, notes")
+    .select(
+      "id, name, code, company, location, client, started_at, expected_end, notes, lat, lng, geofence_radius_m",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -37,6 +39,9 @@ export default async function EditCasePage({
     | "started_at"
     | "expected_end"
     | "notes"
+    | "lat"
+    | "lng"
+    | "geofence_radius_m"
   >;
 
   return (
@@ -66,6 +71,9 @@ export default async function EditCasePage({
             started_at: c.started_at,
             expected_end: c.expected_end,
             notes: c.notes,
+            lat: c.lat,
+            lng: c.lng,
+            geofence_radius_m: c.geofence_radius_m,
           }}
         />
       </div>

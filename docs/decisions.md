@@ -481,3 +481,92 @@ case_work_items
 2. 報價金額審核流程:目前 office_staff 直接編輯 unit_price,沒簽核;Phase 3 可考慮加 owner 確認單價
 3. 合約外 / 未簽約 沒有 section/parent 概念,扁平。若未來工項數爆量,可加 tag/分類欄位
 4. localStorage 草稿 key 升 v3,舊草稿(v2)會被忽略 — 影響:升級時若 supervisor 有未送出的 free-form 草稿會看不到,需要重填
+
+---
+
+## Phase 2.20 – 2.23 — GPS 打卡 (2026-05-16)
+
+### 一、為什麼
+
+業主回饋:工地主任、現場助理 應該要有 GPS 打卡，能證明確實到工地現場（薪資 / 工程證據 / 信任）。POC 階段 (`docs/PROJECT.md`「POC 不做」清單) 明列「打卡」延後，現在 Phase 2 已穩定，正式補上。
+
+裕民跨案件設計（2026-05-11 已拍板:主任可看所有案件）讓打卡 UI 必須允許主任跨案選擇而非鎖定指派。
+
+### 二、七項關鍵決策（Evelyn 與我對話確認後採用，全照推薦）
+
+| # | 決策 | 採用值 | 理由 |
+|---|---|---|---|
+| D1 | geofence 硬擋 vs 軟警告 | **軟警告** | 工地門牌不準、GPS 飄移;硬擋會逼工人造假 |
+| D2 | 上下班強制配對 | **不強制**，UI 提示 | 工地實況亂，硬規則會被罵 |
+| D3 | 無案件 / 在公司打卡 | **允許**，case_id=null + note 必填 | 主任會跑多工地，禁了就沒人用 |
+| D4 | 預設 geofence 半徑 | **200 m**（10–5000 可調） | 透天工地夠用;大工地由 office 調 500 m+ |
+| D5 | 隱式戳記是否需要同意 | **首次彈一次同意，沿用瀏覽器 permission** | 一次告知符合台灣個資法 |
+| D6 | 是否做地圖視覺 | **第一版不做**，顯示文字距離 + Google Maps link | 開發成本明顯較高，先驗證需求 |
+| D7 | 打卡資料保留多久 | **永久** | 薪資 / 工程證據用 |
+
+### 三、Schema 決策
+
+**2.20.1 cases 加 lat/lng/geofence_radius_m**
+- `numeric(9,6)` 給經緯度（6 位小數 ≈ 11 公分精度）
+- `geofence_radius_m int default 200 check (1-5000)`
+- DB constraint `cases_latlng_paired`:lat/lng 必須同時 null 或同時有值（避免半填）
+- 沒有座標的案件仍可運作（打卡時 distance=null, within_geofence=null）
+
+**2.21.1 attendance_events 為 immutable event log**
+- 故意不開 UPDATE / DELETE policy → 打卡是證據，要修改只能再 INSERT 新事件
+- INSERT 限 `user_id = auth.uid()`（不能代打卡）
+- SELECT 開放給所有 authenticated（與 supervisor cross-case 設計一致）
+- 同時記錄 distance_m + within_geofence(server 端用 evaluateGeofence 算)— 寫入時固定，避免案件之後改座標導致歷史紀錄飄移
+
+**2.21.2 case_id 允許 null + note 必填的執行層**
+- DB 層不擋（避免日後流程改動要動 schema）
+- server action 邏輯:`!case_id && !note → reject`
+- 取捨:DB constraint 更嚴格但較不彈性;邏輯層擋容易隨需求調整
+
+**2.22.1 隱式戳記僅在「首次送出」寫入**
+- daily_logs: 只有 `intent === "submit"`（draft → submitted 或 rejected → submitted）才寫 submit_*
+- post_edit:**完全不寫** — 保留原始送出位置，否則編輯就能改證據
+- field_reports: 只 create 時寫，update 時不寫
+
+### 四、Client 隱式定位策略（D5 對應）
+
+`useSilentLocationOnce` 在 `lib/use-geolocation.ts`:
+- 先 query `navigator.permissions.geolocation`;`state !== "granted"` 直接 return
+- 沒有 Permissions API 的瀏覽器（部分 Safari 版本）才會 fallback 呼 getCurrentPosition
+- 失敗永遠靜默（不彈錯誤、不擋送出）
+
+結果:使用者第一次到 `/attendance` 才會被詢問;之後 `/logs/new`、`/field-reports/new` 就免擾自動戳記。
+
+### 五、UI 整合點
+
+| 位置 | 功能 |
+|---|---|
+| 底部 tab（site_supervisor + field_assistant） | 「打卡」icon（clock） |
+| `/attendance` | 顯式上下班打卡 + 推薦最近案件 + 今日時間軸 |
+| `/logs/new` 送出時 | 隱式戳記 submit_lat/lng |
+| `/field-reports/new` 送出時 | 同上 |
+| `/cases/[id]` | 近 14 天案件出勤時間軸 |
+| `/reports/attendance` | 全公司出勤報表 + 篩選 + xlsx 匯出 |
+| 案件 form（new + edit） | 座標 picker（Google Maps URL 貼上 + Leaflet 點選） |
+
+### 六、地圖實作:Leaflet + OpenStreetMap
+
+- 用 `leaflet`（純 vanilla，無 react-leaflet）+ 動態 import + ssr: false，bundle 只在 picker 載入時下載
+- Tile 來源:OpenStreetMap（零成本，符合 D6 不做付費地圖 API 的決策）
+- Marker 用 inline SVG（深海軍藍 pin + 銅金中心），避免 webpack 對 leaflet 預設 PNG 路徑的問題
+- Circle overlay 顯示 geofence 範圍視覺化
+
+**故意不做**:
+- 反向地理編碼（座標 → 地址）:成本（Google US$5/1000 calls）vs 價值（office 已可手動標 location 欄位）不對等
+- 案件詳情打卡點地圖視覺:第一版用文字距離 + 個別 Google Maps link，第二版再評估
+
+### 七、Phase 3+ TODO
+
+1. **離線打卡**(PWA + IndexedDB)— 工地訊號爛時打卡失敗 = 漏卡。Phase 2.24 或更後做（取決於離線送日誌一起做的時機）
+2. **LIFF 整合**:從 LINE 開打卡頁可拿到 LINE user ID + 訊號更穩；attendance_events.source 已預留 `'liff'`
+3. **未下班提醒** — 晚上 21:00 cron 掃當天上班但沒下班的人 → LINE 推播
+4. **批簽 / 月結時自動帶出勤** — 老闆審月薪時直接看到 X 主任本月在 OO 工地的出勤時數
+5. **地圖視覺**:`/reports/attendance` 加切換「地圖模式」，顯示打卡點散佈 + heatmap
+6. **GPS 防偽強化**:目前只信任瀏覽器值（瀏覽器假 GPS / DevTools 可改）。要真防偽需 LIFF + LINE Login binding，或要求每次打卡拍一張照（人像+環境）
+7. **批次修正歷史座標**:若案件座標填錯，目前已寫入的 distance_m / within_geofence 不會自動重算（這是 immutable event log 的特性）。Phase 3 加管理介面手動重新計算
+

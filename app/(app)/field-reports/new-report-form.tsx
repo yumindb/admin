@@ -7,6 +7,7 @@ import { PhotoLightbox } from "@/components/photo-lightbox";
 import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions";
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
 import { NextStepHint } from "@/components/next-step-hint";
+import { useSilentLocationOnce } from "@/lib/use-geolocation";
 import type { FieldReportPhoto } from "@/lib/types";
 
 export type CaseOption = CasePickerOption;
@@ -44,6 +45,8 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
   // 本次階段上傳到 Storage 的 path,使用者按 × 時要連 Storage 一起刪。
   const sessionUploadsRef = useRef<Set<string>>(new Set());
+  // 隱式 GPS 戳記:已授權才靜默取(未授權不彈視窗、不擋送出)
+  const silentLoc = useSilentLocationOnce();
 
   async function onPickPhotos(files: FileList | null) {
     if (!files?.length) return;
@@ -113,10 +116,14 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     }
 
     startTransition(async () => {
+      // 僅「建立」時帶 submitLocation;更新時不重寫(保留原始位置)
+      const submitLocation = silentLoc
+        ? { lat: silentLoc.lat, lng: silentLoc.lng, accuracy_m: silentLoc.accuracy_m }
+        : null;
       const payload = { caseId, note, photos };
       const res = reportId
         ? await updateFieldReportAction({ ...payload, reportId })
-        : await createFieldReportAction(payload);
+        : await createFieldReportAction({ ...payload, submitLocation });
       if (!res.ok) {
         setError(res.error ?? "送出失敗");
         return;

@@ -171,15 +171,17 @@ function navByRole(
           { href: "/logs", label: "日誌" },
           { href: "/approvals", label: "待複核", badge: approvalsBadge },
           { href: "/approvals/history", label: "我簽過的" },
+          { href: "/attendance", label: "打卡" },
           { href: "/field-reports", label: "現場回報" },
           { href: "/cases", label: "案件總覽" },
           { href: "/reports", label: "報表" },
         ],
+        // 手機:核心 4 個 tab。案件總覽在桌機 nav 可看,手機則透過日誌/打卡 → 案件 link 進入。
         mobileTabs: [
+          { href: "/attendance", label: "打卡", icon: "clock" },
           { href: "/logs", label: "日誌", icon: "file" },
           { href: "/approvals", label: "待複核", icon: "check" },
-          { href: "/field-reports", label: "現場回報", icon: "camera" },
-          { href: "/cases", label: "案件", icon: "folder" },
+          { href: "/field-reports", label: "回報", icon: "camera" },
         ],
       };
     case "owner":
@@ -204,10 +206,12 @@ function navByRole(
     case "field_assistant":
       return {
         desktopNav: [
+          { href: "/attendance", label: "打卡" },
           { href: "/field-reports", label: "我的回報" },
           { href: "/field-reports/new", label: "新增回報" },
         ],
         mobileTabs: [
+          { href: "/attendance", label: "打卡", icon: "clock" },
           { href: "/field-reports", label: "我的回報", icon: "list" },
           { href: "/field-reports/new", label: "新增回報", icon: "plus" },
         ],

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { COMPANIES, DEFAULT_COMPANY } from "@/lib/companies";
+import { CaseLocationPicker } from "@/components/case-location-picker";
 
 export type CaseFormState =
   | { error?: string; fieldErrors?: Record<string, string[]> }
@@ -20,6 +21,10 @@ export type CaseFormDefaults = {
   started_at?: string | null;
   expected_end?: string | null;
   notes?: string | null;
+  // 工地座標 + geofence — 打卡功能用(migration-2.20)
+  lat?: number | null;
+  lng?: number | null;
+  geofence_radius_m?: number | null;
 };
 
 /**
@@ -110,6 +115,12 @@ export function CaseFormFields({
           />
         </Field>
       </div>
+
+      <CaseLocationPicker
+        defaultLat={defaults.lat ?? null}
+        defaultLng={defaults.lng ?? null}
+        defaultRadius={defaults.geofence_radius_m ?? 200}
+      />
 
       <Field label="備註" htmlFor="notes">
         <textarea
