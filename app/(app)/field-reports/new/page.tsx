@@ -26,9 +26,10 @@ export default async function NewFieldReportPage({
     redirect("/field-reports");
   }
 
+  // migration-2.20 起加 lat/lng 給 CasePicker 依距離排序
   const { data: cases } = await supabase
     .from("cases")
-    .select("id, name, code")
+    .select("id, name, code, lat, lng")
     .eq("status", "active")
     .order("created_at", { ascending: false });
 
@@ -36,6 +37,8 @@ export default async function NewFieldReportPage({
     id: c.id as string,
     name: c.name as string,
     code: c.code as string | null,
+    lat: c.lat as number | null,
+    lng: c.lng as number | null,
   }));
 
   return (

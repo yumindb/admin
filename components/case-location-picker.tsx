@@ -8,6 +8,7 @@ import {
   parseGoogleMapsUrl,
   type LatLng,
 } from "@/lib/geo";
+import { geocodeAddress, type GeocodeResult } from "@/lib/geocode";
 
 const MapPicker = dynamic(() => import("./map-picker"), {
   ssr: false,
@@ -53,6 +54,11 @@ export function CaseLocationPicker({
   const [urlOk, setUrlOk] = useState<boolean>(false);
   const urlOkTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // 地址 → 座標(Nominatim,限速 1 req/sec)
+  const [geocoding, setGeocoding] = useState(false);
+  const [geoResults, setGeoResults] = useState<GeocodeResult[] | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
   // url paste → 立即解析(不需按按鈕)
   useEffect(() => {
     if (!urlInput.trim()) {
@@ -88,6 +94,46 @@ export function CaseLocationPicker({
     setUrlInput("");
     setUrlError(null);
     setUrlOk(false);
+    setGeoResults(null);
+    setGeoError(null);
+  }, []);
+
+  /** 從同一表單的「施工地點」欄位讀地址,送 Nominatim 查 */
+  const lookupAddress = useCallback(async () => {
+    if (typeof document === "undefined") return;
+    const input = document.querySelector<HTMLInputElement>('input[name="location"]');
+    const address = input?.value?.trim() ?? "";
+    if (!address) {
+      setGeoError("請先填「施工地點」欄位的地址");
+      setGeoResults(null);
+      return;
+    }
+    setGeocoding(true);
+    setGeoError(null);
+    setGeoResults(null);
+    try {
+      const results = await geocodeAddress(address, { limit: 5 });
+      if (results.length === 0) {
+        setGeoError("找不到此地址。可貼 Google Maps 連結,或直接在地圖點選");
+        return;
+      }
+      if (results.length === 1) {
+        setPoint({ lat: results[0].lat, lng: results[0].lng });
+        setGeoResults(null);
+      } else {
+        // 多筆候選 → 讓使用者挑(避免「中山路」抓錯縣市)
+        setGeoResults(results);
+      }
+    } catch (e) {
+      setGeoError("查詢失敗:" + (e as Error).message);
+    } finally {
+      setGeocoding(false);
+    }
+  }, []);
+
+  const pickGeoResult = useCallback((r: GeocodeResult) => {
+    setPoint({ lat: r.lat, lng: r.lng });
+    setGeoResults(null);
   }, []);
 
   const radiusPresets = [100, 200, 500, 1000];
@@ -110,8 +156,51 @@ export function CaseLocationPicker({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        貼上 Google Maps 連結會自動解析，或直接在地圖上點選位置。打卡時系統會算「離工地多遠」，超過半徑會被標註但仍可送出。
+        三種方式擇一:「從地址查詢」會用上方「施工地點」欄位的地址抓座標、貼 Google Maps 連結會自動解析、或直接在地圖上點選位置。打卡時系統會算「離工地多遠」，超過半徑會被標註但仍可送出。
       </p>
+
+      {/* 從地址查詢(Nominatim) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={lookupAddress}
+          disabled={geocoding}
+          className="inline-flex items-center gap-1.5 rounded-md border border-accent bg-white px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {geocoding ? "查詢中…" : "📍 從地址查座標"}
+        </button>
+        <span className="text-xs text-muted-foreground">
+          會用上方「施工地點」的內容查
+        </span>
+      </div>
+      {geoError && (
+        <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">
+          {geoError}
+        </p>
+      )}
+      {geoResults && geoResults.length > 0 && (
+        <div className="rounded-md border border-[#E0DCD6] bg-white p-2">
+          <div className="mb-1 px-2 text-xs text-muted-foreground">
+            找到 {geoResults.length} 個結果,請選擇:
+          </div>
+          <ul className="space-y-1">
+            {geoResults.map((r, i) => (
+              <li key={i}>
+                <button
+                  type="button"
+                  onClick={() => pickGeoResult(r)}
+                  className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#F5F1EC]"
+                >
+                  <div className="text-foreground">{r.display_name}</div>
+                  <div className="font-mono text-[10px] text-muted-foreground">
+                    {r.lat.toFixed(6)}, {r.lng.toFixed(6)}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Google Maps URL 輸入 */}
       <div className="space-y-1">

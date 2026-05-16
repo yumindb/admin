@@ -1,30 +1,65 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSilentLocationOnce } from "@/lib/use-geolocation";
+import { formatDistance, haversineMeters } from "@/lib/geo";
 
 export type CasePickerOption = {
   id: string;
   name: string;
   code: string | null;
+  // migration-2.20:可選座標。提供時 picker 依距離排序 + 顯示「離我多遠」
+  lat?: number | null;
+  lng?: number | null;
 };
 
 /**
  * 大按鈕 + 全螢幕清單的案場選擇器。
  * 給現場工人用 — 點一下展開大字大按鈕的案場清單,點一下就選好。
+ *
+ * 若 cases 帶有 lat/lng + 使用者已授權定位,自動依距離由近到遠排序,
+ * 並在每個 option 顯示距離(例:「245 m」)。
  */
 export function CasePicker({
   cases,
   value,
   onChange,
   emptyText = "沒有可用案場",
+  sortByDistance = true,
 }: {
   cases: CasePickerOption[];
   value: string;
   onChange: (id: string) => void;
   emptyText?: string;
+  sortByDistance?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = cases.find((c) => c.id === value);
+
+  // 靜默取位置(已授權才取;沒授權就 fallback 用原順序)
+  const myLoc = useSilentLocationOnce();
+
+  const orderedCases = useMemo(() => {
+    if (!sortByDistance || !myLoc) return cases;
+    const me = { lat: myLoc.lat, lng: myLoc.lng };
+    return [...cases].sort((a, b) => {
+      const da =
+        a.lat != null && a.lng != null
+          ? haversineMeters(me, { lat: a.lat, lng: a.lng })
+          : Infinity;
+      const db =
+        b.lat != null && b.lng != null
+          ? haversineMeters(me, { lat: b.lat, lng: b.lng })
+          : Infinity;
+      return da - db;
+    });
+  }, [cases, myLoc, sortByDistance]);
+
+  const distanceLabelOf = (c: CasePickerOption): string | null => {
+    if (!myLoc || c.lat == null || c.lng == null) return null;
+    const d = haversineMeters({ lat: myLoc.lat, lng: myLoc.lng }, { lat: c.lat, lng: c.lng });
+    return formatDistance(d);
+  };
 
   // ESC / 點背景關閉 + 鎖捲動
   useEffect(() => {
@@ -96,48 +131,63 @@ export function CasePicker({
                 {emptyText}
               </p>
             ) : (
-              <ul>
-                {cases.map((c, idx) => {
-                  const isSelected = c.id === value;
-                  return (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onChange(c.id);
-                          setOpen(false);
-                        }}
-                        className={`flex w-full items-start gap-3 px-5 py-5 text-left transition-colors ${
-                          idx > 0 ? "border-t border-[#F0EBE4]" : ""
-                        } ${
-                          isSelected
-                            ? "bg-[#FAF7F2]"
-                            : "hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
-                        }`}
-                      >
-                        <span
-                          className={`mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border-2 ${
+              <>
+                {myLoc && sortByDistance && (
+                  <p className="px-5 pt-3 text-xs text-muted-foreground">
+                    已依離你最近排序
+                  </p>
+                )}
+                <ul>
+                  {orderedCases.map((c, idx) => {
+                    const isSelected = c.id === value;
+                    const dist = distanceLabelOf(c);
+                    return (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onChange(c.id);
+                            setOpen(false);
+                          }}
+                          className={`flex w-full items-start gap-3 px-5 py-5 text-left transition-colors ${
+                            idx > 0 ? "border-t border-[#F0EBE4]" : ""
+                          } ${
                             isSelected
-                              ? "border-accent bg-accent text-white"
-                              : "border-[#E0DCD6] bg-white"
+                              ? "bg-[#FAF7F2]"
+                              : "hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
                           }`}
-                          aria-hidden
                         >
-                          {isSelected ? "✓" : ""}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm text-muted-foreground">
-                            {c.code ?? "未編號"}
+                          <span
+                            className={`mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border-2 ${
+                              isSelected
+                                ? "border-accent bg-accent text-white"
+                                : "border-[#E0DCD6] bg-white"
+                            }`}
+                            aria-hidden
+                          >
+                            {isSelected ? "✓" : ""}
                           </span>
-                          <span className="mt-0.5 block text-lg font-semibold text-primary">
-                            {c.name}
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-baseline justify-between gap-2">
+                              <span className="text-sm text-muted-foreground">
+                                {c.code ?? "未編號"}
+                              </span>
+                              {dist && (
+                                <span className="rounded-md bg-[#F5F1EC] px-1.5 py-0.5 font-mono text-xs tabular-nums text-foreground">
+                                  {dist}
+                                </span>
+                              )}
+                            </span>
+                            <span className="mt-0.5 block text-lg font-semibold text-primary">
+                              {c.name}
+                            </span>
                           </span>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
             )}
           </div>
         </div>
