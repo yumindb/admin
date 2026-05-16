@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useGeolocation, accuracyLevel } from "@/lib/use-geolocation";
@@ -10,6 +10,15 @@ import {
   googleMapsLink,
   haversineMeters,
 } from "@/lib/geo";
+import {
+  enqueue,
+  listPending,
+  remove,
+  bumpAttempts,
+  MAX_ATTEMPTS,
+  isOfflineErrorMessage,
+  type PendingClock,
+} from "@/lib/offline-clock-queue";
 import { clockAction } from "./actions";
 
 export type CaseOption = {
@@ -62,8 +71,69 @@ export function AttendanceClient({
   const [submitMsg, setSubmitMsg] = useState<
     | { kind: "ok"; text: string }
     | { kind: "error"; text: string }
+    | { kind: "queued"; text: string }
     | null
   >(null);
+
+  // 離線佇列(Phase 2.24)— mount + online 事件時 flush
+  const [pending, setPending] = useState<PendingClock[]>([]);
+  const [flushing, setFlushing] = useState(false);
+
+  const refreshPending = useCallback(async () => {
+    try {
+      const list = await listPending();
+      setPending(list);
+    } catch {
+      // IndexedDB 不可用(隱私瀏覽 / 舊瀏覽器)→ 靜默,離線排隊不可用
+    }
+  }, []);
+
+  const flushQueue = useCallback(async () => {
+    if (flushing) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    setFlushing(true);
+    try {
+      const list = await listPending();
+      for (const item of list) {
+        if (item.attempts >= MAX_ATTEMPTS) continue;
+        const fd = new FormData();
+        fd.set("event_type", item.event_type);
+        fd.set("case_id", item.case_id ?? "");
+        fd.set("lat", String(item.lat));
+        fd.set("lng", String(item.lng));
+        fd.set("accuracy_m", item.accuracy_m === null ? "" : String(item.accuracy_m));
+        fd.set("note", item.note ?? "");
+        try {
+          const res = await clockAction(fd);
+          if (res.ok) {
+            await remove(item.id);
+          } else {
+            // server 端 validation 拒絕 → 不會再成功,記下並停止重試
+            await bumpAttempts(item.id, res.error);
+          }
+        } catch (e) {
+          await bumpAttempts(item.id, (e as Error).message ?? "未知錯誤");
+        }
+      }
+      await refreshPending();
+      router.refresh();
+    } finally {
+      setFlushing(false);
+    }
+  }, [flushing, refreshPending, router]);
+
+  // Mount + online event 時 flush
+  useEffect(() => {
+    void refreshPending();
+    void flushQueue();
+    const handler = () => {
+      void flushQueue();
+    };
+    window.addEventListener("online", handler);
+    return () => window.removeEventListener("online", handler);
+    // 故意空 deps:只在 mount 跑一次,後續 online 事件靠 listener
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 依與目前位置的距離排序案件
   const casesByDistance = useMemo(() => {
@@ -116,10 +186,42 @@ export function AttendanceClient({
   const noCase = effectiveCaseId === NO_CASE;
   const noteRequired = noCase;
 
+  async function queueOffline(eventType: "clock_in" | "clock_out", reason: string) {
+    if (geo.status !== "ok") return;
+    try {
+      await enqueue({
+        event_type: eventType,
+        case_id: noCase ? null : effectiveCaseId,
+        lat: geo.fix.lat,
+        lng: geo.fix.lng,
+        accuracy_m: geo.fix.accuracy_m,
+        note: note || null,
+      });
+      await refreshPending();
+      const label = eventType === "clock_in" ? "上班" : "下班";
+      setSubmitMsg({
+        kind: "queued",
+        text: `${label}打卡已離線存檔（${reason}）— 連上網路會自動送出`,
+      });
+      setNote("");
+    } catch {
+      setSubmitMsg({
+        kind: "error",
+        text: "離線排隊也失敗了(此瀏覽器不支援 IndexedDB)— 請改連 wifi / 換瀏覽器再試",
+      });
+    }
+  }
+
   async function submit(eventType: "clock_in" | "clock_out") {
     if (geo.status !== "ok") return;
     if (noteRequired && !note.trim()) {
       setSubmitMsg({ kind: "error", text: "未選案件時請填說明(例:在辦公室)" });
+      return;
+    }
+
+    // 顯式離線:不打 server 直接排隊,省一輪 fail 等待
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await queueOffline(eventType, "目前離線");
       return;
     }
 
@@ -133,21 +235,32 @@ export function AttendanceClient({
 
     startTransition(async () => {
       setSubmitMsg(null);
-      const res = await clockAction(fd);
-      if (!res.ok) {
-        setSubmitMsg({ kind: "error", text: res.error });
-        return;
+      try {
+        const res = await clockAction(fd);
+        if (!res.ok) {
+          // server 端業務錯誤 — 不該重試,直接報
+          setSubmitMsg({ kind: "error", text: res.error });
+          return;
+        }
+        const label = eventType === "clock_in" ? "上班打卡成功" : "下班打卡成功";
+        const detail =
+          res.within_geofence === false && res.distance_m !== null
+            ? `（已標註:離工地 ${formatDistance(res.distance_m)},超出範圍）`
+            : res.within_geofence === true && res.distance_m !== null
+              ? `（離工地 ${formatDistance(res.distance_m)}）`
+              : "";
+        setSubmitMsg({ kind: "ok", text: label + detail });
+        setNote("");
+        router.refresh();
+      } catch (e) {
+        // 網路 error / fetch fail / server action 連不上 → 排隊
+        const msg = (e as Error).message ?? "未知錯誤";
+        if (isOfflineErrorMessage(msg)) {
+          await queueOffline(eventType, "送出失敗");
+        } else {
+          setSubmitMsg({ kind: "error", text: "送出失敗:" + msg });
+        }
       }
-      const label = eventType === "clock_in" ? "上班打卡成功" : "下班打卡成功";
-      const detail =
-        res.within_geofence === false && res.distance_m !== null
-          ? `（已標註:離工地 ${formatDistance(res.distance_m)},超出範圍）`
-          : res.within_geofence === true && res.distance_m !== null
-            ? `（離工地 ${formatDistance(res.distance_m)}）`
-            : "";
-      setSubmitMsg({ kind: "ok", text: label + detail });
-      setNote("");
-      router.refresh();
     });
   }
 
@@ -252,16 +365,72 @@ export function AttendanceClient({
           className={`rounded-md px-3 py-2 text-sm ${
             submitMsg.kind === "ok"
               ? "border border-[#A7D7B1] bg-[#ECFDF5] text-[#15803D]"
-              : "border border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
+              : submitMsg.kind === "queued"
+                ? "border border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"
+                : "border border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
           }`}
         >
           {submitMsg.text}
         </div>
       )}
 
+      {/* 離線排隊 — 有待送出時顯示 */}
+      <PendingQueueCard pending={pending} flushing={flushing} onRetry={flushQueue} />
+
       {/* 5) 今日打卡時間軸 */}
       <TodayTimeline items={initialToday} />
     </div>
+  );
+}
+
+function PendingQueueCard({
+  pending,
+  flushing,
+  onRetry,
+}: {
+  pending: PendingClock[];
+  flushing: boolean;
+  onRetry: () => void;
+}) {
+  if (pending.length === 0) return null;
+  const failed = pending.filter((p) => p.attempts >= MAX_ATTEMPTS);
+  return (
+    <section className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-[#92400E]">
+          離線待送出（{pending.length}）
+          {failed.length > 0 && (
+            <span className="ml-2 text-[#B91C1C]">
+              · {failed.length} 筆已超過重試上限
+            </span>
+          )}
+        </h2>
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={flushing}
+          className="text-xs text-[#92400E] underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          {flushing ? "送出中…" : "立即重試"}
+        </button>
+      </div>
+      <ul className="space-y-1 text-xs text-[#5A5050]">
+        {pending.slice(0, 5).map((p) => (
+          <li key={p.id} className="flex items-center gap-2">
+            <span className="font-mono tabular-nums">
+              {TIME_FMT.format(new Date(p.client_created_at))}
+            </span>
+            <span>{p.event_type === "clock_in" ? "上班" : "下班"}</span>
+            {p.attempts > 0 && (
+              <span className="text-[#A07850]">· 已重試 {p.attempts} 次</span>
+            )}
+          </li>
+        ))}
+        {pending.length > 5 && (
+          <li className="text-muted-foreground">…還有 {pending.length - 5} 筆</li>
+        )}
+      </ul>
+    </section>
   );
 }
 

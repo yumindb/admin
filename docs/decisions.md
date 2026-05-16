@@ -570,3 +570,44 @@ case_work_items
 6. **GPS 防偽強化**:目前只信任瀏覽器值（瀏覽器假 GPS / DevTools 可改）。要真防偽需 LIFF + LINE Login binding，或要求每次打卡拍一張照（人像+環境）
 7. **批次修正歷史座標**:若案件座標填錯，目前已寫入的 distance_m / within_geofence 不會自動重算（這是 immutable event log 的特性）。Phase 3 加管理介面手動重新計算
 
+---
+
+## Phase 2.24 — 離線打卡前景排隊 (2026-05-16)
+
+### 一、為什麼不做 Service Worker
+
+原本提案是 Service Worker + IndexedDB + BackgroundSync。深入評估後改做純前景排隊，理由:
+
+1. **iOS Safari 不支援 BackgroundSync API** — 工地主任多 iPhone 用戶，做了 SW 也解不了「app 關閉時自動送出」的核心問題
+2. **Next.js 16 + next-pwa 相容性風險** — 16 才剛出，PWA 工具鏈未跟上，SW 容易踩 caching 邊界
+3. **實際情境** — 主任打卡 → 離開工地（訊號好）→ 隨手開 app 一下 → 就 flush。前景排隊已足夠涵蓋
+
+### 二、設計
+
+`lib/offline-clock-queue.ts`:
+- IndexedDB `yumin-offline-clock` / `pending_clocks` store
+- `enqueue` / `listPending` / `remove` / `bumpAttempts` 四個原子 API
+- `MAX_ATTEMPTS = 5`,超過後保留但不再自動重試(避免無限重試 server 端拒絕的事件)
+
+觸發 flush 的時機:
+1. `/attendance` mount 時
+2. `window` 觸發 `online` event 時
+3. 使用者手動點「立即重試」
+
+判斷該排隊 vs 該直接報錯:
+- `navigator.onLine === false` → 不打 server,直接排
+- server action throw → 用 `isOfflineErrorMessage(msg)` heuristic 判斷:net/fetch fail 排隊;業務 error(權限不足、validation)報給使用者
+- server action 回 `{ok:false}` → 業務錯誤,不排隊(重試也不會成功)
+
+### 三、何時不可用
+
+- 隱私瀏覽模式(IndexedDB 受限) — `enqueue` catch + 顯示「不支援」提示
+- 多裝置使用同帳號:queue 是裝置-local 的;手機排了 5 筆，從電腦不會看到
+
+### 四、Phase 3+ 真正的 PWA
+
+若未來 iOS 支援 BackgroundSync 或公司全面 Android,可加:
+- Service Worker + manifest.json + 可安裝 PWA
+- BackgroundSync API 處理「tab 關閉時也能送」
+- 配合「離線送日誌」一起做(scope 較大)
+
