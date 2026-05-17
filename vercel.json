@@ -8,7 +8,7 @@
     },
     {
       "path": "/api/cron/recheck-stuck-pdfs",
-      "schedule": "0 * * * *"
+      "schedule": "0 16 * * *"
     }
   ]
 }
