@@ -1,0 +1,138 @@
+name: Daily Backup to R2
+
+on:
+  schedule:
+    # 02:00 Taipei time (UTC+8) = 18:00 UTC previous day
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup DB + Storage to R2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Set timestamp
+        id: ts
+        run: |
+          TS=$(TZ=Asia/Taipei date +%Y%m%d_%H%M%S)
+          DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)
+          echo "ts=$TS" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Install postgresql-client-17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Configure rclone
+        env:
+          SUPABASE_S3_ACCESS_KEY: ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
+          SUPABASE_S3_SECRET_KEY: ${{ secrets.SUPABASE_S3_SECRET_KEY }}
+          SUPABASE_S3_REGION: ${{ secrets.SUPABASE_S3_REGION }}
+          SUPABASE_S3_ENDPOINT: ${{ secrets.SUPABASE_S3_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf <<EOF
+          [supabase]
+          type = s3
+          provider = Other
+          access_key_id = ${SUPABASE_S3_ACCESS_KEY}
+          secret_access_key = ${SUPABASE_S3_SECRET_KEY}
+          region = ${SUPABASE_S3_REGION}
+          endpoint = ${SUPABASE_S3_ENDPOINT}
+          force_path_style = true
+
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${R2_ACCESS_KEY_ID}
+          secret_access_key = ${R2_SECRET_ACCESS_KEY}
+          endpoint = ${R2_ENDPOINT}
+          acl = private
+          EOF
+
+      - name: Dump Postgres (public schema)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir -p out
+          pg_dump "$SUPABASE_DB_URL" \
+            --schema=public \
+            --no-owner --no-acl \
+            --quote-all-identifiers \
+            --verbose 2> out/pg_dump.log \
+            | gzip > out/db_${{ steps.ts.outputs.ts }}.sql.gz
+          ls -lh out/
+
+      - name: Mirror Storage buckets
+        run: |
+          mkdir -p out/storage/daily-photos out/storage/signatures
+          rclone copy supabase:daily-photos out/storage/daily-photos \
+            --transfers=8 --checkers=16 --fast-list --stats=30s
+          rclone copy supabase:signatures out/storage/signatures \
+            --transfers=8 --checkers=16 --fast-list --stats=30s
+          echo "Storage size:" && du -sh out/storage/
+
+      - name: Write manifest
+        run: |
+          cat > out/manifest.json <<EOF
+          {
+            "timestamp": "${{ steps.ts.outputs.ts }}",
+            "date": "${{ steps.ts.outputs.date }}",
+            "workflow_run": "${{ github.run_id }}",
+            "trigger": "${{ github.event_name }}",
+            "buckets": ["daily-photos", "signatures"],
+            "schema": "public"
+          }
+          EOF
+
+      - name: Upload DB dump to R2
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
+        run: |
+          rclone copy out/db_${{ steps.ts.outputs.ts }}.sql.gz \
+            r2:${R2_BUCKET}/db/ --stats=30s
+          rclone copy out/manifest.json \
+            r2:${R2_BUCKET}/db/manifest_${{ steps.ts.outputs.ts }}.json
+
+      - name: Sync Storage to R2 (latest mirror)
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
+        run: |
+          rclone sync out/storage r2:${R2_BUCKET}/storage-latest \
+            --transfers=8 --checkers=16 --fast-list --stats=30s
+
+      - name: Prune DB dumps older than 90 days
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
+        run: |
+          rclone delete r2:${R2_BUCKET}/db/ \
+            --min-age 90d --include 'db_*.sql.gz' --include 'manifest_*.json'
+
+      - name: Summary
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
+        run: |
+          echo "## Backup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: ${{ steps.ts.outputs.ts }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **DB dump**: \`db/db_${{ steps.ts.outputs.ts }}.sql.gz\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Storage mirror**: \`storage-latest/\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### R2 bucket usage" >> $GITHUB_STEP_SUMMARY
+          rclone size r2:${R2_BUCKET} >> $GITHUB_STEP_SUMMARY
