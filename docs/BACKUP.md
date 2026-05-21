@@ -7,8 +7,11 @@ Automated daily backup of yumin-admin's Supabase data to Cloudflare R2.
 | Source | Method | Destination |
 |---|---|---|
 | Postgres `public` schema | `pg_dump --schema=public` (gzipped) | `r2:yumin-admin-backup/db/db_YYYYMMDD_HHMMSS.sql.gz` |
-| Storage bucket `daily-photos` | rclone copy | `r2:yumin-admin-backup/storage-latest/daily-photos/` |
-| Storage bucket `signatures` | rclone copy | `r2:yumin-admin-backup/storage-latest/signatures/` |
+| Storage `daily-photos` | rclone copy | `r2:yumin-admin-backup/storage-latest/daily-photos/` |
+| Storage `signatures` | rclone copy | `r2:yumin-admin-backup/storage-latest/signatures/` |
+| Storage `daily-log-pdfs` | rclone copy | `r2:yumin-admin-backup/storage-latest/daily-log-pdfs/` |
+
+**Not backed up:** `fonts` bucket (static assets, re-uploadable).
 
 **Excluded:** `auth.*`, `storage.*`, `realtime.*`, and other Supabase-managed schemas. The `public` schema dump includes all custom tables, indexes, RLS policies, triggers, and functions.
 

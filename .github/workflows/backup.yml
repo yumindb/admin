@@ -57,6 +57,8 @@ jobs:
           region = ${SUPABASE_S3_REGION}
           endpoint = ${SUPABASE_S3_ENDPOINT}
           force_path_style = true
+          no_check_bucket = true
+          chunk_size = 32M
 
           [r2]
           type = s3
@@ -65,6 +67,7 @@ jobs:
           secret_access_key = ${R2_SECRET_ACCESS_KEY}
           endpoint = ${R2_ENDPOINT}
           acl = private
+          no_check_bucket = true
           EOF
 
       - name: Dump Postgres (public schema)
@@ -82,12 +85,15 @@ jobs:
 
       - name: Mirror Storage buckets
         run: |
-          mkdir -p out/storage/daily-photos out/storage/signatures
-          rclone copy supabase:daily-photos out/storage/daily-photos \
-            --transfers=8 --checkers=16 --fast-list --stats=30s
-          rclone copy supabase:signatures out/storage/signatures \
-            --transfers=8 --checkers=16 --fast-list --stats=30s
-          echo "Storage size:" && du -sh out/storage/
+          for bucket in daily-photos signatures daily-log-pdfs; do
+            mkdir -p "out/storage/$bucket"
+            echo "::group::Mirror $bucket"
+            rclone copy "supabase:$bucket" "out/storage/$bucket" \
+              --transfers=8 --checkers=16 --fast-list --stats=30s \
+              --s3-no-check-bucket
+            echo "::endgroup::"
+          done
+          echo "Storage sizes:" && du -sh out/storage/*
 
       - name: Write manifest
         run: |
@@ -97,7 +103,7 @@ jobs:
             "date": "${{ steps.ts.outputs.date }}",
             "workflow_run": "${{ github.run_id }}",
             "trigger": "${{ github.event_name }}",
-            "buckets": ["daily-photos", "signatures"],
+            "buckets": ["daily-photos", "signatures", "daily-log-pdfs"],
             "schema": "public"
           }
           EOF
