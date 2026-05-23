@@ -67,6 +67,10 @@ export default async function AttendancePage() {
         <Link href="/" className="hover:text-accent">首頁</Link>
         <span className="mx-1.5">／</span>
         <span>打卡</span>
+        <span className="mx-1.5">·</span>
+        <Link href="/my-cases" className="hover:text-accent">
+          我的案場
+        </Link>
       </nav>
       <h1 className="mb-2 text-2xl font-semibold text-primary md:text-3xl">
         上下班打卡
