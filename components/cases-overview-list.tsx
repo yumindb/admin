@@ -70,6 +70,7 @@ export function CasesOverviewList({
     sp.get("filter") === "behind" ? "behind" : null;
 
   const [companyFilter, setCompanyFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // 動態撈 distinct company(避免 hardcode);保留出現順序但去重
   const companies = useMemo(() => {
@@ -119,13 +120,25 @@ export function CasesOverviewList({
   );
 
   // 套 extra filter(進度落後)
-  const filtered = byStatus.filter((c) => {
+  const byExtraFilter = byStatus.filter((c) => {
     if (extraFilter === "behind") {
       const s = statsMap[c.id];
       return s ? isCaseBehind(s) : false;
     }
     return true;
   });
+
+  // 套搜尋(案件名稱 / 案號 / 業主 / 地點),純 client-side
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = q
+    ? byExtraFilter.filter((c) => {
+        const hay = [c.name, c.code, c.client, c.location]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      })
+    : byExtraFilter;
 
   const sorted = [...filtered].sort((a, b) => {
     switch (sortKey) {
@@ -182,6 +195,30 @@ export function CasesOverviewList({
           </div>
         </div>
       )}
+
+      {/* 搜尋:案件名稱 / 案號 / 業主 / 施工地點 — 200 筆內快速找特定案件 */}
+      <div className="mb-3 rounded-lg border border-[#E0DCD6] bg-card px-4 py-2.5">
+        <label className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">搜尋</span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="案件名稱、案號、業主或施工地點"
+            className="h-10 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="rounded-md border border-[#E0DCD6] bg-white px-2.5 py-1 text-xs text-muted-foreground hover:border-accent hover:text-accent"
+              aria-label="清除搜尋"
+            >
+              清除
+            </button>
+          )}
+        </label>
+      </div>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#E0DCD6] bg-card px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -252,13 +289,23 @@ export function CasesOverviewList({
           <EmptyState />
         ) : (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center">
-            <p className="mb-1.5 text-base text-foreground">這個篩選下沒有案件</p>
+            <p className="mb-1.5 text-base text-foreground">
+              {q ? `找不到符合「${searchQuery}」的案件` : "這個篩選下沒有案件"}
+            </p>
             <p className="text-sm text-muted-foreground">
-              切換其他公司／狀態 tab 可看到更多案件
+              {q
+                ? "試試其他關鍵字,或切換公司／狀態 tab"
+                : "切換其他公司／狀態 tab 可看到更多案件"}
             </p>
           </div>
         )
       ) : (
+        <>
+        {q && (
+          <p className="mb-3 text-sm text-muted-foreground">
+            搜尋「{searchQuery}」找到 {sorted.length} 筆
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((c) => (
             <CaseCard
@@ -279,6 +326,7 @@ export function CasesOverviewList({
             />
           ))}
         </div>
+        </>
       )}
     </>
   );

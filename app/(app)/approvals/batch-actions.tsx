@@ -68,6 +68,8 @@ function clearRememberedSig() {
   }
 }
 
+type QuickFilter = "all" | "no_photos" | "no_items" | "waiting_2d";
+
 export function BatchApprovalsList({
   logs,
   stage,
@@ -78,15 +80,46 @@ export function BatchApprovalsList({
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [showModal, setShowModal] = useState(false);
+  // 辦公室助理視角:5+ 份時要能快速找「該補件的」
+  const [search, setSearch] = useState("");
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
 
-  const allChecked = logs.length > 0 && selected.size === logs.length;
+  // 套搜尋(案件名 / 案號 / 主任)
+  const q = search.trim().toLowerCase();
+  const now = Date.now();
+  const filteredLogs = logs.filter((l) => {
+    if (q) {
+      const hay = [l.cases?.name, l.cases?.code, l.profiles?.full_name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (quickFilter === "no_photos" && (l.photos?.length ?? 0) > 0) return false;
+    if (quickFilter === "no_items" && (l.work_items?.length ?? 0) > 0) return false;
+    if (quickFilter === "waiting_2d") {
+      if (!l.submitted_at) return false;
+      const ageMs = now - new Date(l.submitted_at).getTime();
+      if (ageMs < 2 * 24 * 60 * 60 * 1000) return false;
+    }
+    return true;
+  });
+
+  // 計算「等了 N 天」用,只算 submitted 後
+  function daysSinceSubmit(l: LogRow): number | null {
+    if (!l.submitted_at) return null;
+    const ms = now - new Date(l.submitted_at).getTime();
+    return Math.floor(ms / (24 * 60 * 60 * 1000));
+  }
+
+  const allChecked = filteredLogs.length > 0 && selected.size === filteredLogs.length;
   const someChecked = selected.size > 0 && !allChecked;
 
   function toggleAll() {
     if (allChecked) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(logs.map((l) => l.id)));
+      setSelected(new Set(filteredLogs.map((l) => l.id)));
     }
   }
 
@@ -99,8 +132,59 @@ export function BatchApprovalsList({
     });
   }
 
+  // 各 quick filter 對應的待簽數量
+  const counts: Record<QuickFilter, number> = {
+    all: logs.length,
+    no_photos: logs.filter((l) => (l.photos?.length ?? 0) === 0).length,
+    no_items: logs.filter((l) => (l.work_items?.length ?? 0) === 0).length,
+    waiting_2d: logs.filter((l) => {
+      const d = daysSinceSubmit(l);
+      return d !== null && d >= 2;
+    }).length,
+  };
+
   return (
     <>
+      {/* 搜尋 + Quick filter chips */}
+      <div className="mb-3 space-y-2 rounded-md border border-[#E0DCD6] bg-card px-3 py-2.5 md:px-4">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="案件名稱、案號、工地主任"
+          className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+        />
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">快速篩選:</span>
+          {(
+            [
+              ["all", "全部"],
+              ["no_photos", "無照片"],
+              ["no_items", "無工項"],
+              ["waiting_2d", "等 ≥ 2 天"],
+            ] as [QuickFilter, string][]
+          ).map(([key, label]) => {
+            const active = quickFilter === key;
+            const c = counts[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setQuickFilter(key)}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 transition-colors ${
+                  active
+                    ? "border-accent bg-[#F5F1EC] text-primary"
+                    : "border-[#E0DCD6] bg-white text-foreground hover:border-accent"
+                } ${key !== "all" && c > 0 ? "font-medium" : ""}`}
+              >
+                <span>{label}</span>
+                <span className="tabular-nums text-muted-foreground">{c}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 全選 + 批簽工具列 */}
       <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[#E0DCD6] bg-card px-3 py-2.5 md:px-4">
         <label className="inline-flex items-center gap-2 text-sm">
@@ -117,7 +201,12 @@ export function BatchApprovalsList({
           <span>全選</span>
         </label>
         <span className="text-sm text-muted-foreground">
-          已選 {selected.size} / {logs.length}
+          已選 {selected.size} / {filteredLogs.length}
+          {filteredLogs.length !== logs.length && (
+            <span className="ml-1 text-muted-foreground">
+              (共 {logs.length})
+            </span>
+          )}
         </span>
         <Button
           type="button"
@@ -129,8 +218,14 @@ export function BatchApprovalsList({
         </Button>
       </div>
 
+      {filteredLogs.length === 0 && (
+        <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+          沒有符合篩選的日誌。試試清除條件或切換 quick filter。
+        </div>
+      )}
+
       <div className="space-y-3">
-        {logs.map((l) => {
+        {filteredLogs.map((l) => {
           const checked = selected.has(l.id);
           return (
             <div
@@ -170,8 +265,32 @@ export function BatchApprovalsList({
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
                   <span>{l.work_items?.length ?? 0} 個工項</span>
-                  <span>{l.photos?.length ?? 0} 張照片</span>
+                  <span
+                    className={
+                      (l.photos?.length ?? 0) === 0
+                        ? "font-medium text-[#B91C1C]"
+                        : ""
+                    }
+                  >
+                    {l.photos?.length ?? 0} 張照片
+                  </span>
                   {l.weather && <span>{formatWeatherSummary(l.weather)}</span>}
+                  {(() => {
+                    const d = daysSinceSubmit(l);
+                    if (d === null || d < 1) return null;
+                    const isUrgent = d >= 2;
+                    return (
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${
+                          isUrgent
+                            ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
+                            : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"
+                        }`}
+                      >
+                        ⏱ 等 {d} 天
+                      </span>
+                    );
+                  })()}
                 </div>
               </Link>
             </div>
