@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { batchApproveAction } from "./[id]/actions";
 import { uploadSignatureAction } from "../logs/[id]/photo-actions";
 import { formatWeatherSummary } from "@/lib/daily-log";
@@ -435,6 +436,8 @@ function BatchApprovalModal({
               <SignatureCanvas
                 ref={sigRef}
                 penColor="#003153"
+                minWidth={2}
+                maxWidth={4}
                 canvasProps={{
                   className: "w-full",
                   style: {
@@ -465,12 +468,12 @@ function BatchApprovalModal({
               </button>
             </div>
 
-            <textarea
+            <Textarea
               rows={2}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="備註(選填,所有勾選日誌共用)"
-              className="mt-3 w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="mt-3"
             />
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
@@ -484,7 +487,7 @@ function BatchApprovalModal({
                 取消
               </Button>
               <Button
-                type="button"
+                size="xl"
                 onClick={submit}
                 disabled={isPending}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"

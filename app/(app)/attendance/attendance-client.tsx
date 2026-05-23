@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { CasePicker, type CasePickerExtraOption } from "@/components/case-picker";
 import { useGeolocation, accuracyLevel } from "@/lib/use-geolocation";
 import {
@@ -324,29 +325,30 @@ export function AttendanceClient({
         <label className="mb-2 block text-sm font-medium text-primary">
           備註 {noteRequired && <span className="text-[#B91C1C]">*</span>}
         </label>
-        <textarea
+        <Textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
           placeholder={noteRequired ? "請說明(例:辦公室、移動到第二工地)" : "選填"}
-          className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm text-foreground outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
       </section>
 
       {/* 4) 上下班按鈕 */}
       <div className="grid grid-cols-2 gap-3">
         <Button
+          size="xl"
           onClick={() => submit("clock_in")}
           disabled={geo.status !== "ok" || submitting || !effectiveCaseId}
-          className="h-14 bg-primary text-base text-primary-foreground hover:bg-primary/90"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           {submitting ? "送出中…" : "上班打卡"}
         </Button>
         <Button
+          size="xl"
           onClick={() => submit("clock_out")}
           disabled={geo.status !== "ok" || submitting || !effectiveCaseId}
           variant="outline"
-          className="h-14 border-primary text-base text-primary hover:bg-primary/5"
+          className="border-primary text-primary hover:bg-primary/5"
         >
           {submitting ? "送出中…" : "下班打卡"}
         </Button>

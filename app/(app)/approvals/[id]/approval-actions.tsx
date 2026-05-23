@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   approveStageAction,
   rejectStageAction,
@@ -147,6 +148,8 @@ export function ApprovalActions({
             <SignatureCanvas
               ref={sigRef}
               penColor="#003153"
+              minWidth={2}
+              maxWidth={4}
               canvasProps={{
                 className: "w-full",
                 style: { width: "100%", height: "260px", touchAction: "none" },
@@ -163,18 +166,19 @@ export function ApprovalActions({
             </button>
           </div>
 
-          <textarea
+          <Textarea
             rows={2}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="備註(選填,例如:照片不錯、補充說明等)"
-            className="mt-3 w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+            className="mt-3"
           />
 
           <Button
+            size="xl"
             onClick={handleApprove}
             disabled={isPending}
-            className="mt-4 h-12 w-full bg-primary text-base text-primary-foreground hover:bg-primary/90"
+            className="mt-4 w-full bg-primary text-primary-foreground hover:bg-primary/90"
           >
             {isPending ? "處理中…" : VERB[stage]}
           </Button>
@@ -236,17 +240,17 @@ export function ApprovalActions({
             </div>
           )}
 
-          <textarea
+          <Textarea
             rows={3}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="自由輸入補充說明（與上方 chips 一起送出）…"
-            className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
           <Button
+            size="xl"
             onClick={handleReject}
             disabled={isPending || !buildRejectComment()}
-            className="mt-4 h-12 w-full bg-[#B91C1C] text-base text-white hover:bg-[#991B1B]"
+            className="mt-4 w-full bg-[#B91C1C] text-white hover:bg-[#991B1B]"
           >
             {isPending ? "處理中…" : "退回"}
           </Button>

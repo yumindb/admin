@@ -6,6 +6,7 @@ import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   WorkItemsPicker,
@@ -860,7 +861,15 @@ export function NewLogForm({
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    // noValidate + onSubmit preventDefault — 內部所有送出走 onClick handler
+    // (draft / submit / post_edit 三個 intent),這層 form 只是給 a11y / iOS
+    // 密碼管理器 / 螢幕閱讀器一個正確的「表單」語意上下文。
+    // Button 預設已是 type="button",Enter 鍵不會誤觸發第一個按鈕。
+    <form
+      noValidate
+      onSubmit={(e) => e.preventDefault()}
+      className="space-y-4 md:space-y-6"
+    >
       {/* 表頭 — 手機:壓成一張小卡;桌機:完整 grid */}
       <div className="rounded-md border border-[#E0DCD6] bg-card px-4 py-3 md:hidden">
         <div className="flex items-baseline justify-between gap-2 text-sm">
@@ -1162,12 +1171,11 @@ export function NewLogForm({
       </Section>
 
       <Section title="三、通知協力廠商辦理事項">
-        <textarea
+        <Textarea
           rows={3}
           value={vendorNotices}
           onChange={(e) => setVendorNotices(e.target.value)}
           placeholder="例：通知水電廠商明日上午進場、補齊材料…"
-          className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
       </Section>
 
@@ -1379,12 +1387,11 @@ export function NewLogForm({
       </Section>
 
       <Section title="六、重要事項紀錄">
-        <textarea
+        <Textarea
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="例:下午下大雨停工 / 客戶要求改…"
-          className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
       </Section>
 
@@ -1397,6 +1404,8 @@ export function NewLogForm({
             <SignatureCanvas
               ref={sigRef}
               penColor="#003153"
+              minWidth={2}
+              maxWidth={4}
               canvasProps={{
                 className: "w-full",
                 style: { width: "100%", height: "260px", touchAction: "none" },
@@ -1526,7 +1535,7 @@ export function NewLogForm({
           </div>
         </div>
       )}
-    </div>
+    </form>
   );
 }
 

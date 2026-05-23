@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { NextStepHint } from "@/components/next-step-hint";
 import { BatchApprovalsList } from "./batch-actions";
@@ -102,7 +103,11 @@ export default async function ApprovalsPage() {
       {!list.length ? (
         <div className="space-y-4">
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
-            <div className="mb-3 text-5xl text-[#E0DCD6]">✓</div>
+            <CheckCircle2
+              className="mb-3 size-14 text-[#E0DCD6]"
+              strokeWidth={1.5}
+              aria-hidden
+            />
             <p className="text-base text-foreground">沒有待處理的日誌</p>
             <p className="mt-1.5 text-sm text-muted-foreground">{copy.emptyHint}</p>
           </div>

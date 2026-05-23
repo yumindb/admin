@@ -25,6 +25,9 @@ const buttonVariants = cva(
         xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
         lg: "h-11 rounded-md px-6 has-[>svg]:px-4",
+        // xl: 主要動作按鈕(簽核 / 打卡 / 送出回報),手機戴手套也按得到。
+        //     工地主任 + 老闆 + 現場人員的核心動作都用這個 size。
+        xl: "h-12 rounded-md px-6 text-base has-[>svg]:px-4",
         icon: "size-9",
         "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-8",
@@ -43,18 +46,24 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  type,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+  // 預設 type="button" 而非 HTML 原生 "submit"。
+  // 避免 form 內 Enter 鍵自動觸發第一個 button(常見的 UX bug)。
+  // 真的要 submit 行為時呼叫者明確 type="submit"。
+  const resolvedType = !asChild && type === undefined ? "button" : type
 
   return (
     <Comp
       data-slot="button"
       data-variant={variant}
       data-size={size}
+      type={resolvedType}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />
