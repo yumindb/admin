@@ -413,12 +413,12 @@ function SelectedItemCard({
     : item.totalQuantity != null
       ? Math.max(0, item.totalQuantity - priorTotal)
       : null;
-  // clampStored:把 stored 值夾在 [0, fillCap] 之間。
-  // 第二參數 emit:超出 cap 時是否要觸發 onOverflow(false 用在不是使用者主動輸入的情境)。
-  const clampStored = (n: number, emit: boolean = true) => {
+  // clampStored:把 stored 值夾在 [0, fillCap] 之間;超出 cap 時觸發 onOverflow。
+  // 父元件 handleOverflow 有 dedupe(dialog 已開就忽略),所以連按 + 也不會疊跳。
+  const clampStored = (n: number) => {
     if (n < 0) return 0;
     if (fillCap != null && n > fillCap) {
-      if (emit && onOverflow) {
+      if (onOverflow) {
         onOverflow({ item, requested: n, cap: fillCap, mode: v.qty_mode ?? "absolute" });
       }
       return fillCap;
@@ -430,14 +430,12 @@ function SelectedItemCard({
   const onMinus = () => {
     const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
     const next = Math.max(0, cur - step);
-    onChangeQty(clampStored(isPct ? next / 100 : next, false));
+    onChangeQty(clampStored(isPct ? next / 100 : next));
   };
-  // +/- 按鈕不觸發 overflow dialog — 只是夾在 cap 上,避免使用者多按一下就跳 dialog。
-  // overflow 由「直接輸入超過 cap 的數字」觸發(例如打 100 但剩 80),才比較貼近現場行為。
   const onPlus = () => {
     const cur = isPct ? (v.qty ?? 0) * 100 : v.qty ?? 0;
     const next = cur + step;
-    onChangeQty(clampStored(isPct ? next / 100 : next, false));
+    onChangeQty(clampStored(isPct ? next / 100 : next));
   };
   // 數字輸入框拿掉 max 限制 — 讓使用者能打超過 cap 的數字觸發 dialog。
   // 仍給 step+min,避免負數/非數字。
