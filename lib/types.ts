@@ -291,6 +291,63 @@ export type AttendanceEvent = {
   created_at: string;
 };
 
+/**
+ * 請假(migration-2.23)。
+ * 簽核鏈是上層遞推:applicant_role 決定 approval_chain。
+ *   field_assistant  → [site_supervisor, office_staff, owner]
+ *   site_supervisor  → [office_staff, owner]
+ *   office_staff     → [owner]
+ *   owner            → 不能送
+ *
+ * status / current_step 互動:
+ *   pending  : current_step = chain[next]
+ *   approved : current_step = null,resolved_at 有值
+ *   rejected : current_step = null,resolved_at 有值
+ *   cancelled: current_step = null,cancelled_at 有值
+ */
+export type LeaveType =
+  | "personal"
+  | "sick"
+  | "official"
+  | "annual"
+  | "menstrual"
+  | "bereavement"
+  | "marriage"
+  | "other";
+
+export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type LeaveDecision = "approved" | "rejected";
+
+export type LeaveRequest = {
+  id: string;
+  applicant_id: string;
+  applicant_role: UserRole;
+  leave_type: LeaveType;
+  start_at: string;
+  end_at: string;
+  total_hours: number;
+  reason: string;
+  attachment_path: string | null;
+  status: LeaveStatus;
+  current_step: UserRole | null;
+  approval_chain: UserRole[];
+  submitted_at: string;
+  resolved_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LeaveApproval = {
+  id: string;
+  request_id: string;
+  step_role: UserRole;
+  approver_id: string | null;
+  decision: LeaveDecision;
+  comment: string | null;
+  created_at: string;
+};
+
 export type TenderImport = {
   id: string;
   case_id: string;

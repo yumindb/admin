@@ -30,6 +30,7 @@
 | 24 | [`migration-2.20.sql`](migration-2.20.sql) | cases 加 lat / lng numeric(9,6) + geofence_radius_m int default 200(GPS 打卡基礎)| 必跑 |
 | 25 | [`migration-2.21.sql`](migration-2.21.sql) | attendance_events 表(上下班打卡事件)+ RLS(read-all + insert-own,不可改/刪)| 必跑 |
 | 26 | [`migration-2.22.sql`](migration-2.22.sql) | daily_logs / field_reports 加 submit_lat/lng/accuracy_m/distance_m/within_geofence(隱式 GPS 戳記)| 必跑 |
+| 27 | [`migration-2.23.sql`](migration-2.23.sql) | leave_requests + leave_approvals 表(請假流程,簽核鏈依申請人 role 自動往上送)+ RLS | 必跑 |
 
 ## 排錯
 

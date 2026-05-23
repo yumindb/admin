@@ -36,7 +36,7 @@
 3. Framework: Next.js（自動偵測）
 4. Environment Variables：把 `.env.local` 內容複製過去（3 個 Supabase 變數）
 5. Deploy
-6. 拿到 URL（類似 `https://admin-yumindb.vercel.app`）
+6. 拿到 URL（目前為 `https://yumin-admin.vercel.app`）
 
 ### Step 3: 設定網域（之後做，可跳過）
 

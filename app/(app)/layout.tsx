@@ -64,7 +64,23 @@ export default async function AppLayout({
     approvalsBadge = count ?? 0;
   }
 
-  const { desktopNav, mobileTabs } = navByRole(profile?.role, approvalsBadge);
+  // 請假待簽 badge — 對應 role 在 current_step 的 pending 請假筆數(排除自己送的)
+  let leavesBadge = 0;
+  if (profile?.role && profile.role !== "field_assistant") {
+    const { count } = await supabase
+      .from("leave_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .eq("current_step", profile.role)
+      .neq("applicant_id", user.id);
+    leavesBadge = count ?? 0;
+  }
+
+  const { desktopNav, mobileTabs } = navByRole(
+    profile?.role,
+    approvalsBadge,
+    leavesBadge,
+  );
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -161,10 +177,18 @@ export default async function AppLayout({
 function navByRole(
   role: string | undefined,
   approvalsBadge: number,
+  leavesBadge: number,
 ): {
   desktopNav: DesktopLink[];
   mobileTabs: BottomTab[];
 } {
+  // 請假 desktop 連結 — 所有角色都看得到(label 帶 badge);field_assistant 沒有簽人,但要能送
+  const leavesLink: DesktopLink = {
+    href: "/leaves",
+    label: "請假",
+    badge: leavesBadge,
+  };
+
   switch (role) {
     case "site_supervisor":
       return {
@@ -174,6 +198,8 @@ function navByRole(
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/attendance", label: "打卡" },
           { href: "/field-reports", label: "現場回報" },
+          { href: "/my-cases", label: "我的案場" },
+          leavesLink,
           { href: "/cases", label: "案件總覽" },
           { href: "/reports", label: "報表" },
         ],
@@ -188,19 +214,21 @@ function navByRole(
     case "owner":
       return {
         desktopNav: [
+          { href: "/dashboard", label: "儀表板" },
           { href: "/approvals", label: "待核定", badge: approvalsBadge },
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/cases", label: "案件總覽" },
           { href: "/logs", label: "日誌" },
           { href: "/field-reports", label: "現場回報" },
+          leavesLink,
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
         ],
         mobileTabs: [
+          { href: "/dashboard", label: "首頁", icon: "home" },
           { href: "/approvals", label: "待核定", icon: "check" },
           { href: "/cases", label: "案件", icon: "folder" },
           { href: "/logs", label: "日誌", icon: "file" },
-          { href: "/field-reports", label: "現場", icon: "camera" },
           { href: "/staff", label: "人員", icon: "users" },
         ],
       };
@@ -208,30 +236,36 @@ function navByRole(
       return {
         desktopNav: [
           { href: "/attendance", label: "打卡" },
+          { href: "/my-cases", label: "我的案場" },
           { href: "/field-reports", label: "我的回報" },
           { href: "/field-reports/new", label: "新增回報" },
+          leavesLink,
         ],
         mobileTabs: [
           { href: "/attendance", label: "打卡", icon: "clock" },
-          { href: "/field-reports", label: "我的回報", icon: "list" },
-          { href: "/field-reports/new", label: "新增回報", icon: "plus" },
+          { href: "/my-cases", label: "案場", icon: "folder" },
+          { href: "/field-reports", label: "回報", icon: "list" },
+          { href: "/field-reports/new", label: "新增", icon: "plus" },
+          { href: "/leaves", label: "請假", icon: "clock" },
         ],
       };
     case "office_staff":
       return {
         desktopNav: [
+          { href: "/dashboard", label: "儀表板" },
           { href: "/cases", label: "案件總覽" },
           { href: "/approvals", label: "待審核", badge: approvalsBadge },
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/logs", label: "日誌" },
           { href: "/field-reports", label: "現場回報" },
+          leavesLink,
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
         ],
         mobileTabs: [
+          { href: "/dashboard", label: "首頁", icon: "home" },
           { href: "/cases", label: "案件", icon: "folder" },
           { href: "/approvals", label: "待審核", icon: "check" },
-          { href: "/logs", label: "日誌", icon: "file" },
           { href: "/field-reports", label: "現場", icon: "camera" },
           { href: "/staff", label: "人員", icon: "users" },
         ],

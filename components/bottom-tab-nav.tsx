@@ -11,7 +11,8 @@ export type IconName =
   | "camera"
   | "users"
   | "file"
-  | "clock";
+  | "clock"
+  | "home";
 
 export type BottomTab = {
   href: string;
@@ -149,6 +150,12 @@ function Icon({ name }: { name: IconName }) {
         <svg {...props} aria-hidden>
           <circle cx="12" cy="12" r="10" />
           <polyline points="12 6 12 12 16 14" />
+        </svg>
+      );
+    case "home":
+      return (
+        <svg {...props} aria-hidden>
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4a1 1 0 0 1-1-1v-6h-4v6a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2z" />
         </svg>
       );
   }
