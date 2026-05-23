@@ -25,6 +25,9 @@ export type ColumnDef<T> = {
   compute?: (row: T) => string | number | null;
   /** compute 欄旁邊或下方的輔助說明,例:「之前 5 + 本日 2」 */
   computeHint?: (row: T) => string | null;
+  /** type=text 時的快速選按鈕。空白時顯示為一排 chips,點一下填入;
+   *  使用者也可手動打字 fallback。專治戴手套 / 大太陽下打字困難。 */
+  suggestions?: string[];
 };
 
 type Props<T extends Record<string, unknown>> = {
@@ -136,17 +139,37 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                         className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                       />
                     ) : (
-                      <input
-                        type="text"
-                        value={String(row[col.key] ?? "")}
-                        onChange={(e) =>
-                          patch(idx, {
-                            [col.key]: e.target.value || undefined,
-                          } as Partial<T>)
-                        }
-                        placeholder={col.placeholder}
-                        className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-                      />
+                      <>
+                        <input
+                          type="text"
+                          value={String(row[col.key] ?? "")}
+                          onChange={(e) =>
+                            patch(idx, {
+                              [col.key]: e.target.value || undefined,
+                            } as Partial<T>)
+                          }
+                          placeholder={col.placeholder}
+                          className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                        />
+                        {/* 快速選 chips:只在值為空時顯示,避免擠版面 */}
+                        {col.suggestions && col.suggestions.length > 0 &&
+                          !String(row[col.key] ?? "").trim() && (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {col.suggestions.map((s) => (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  onClick={() =>
+                                    patch(idx, { [col.key]: s } as Partial<T>)
+                                  }
+                                  className="min-h-[36px] rounded-md border border-[#E0DCD6] bg-white px-2.5 text-xs text-foreground transition-colors hover:border-accent hover:bg-[#FAF7F2] active:bg-[#F0EBE4]"
+                                >
+                                  {s}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                      </>
                     )}
                   </div>
                 ))}

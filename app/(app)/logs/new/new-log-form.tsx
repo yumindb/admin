@@ -346,7 +346,13 @@ export function NewLogForm({
 
   const subcontractorCols = useMemo<ColumnDef<DailyLogSubcontractor>[]>(
     () => [
-      { key: "trade", label: "工別", required: true, placeholder: "例:泥作" },
+      {
+        key: "trade",
+        label: "工別",
+        required: true,
+        placeholder: "例:泥作",
+        suggestions: COMMON_TRADES,
+      },
       { key: "today", label: "本日人數", type: "number", inputMode: "numeric" },
       {
         key: "accumulated",
@@ -370,7 +376,13 @@ export function NewLogForm({
 
   const machineCols = useMemo<ColumnDef<DailyLogMachine>[]>(
     () => [
-      { key: "name", label: "機具名稱", required: true, placeholder: "例:切割機" },
+      {
+        key: "name",
+        label: "機具名稱",
+        required: true,
+        placeholder: "例:切割機",
+        suggestions: COMMON_MACHINES,
+      },
       {
         key: "today",
         label: "本日使用數量",
@@ -1076,6 +1088,11 @@ export function NewLogForm({
               label="下午"
               value={weather.pm}
               onChange={(value) => setWeather((prev) => ({ ...prev, pm: value }))}
+              copyFromAm={
+                weather.am !== undefined && weather.pm !== weather.am
+                  ? () => setWeather((prev) => ({ ...prev, pm: prev.am }))
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -1662,6 +1679,18 @@ function Section({
 const EMPTY_EXTRA: DailyLogExtraItem = { name: "" };
 const EMPTY_UNSIGNED: DailyLogUnsignedItem = { name: "" };
 
+// 工地主任 5 點趕填日誌時最痛的點 — 工別 / 機具還是純打字。
+// 列出最常見的選項,點一下就填入(仍可手打 fallback)。
+// 依台灣中部住宅裝修工程實務排序(常用在前):
+const COMMON_TRADES = [
+  "拆除", "泥作", "水電", "木作", "油漆",
+  "防水", "鐵件", "玻璃", "鋁窗", "清潔",
+];
+const COMMON_MACHINES = [
+  "切割機", "電鑽", "鷹架", "推車", "抽水機",
+  "吊車", "小山貓", "挖土機", "發電機",
+];
+
 // 跟 work-items-picker 內 PERCENT_DEFAULT_UNITS 一致;新增臨時項時用同一套規則
 const PERCENT_DEFAULT_UNITS = new Set([
   "組", "式", "套", "個", "處", "批", "戶", "棟",
@@ -1791,14 +1820,28 @@ function WeatherPicker({
   label,
   value,
   onChange,
+  copyFromAm,
 }: {
   label: string;
   value: DailyWeather["am"] | undefined;
   onChange: (value: DailyWeather["am"] | undefined) => void;
+  /** 提供時顯示「同上午」快速鍵 — 點一下把 PM 設成跟 AM 同值 */
+  copyFromAm?: () => void;
 }) {
   return (
     <div className="space-y-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        {copyFromAm && (
+          <button
+            type="button"
+            onClick={copyFromAm}
+            className="text-xs text-accent hover:underline"
+          >
+            同上午
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
         {WEATHER_OPTIONS.map((w) => (
           <button
