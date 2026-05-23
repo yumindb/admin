@@ -46,3 +46,10 @@ next-env.d.ts
 工地照片/
 # 標單範例/  # 暫時保留（給 parser dev 用）
 _work/
+
+# Secrets safety net (real location is D:\Evelyn\_secrets\, but in case
+# someone accidentally drops one into the repo)
+*secrets*.txt
+*-secrets.*
+nas-backup-secrets*
+cloudflare-r2-secrets*
