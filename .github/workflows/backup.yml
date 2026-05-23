@@ -77,11 +77,15 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p out
+          # Sanity check: confirm DB connection works first, fail fast with a clear error
+          psql "$SUPABASE_DB_URL" -c "select current_user, version();" || {
+            echo "::error::Cannot connect to Supabase. Check SUPABASE_DB_URL secret."
+            exit 1
+          }
           pg_dump "$SUPABASE_DB_URL" \
             --schema=public \
             --no-owner --no-acl \
             --quote-all-identifiers \
-            2> out/pg_dump.log \
             | gzip > out/db_${{ steps.ts.outputs.ts }}.sql.gz
           ls -lh out/
           echo "Dump size: $(stat -c%s out/db_${{ steps.ts.outputs.ts }}.sql.gz) bytes"
