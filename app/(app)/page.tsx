@@ -19,8 +19,9 @@ export default async function HomePage() {
       .eq("id", user.id)
       .maybeSingle();
     if (profile?.role === "site_supervisor") redirect("/logs");
-    if (profile?.role === "owner") redirect("/approvals");
+    if (profile?.role === "owner") redirect("/dashboard");
     if (profile?.role === "field_assistant") redirect("/field-reports");
+    if (profile?.role === "office_staff") redirect("/dashboard");
   }
   redirect("/cases");
 }
