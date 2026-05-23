@@ -92,7 +92,7 @@ values (
   '', '', '', '', '', '', '', ''
 );
 
--- ----- 4. 現場助理 -----
+-- ----- 4. 現場人員 -----
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
@@ -110,7 +110,7 @@ values (
   crypt('yumin1234', gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
-  jsonb_build_object('full_name','現場助理','role','field_assistant'),
+  jsonb_build_object('full_name','現場人員','role','field_assistant'),
   now(),
   now(),
   '', '', '', '', '', '', '', ''

@@ -133,7 +133,7 @@ export default async function FieldReportsPage() {
       {!list.length ? (
         <Empty isFieldAssistant={isFieldAssistant} canCreate={canCreate} />
       ) : isFieldAssistant ? (
-        // 現場助理只看自己的,通常案場單一,不分組
+        // 現場人員只看自己的,通常案場單一,不分組
         <ul className="space-y-4">
           {list.map((r) => (
             <li key={r.id}>

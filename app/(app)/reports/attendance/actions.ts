@@ -11,7 +11,7 @@ const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
   site_supervisor: "工地主任",
   owner: "老闆",
-  field_assistant: "現場助理",
+  field_assistant: "現場人員",
 };
 
 export type AttendanceFilters = {
@@ -23,7 +23,7 @@ export type AttendanceFilters = {
 
 /**
  * 撈打卡事件 + xlsx 匯出。office_staff / owner 可下載(管報表)。
- * 工地主任 / 現場助理目前不開下載(可看自己的時間軸,但不抓全員資料)。
+ * 工地主任 / 現場人員目前不開下載(可看自己的時間軸,但不抓全員資料)。
  */
 export async function exportAttendanceXlsx(
   filters: AttendanceFilters,

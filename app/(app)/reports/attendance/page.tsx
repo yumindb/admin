@@ -17,7 +17,7 @@ const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
   site_supervisor: "工地主任",
   owner: "老闆",
-  field_assistant: "現場助理",
+  field_assistant: "現場人員",
 };
 
 function todayLocalIsoDate(): string {
@@ -141,7 +141,7 @@ export default async function AttendanceReportPage({
       </nav>
       <h1 className="mb-2 text-2xl font-semibold text-primary md:text-3xl">現場出勤</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        工地主任、現場助理的 GPS 打卡紀錄。距離工地超出 geofence 範圍的事件會標註。
+        工地主任、現場人員的 GPS 打卡紀錄。距離工地超出 geofence 範圍的事件會標註。
       </p>
 
       <AttendanceReportClient

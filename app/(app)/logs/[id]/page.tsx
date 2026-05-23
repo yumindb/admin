@@ -58,7 +58,7 @@ const ROLE_LABEL: Record<string, string> = {
   site_supervisor: "工地主任",
   office_staff: "辦公室助理",
   owner: "老闆",
-  field_assistant: "現場助理",
+  field_assistant: "現場人員",
 };
 
 const STATUS_AT_EDIT_LABEL: Record<string, string> = {

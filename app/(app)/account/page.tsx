@@ -8,7 +8,7 @@ const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
   site_supervisor: "工地主任",
   owner: "老闆",
-  field_assistant: "現場助理",
+  field_assistant: "現場人員",
 };
 
 export default async function AccountPage() {

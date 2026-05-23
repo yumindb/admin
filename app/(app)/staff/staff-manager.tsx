@@ -49,7 +49,7 @@ const ROLES: RoleMeta[] = [
     shortLabel: "老闆",
     icon: Crown,
     tint: "#A07850",
-    permission: "最終核定簽核、全公司案件可見、可管理人員",
+    permission: "工作日誌填表、現場回報、最終核定、全公司可見、管理人員",
     level: 1,
   },
   {
@@ -58,7 +58,7 @@ const ROLES: RoleMeta[] = [
     shortLabel: "助理",
     icon: ClipboardList,
     tint: "#0369A1",
-    permission: "開案、匯入工項、第三關審核、可管理人員",
+    permission: "開案、匯入工項、審核工作日誌、管理人員",
     level: 2,
   },
   {
@@ -67,16 +67,16 @@ const ROLES: RoleMeta[] = [
     shortLabel: "主任",
     icon: HardHat,
     tint: "#4A7C59",
-    permission: "填寫／送出施工日誌、第二關複核",
+    permission: "工作日誌填表、現場回報",
     level: 3,
   },
   {
     key: "field_assistant",
-    label: "現場助理",
+    label: "現場人員",
     shortLabel: "現場",
     icon: UserCog,
     tint: "#8A847C",
-    permission: "僅能新增施工日誌（無審核權限）",
+    permission: "僅能新增現場回報",
     level: 4,
   },
 ];
@@ -429,8 +429,8 @@ function HierarchyOverview({
           </div>
 
           <div className="mt-5 rounded-md border border-dashed border-[#E0DCD6] bg-[#F5F1EC]/60 px-4 py-3 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">簽核流程：</span>
-            填表（現場助理／工地主任） → 複核（工地主任） → 審核（辦公室助理） → 核定（老闆）
+            <span className="font-medium text-foreground">流程：</span>
+            現場回報（現場人員／工地主任／老闆，前置）→ 工作日誌填表（工地主任／老闆）→ 審核（辦公室助理）→ 核定（老闆）
           </div>
         </div>
       )}

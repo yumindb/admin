@@ -54,7 +54,7 @@ export default async function ReportsHomePage() {
         <ReportCard
           href="/reports/attendance"
           title="現場出勤"
-          description="工地主任、現場助理的 GPS 打卡紀錄。可依日期、案件、人員篩選並下載 Excel"
+          description="工地主任、現場人員的 GPS 打卡紀錄。可依日期、案件、人員篩選並下載 Excel"
           icon={<MapPin className="size-6" strokeWidth={1.75} />}
         />
         <ReportCard
