@@ -7,6 +7,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { RouteProgress } from "@/components/route-progress";
 import { logoutAction } from "../login/actions";
 import { getCompanyShort } from "@/lib/companies";
+import { emailToUsername } from "@/lib/auth/username";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
@@ -37,7 +38,7 @@ export default async function AppLayout({
     .eq("id", user.id)
     .single();
 
-  const fullName = profile?.full_name ?? user.email ?? "未命名使用者";
+  const fullName = profile?.full_name ?? emailToUsername(user.email) ?? "未命名使用者";
   const roleLabel = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : "—";
   const company = getCompanyShort(profile?.company ?? "裕民");
 

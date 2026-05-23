@@ -17,14 +17,21 @@ export function LoginForm({ next }: { next: string }) {
       <input type="hidden" name="next" value={next} />
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="username">帳號</Label>
         <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
+          id="username"
+          name="username"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="text"
           required
-          placeholder="office@yumin.local"
+          minLength={2}
+          maxLength={30}
+          pattern="[a-z0-9]{2,30}"
+          placeholder="例:owner"
         />
       </div>
 

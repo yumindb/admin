@@ -2,10 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { usernameSchema, usernameToEmail } from "@/lib/auth/username";
 
 export type LoginState = { error?: string } | undefined;
 
-// 速率限制設定:WINDOW_MIN 分鐘內 >= MAX_FAILS 次失敗 → 鎖住此 email 直到視窗滾出。
+// 速率限制設定:WINDOW_MIN 分鐘內 >= MAX_FAILS 次失敗 → 鎖住此帳號直到視窗滾出。
+// 註:login_attempts.email 欄位仍存完整 email(含 @yumin.local 後綴),不需 schema 變動。
 const WINDOW_MIN = 15;
 const MAX_FAILS = 3;
 
@@ -45,15 +47,21 @@ export async function loginAction(
   _prevState: LoginState,
   formData: FormData
 ): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "").trim();
+  const rawUsername = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const rawNext = String(formData.get("next") ?? "");
   // Only allow relative paths to prevent open-redirect attacks
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
 
-  if (!email || !password) {
-    return { error: "請輸入 Email 與密碼" };
+  if (!rawUsername || !password) {
+    return { error: "請輸入帳號與密碼" };
   }
+
+  const parsed = usernameSchema.safeParse(rawUsername);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "帳號格式不正確" };
+  }
+  const email = usernameToEmail(parsed.data);
 
   // 先檢查是否鎖定(不消耗 Supabase auth 配額)
   const lock = await isLockedOut(email);
@@ -70,7 +78,7 @@ export async function loginAction(
   await recordAttempt(email, !error);
 
   if (error) {
-    return { error: "登入失敗：" + error.message };
+    return { error: "登入失敗：帳號或密碼錯誤" };
   }
 
   redirect(next);

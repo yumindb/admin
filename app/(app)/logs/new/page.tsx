@@ -13,6 +13,7 @@ import {
 import { formatDateTW } from "@/lib/datetime";
 import type { DailyLog, DailyLogWorkItem, FieldReport } from "@/lib/types";
 import { getSignedUrls } from "@/lib/supabase/storage";
+import { emailToUsername } from "@/lib/auth/username";
 
 export default async function NewLogPage({
   searchParams,
@@ -293,7 +294,7 @@ export default async function NewLogPage({
       <NewLogForm
         cases={caseOptions}
         presetCaseId={presetCaseId}
-        currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
+        currentUserName={profile?.full_name ?? emailToUsername(user?.email) ?? "未命名使用者"}
         dayLogCounts={dayLogCounts}
         priorAggregates={aggregates}
         priorManpowerByCase={priorManpowerByCase}

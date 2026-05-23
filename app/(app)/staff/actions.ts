@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { usernameSchema, usernameToEmail } from "@/lib/auth/username";
 import type { StaffActionResult } from "./types";
 
 async function requireManager() {
@@ -23,7 +24,7 @@ async function requireManager() {
 }
 
 const CreateSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Email 格式不正確"),
+  username: usernameSchema,
   password: z.string().min(6, "密碼至少 6 碼").max(72),
   full_name: z.string().trim().min(1, "姓名必填").max(60),
   role: z.enum(["owner", "office_staff", "site_supervisor", "field_assistant"]),
@@ -38,7 +39,7 @@ export async function createStaffAction(
   if (!auth.ok) return { ok: false, error: auth.error };
 
   const parsed = CreateSchema.safeParse({
-    email: formData.get("email"),
+    username: formData.get("username"),
     password: formData.get("password"),
     full_name: formData.get("full_name"),
     role: formData.get("role"),
@@ -54,7 +55,7 @@ export async function createStaffAction(
 
   const admin = createServiceClient();
   const created = await admin.auth.admin.createUser({
-    email: data.email,
+    email: usernameToEmail(data.username),
     password: data.password,
     email_confirm: true,
     user_metadata: { full_name: data.full_name, role: data.role },
@@ -62,7 +63,7 @@ export async function createStaffAction(
   if (created.error || !created.data.user) {
     const msg = created.error?.message ?? "建立失敗";
     if (/already.*registered|exists/i.test(msg)) {
-      return { ok: false, fieldErrors: { email: ["此 Email 已建立過帳號"] } };
+      return { ok: false, fieldErrors: { username: ["此帳號已建立過"] } };
     }
     return { ok: false, error: msg };
   }

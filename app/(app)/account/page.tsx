@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCompanyShort } from "@/lib/companies";
+import { emailToUsername } from "@/lib/auth/username";
 import { PasswordForm } from "./password-form";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -45,7 +46,7 @@ export default async function AccountPage() {
         </h2>
         <dl className="space-y-2 text-sm">
           <Row label="姓名" value={profile?.full_name ?? "—"} />
-          <Row label="Email" value={user.email ?? "—"} />
+          <Row label="帳號" value={emailToUsername(user.email) ?? "—"} />
           <Row label="角色" value={roleLabel} />
           <Row label="所屬公司" value={company} />
           <Row label="電話" value={profile?.phone ?? "—"} />

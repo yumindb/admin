@@ -15,6 +15,7 @@ import {
 import { formatTW, formatDateTW } from "@/lib/datetime";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 import { getSignedUrls } from "@/lib/supabase/storage";
+import { emailToUsername } from "@/lib/auth/username";
 
 export default async function EditLogPage({
   params,
@@ -320,7 +321,7 @@ export default async function EditLogPage({
       <NewLogForm
         editMode={editMode}
         cases={caseOptions}
-        currentUserName={profile?.full_name ?? user?.email ?? "未命名使用者"}
+        currentUserName={profile?.full_name ?? emailToUsername(user?.email) ?? "未命名使用者"}
         logId={id}
         currentDaySeq={currentDaySeq}
         priorAggregates={aggregates}

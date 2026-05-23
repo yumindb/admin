@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { emailToUsername } from "@/lib/auth/username";
 import type { Profile, UserRole } from "@/lib/types";
 import { StaffManager } from "./staff-manager";
 
-export type StaffRow = Profile & { email: string | null };
+export type StaffRow = Profile & { email: string | null; username: string | null };
 
 const ROLE_ORDER: UserRole[] = [
   "owner",
@@ -45,11 +46,15 @@ export default async function StaffPage() {
   }
 
   // is_active 容錯：migration-2.6 跑之前欄位不存在 → 視為啟用中，避免整排顯示「已停用」
-  const staff: StaffRow[] = ((profiles ?? []) as Profile[]).map((p) => ({
-    ...p,
-    is_active: p.is_active ?? true,
-    email: emailById.get(p.id) ?? null,
-  }));
+  const staff: StaffRow[] = ((profiles ?? []) as Profile[]).map((p) => {
+    const email = emailById.get(p.id) ?? null;
+    return {
+      ...p,
+      is_active: p.is_active ?? true,
+      email,
+      username: emailToUsername(email),
+    };
+  });
 
   // 依角色分組 + 依角色階層排序
   const byRole = new Map<UserRole, StaffRow[]>();

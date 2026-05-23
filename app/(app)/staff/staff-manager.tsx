@@ -470,7 +470,7 @@ function StaffTable({
           <thead className="bg-[#F5F1EC]/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">姓名</th>
-              <th className="px-4 py-3 font-medium">Email</th>
+              <th className="px-4 py-3 font-medium">帳號</th>
               <th className="px-4 py-3 font-medium">電話</th>
               <th className="px-4 py-3 font-medium">角色</th>
               <th className="px-4 py-3 font-medium">狀態</th>
@@ -548,8 +548,8 @@ function StaffTableRow({
           <p className="mt-1 text-xs text-[#B91C1C]">{error}</p>
         )}
       </td>
-      <td className="px-4 py-3 text-muted-foreground">
-        {staff.email ?? "—"}
+      <td className="px-4 py-3 font-mono text-muted-foreground">
+        {staff.username ?? staff.email ?? "—"}
       </td>
       <td className="px-4 py-3 text-muted-foreground">{staff.phone || "—"}</td>
       <td className="px-4 py-3">
@@ -744,8 +744,8 @@ function StaffCard({
               </span>
             )}
           </div>
-          <div className="mt-1 truncate text-sm text-muted-foreground">
-            {staff.email ?? "（無 email）"}
+          <div className="mt-1 truncate font-mono text-sm text-muted-foreground">
+            {staff.username ?? staff.email ?? "（無帳號）"}
           </div>
           {staff.phone && (
             <div className="mt-0.5 text-sm text-muted-foreground">
@@ -1012,9 +1012,25 @@ function CreateModal({ onClose }: { onClose: () => void }) {
           <FieldError msg={state?.fieldErrors?.full_name?.[0]} />
         </div>
         <div>
-          <Label htmlFor="email">Email（用來登入）</Label>
-          <Input id="email" name="email" type="email" required />
-          <FieldError msg={state?.fieldErrors?.email?.[0]} />
+          <Label htmlFor="username">帳號（用來登入）</Label>
+          <Input
+            id="username"
+            name="username"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            required
+            minLength={2}
+            maxLength={30}
+            pattern="[a-z0-9]{2,30}"
+            placeholder="小寫英文字母+數字,例:supervisor3"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            僅小寫英文字母與數字,2-30 字。建立後不可變更。
+          </p>
+          <FieldError msg={state?.fieldErrors?.username?.[0]} />
         </div>
         <div>
           <Label htmlFor="password">初始密碼（至少 6 碼）</Label>
@@ -1090,7 +1106,7 @@ function EditModal({
     <ModalShell title={`編輯：${staff.full_name}`} onClose={onClose}>
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="rounded-md border border-[#E0DCD6] bg-[#F5F1EC]/40 px-3 py-2 text-sm text-muted-foreground">
-          Email：{staff.email ?? "—"}
+          帳號：<span className="font-mono">{staff.username ?? staff.email ?? "—"}</span>
         </div>
         <div>
           <Label htmlFor="full_name">姓名</Label>
@@ -1182,7 +1198,7 @@ function ResetModal({
     <ModalShell title={`重設密碼：${staff.full_name}`} onClose={onClose}>
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="rounded-md border border-[#E0DCD6] bg-[#F5F1EC]/40 px-3 py-2 text-sm text-muted-foreground">
-          Email：{staff.email ?? "—"}
+          帳號：<span className="font-mono">{staff.username ?? staff.email ?? "—"}</span>
         </div>
         <div>
           <Label htmlFor="password">新密碼（至少 6 碼）</Label>
