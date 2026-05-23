@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTW } from "@/lib/datetime";
 import { ApprovalActions } from "./approval-actions";
+import { SignSection } from "./sign-section";
 import { ExtraItemsTable } from "@/components/extra-items-table";
 import { NextStepHint } from "@/components/next-step-hint";
 import {
@@ -175,7 +176,41 @@ export default async function ApprovalDetailPage({
         </div>
       </div>
 
-      <Section title="表頭摘要">
+      {/* 簽核摘要卡 — 老闆 2 分鐘決定簽或退要先看到的東西。
+          手機上其他七大段預設摺疊,要看細節再點開。 */}
+      <SignSection title="簽核摘要" alwaysOpen>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
+          <SummaryCard
+            label="合約內工項"
+            value={contractWorkItems.length.toString()}
+          />
+          <SummaryCard
+            label="照片"
+            value={logPhotos.length.toString()}
+            alert={logPhotos.length === 0}
+          />
+          <SummaryCard
+            label="本日出工"
+            value={
+              l.manpower?.today_total !== undefined
+                ? `${l.manpower.today_total} 人`
+                : "—"
+            }
+          />
+          <SummaryCard
+            label="合約外"
+            value={extraWorkItems.length.toString()}
+            alert={extraWorkItems.length > 0}
+          />
+          <SummaryCard
+            label="未簽約"
+            value={unsignedWorkItems.length.toString()}
+            alert={unsignedWorkItems.length > 0}
+          />
+        </div>
+      </SignSection>
+
+      <SignSection title="表頭摘要">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <InfoCard label="工程名稱" value={l.cases?.name ?? "—"} />
           <InfoCard label="承攬廠商名稱" value={l.cases?.company ?? "—"} />
@@ -185,9 +220,12 @@ export default async function ApprovalDetailPage({
             value={remainingDays === null ? "—" : `${remainingDays} 天`}
           />
         </div>
-      </Section>
+      </SignSection>
 
-      <Section title={`一、依施工計畫書執行按圖施工概況 (${contractWorkItems.length})`}>
+      <SignSection
+        title="一、依施工計畫書執行按圖施工概況"
+        count={contractWorkItems.length}
+      >
         {!contractWorkItems.length ? (
           <p className="text-sm text-muted-foreground">無合約內工項</p>
         ) : (
@@ -219,9 +257,9 @@ export default async function ApprovalDetailPage({
             </table>
           </div>
         )}
-      </Section>
+      </SignSection>
 
-      <Section title="二、外包人員及機具管理">
+      <SignSection title="二、外包人員及機具管理">
         <div className="space-y-5">
           <ExtraItemsTable
             rows={l.manpower?.subcontractors ?? []}
@@ -240,29 +278,40 @@ export default async function ApprovalDetailPage({
             ]}
           />
         </div>
-      </Section>
+      </SignSection>
 
       {l.vendor_notices && (
-        <Section title="三、通知協力廠商辦理事項">
+        <SignSection title="三、通知協力廠商辦理事項">
           <p className="whitespace-pre-line text-sm">{l.vendor_notices}</p>
-        </Section>
+        </SignSection>
       )}
 
       {extraWorkItems.length > 0 && (
-        <Section title={`四、合約外項目 (${extraWorkItems.length})`}>
+        <SignSection
+          title="四、合約外項目"
+          count={extraWorkItems.length}
+          alert="需注意"
+        >
           <ApprovalExtraUnsignedTable rows={extraWorkItems} wiMap={wiMap} />
-        </Section>
+        </SignSection>
       )}
 
       {unsignedWorkItems.length > 0 && (
-        <Section title={`五、未簽約施工內容 (${unsignedWorkItems.length})`}>
+        <SignSection
+          title="五、未簽約施工內容"
+          count={unsignedWorkItems.length}
+          alert="需注意"
+        >
           <ApprovalExtraUnsignedTable rows={unsignedWorkItems} wiMap={wiMap} />
-        </Section>
+        </SignSection>
       )}
 
       {/* 舊資料相容 */}
       {l.extra_items?.length > 0 && (
-        <Section title={`（舊）合約外（free-form） (${l.extra_items.length})`}>
+        <SignSection
+          title="（舊）合約外（free-form）"
+          count={l.extra_items.length}
+        >
           <ExtraItemsTable
             rows={l.extra_items}
             cols={[
@@ -275,11 +324,14 @@ export default async function ApprovalDetailPage({
               { key: "reason", label: "事由" },
             ]}
           />
-        </Section>
+        </SignSection>
       )}
 
       {l.unsigned_items?.length > 0 && (
-        <Section title={`（舊）未簽約（free-form） (${l.unsigned_items.length})`}>
+        <SignSection
+          title="（舊）未簽約（free-form）"
+          count={l.unsigned_items.length}
+        >
           <ExtraItemsTable
             rows={l.unsigned_items}
             cols={[
@@ -292,10 +344,14 @@ export default async function ApprovalDetailPage({
               { key: "reason", label: "事由" },
             ]}
           />
-        </Section>
+        </SignSection>
       )}
 
-      <Section title={`照片 (${logPhotos.length})`}>
+      <SignSection
+        title="照片"
+        count={logPhotos.length}
+        alert={logPhotos.length === 0 ? "無照片" : undefined}
+      >
         {!logPhotos.length ? (
           <p className="text-sm text-muted-foreground">無</p>
         ) : (
@@ -322,12 +378,12 @@ export default async function ApprovalDetailPage({
             ))}
           </div>
         )}
-      </Section>
+      </SignSection>
 
       {l.notes && (
-        <Section title="六、重要事項紀錄">
+        <SignSection title="六、重要事項紀錄">
           <p className="whitespace-pre-line text-sm">{l.notes}</p>
-        </Section>
+        </SignSection>
       )}
 
       {/* 簽核 */}
@@ -343,12 +399,38 @@ export default async function ApprovalDetailPage({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function SummaryCard({
+  label,
+  value,
+  alert = false,
+}: {
+  label: string;
+  value: string;
+  alert?: boolean;
+}) {
   return (
-    <section className="mb-7">
-      <h2 className="mb-3 text-base font-semibold text-primary md:text-lg">{title}</h2>
-      {children}
-    </section>
+    <div
+      className={`rounded-md border px-3 py-2.5 ${
+        alert
+          ? "border-[#FCA5A5] bg-[#FEF2F2]"
+          : "border-[#E0DCD6] bg-white"
+      }`}
+    >
+      <div
+        className={`text-xs ${
+          alert ? "text-[#B91C1C]" : "text-muted-foreground"
+        }`}
+      >
+        {label}
+      </div>
+      <div
+        className={`mt-0.5 text-lg font-semibold tabular-nums ${
+          alert ? "text-[#B91C1C]" : "text-primary"
+        }`}
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 
