@@ -7,6 +7,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  readRememberedSig,
+  writeRememberedSig,
+  clearRememberedSig,
+} from "@/lib/remembered-signature";
 import { Label } from "@/components/ui/label";
 import {
   WorkItemsPicker,
@@ -230,6 +235,9 @@ export function NewLogForm({
   const [hydrated, setHydrated] = useState(false);
   const [isPending, startTransition] = useTransition();
   const sigRef = useRef<SignatureCanvas>(null);
+  // 工地主任 5 點趕填日誌時戴手套畫不出來 — 60min 內套用上次簽名
+  const [rememberSig, setRememberSig] = useState(false);
+  const [hasStoredSig, setHasStoredSig] = useState(false);
   // 隱式 GPS 戳記:已授權才靜默取(未授權不彈視窗、不擋送出)
   const silentLoc = useSilentLocationOnce();
   // 追蹤本次工作階段「在這個表單內上傳」的照片 path,
@@ -240,7 +248,25 @@ export function NewLogForm({
 
   function clearSig() {
     sigRef.current?.clear();
+    setHasStoredSig(false);
   }
+
+  // mount 後嘗試還原 60min 內的快取簽名(canvas ref 還要等下一個 tick)
+  useEffect(() => {
+    const stored = readRememberedSig();
+    if (!stored) return;
+    // 等 SignatureCanvas 渲染後再 setData
+    const t = setTimeout(() => {
+      try {
+        sigRef.current?.fromDataURL(stored.dataUrl);
+        setRememberSig(true);
+        setHasStoredSig(true);
+      } catch {
+        // 略過
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
 
   // mount 後:還原 localStorage 草稿 + 補 logDate 預設(今天)
   useEffect(() => {
@@ -659,6 +685,27 @@ export function NewLogForm({
     done: 0,
     total: 0,
   });
+  // 失敗的照片留在 list,可以單張重試 — 工地主任視角:
+  // 「3/8 成功」訊息消失就找不到哪幾張失敗,被迫整批重來。
+  // 改成失敗的標紅卡 + 「重試這張」,不會全部丟掉。
+  const [failedUploads, setFailedUploads] = useState<
+    { id: string; file: File; error: string }[]
+  >([]);
+
+  async function uploadSingleFile(file: File): Promise<
+    | { ok: true; path: string }
+    | { ok: false; error: string }
+  > {
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      const res = await uploadPhotoAction(fd);
+      if (res.ok && res.path) return { ok: true, path: res.path };
+      return { ok: false, error: res.ok ? "未取得 path" : res.error };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message ?? "上傳失敗" };
+    }
+  }
 
   async function onUploadPhoto(files: FileList | null) {
     if (!files?.length) return;
@@ -680,22 +727,23 @@ export function NewLogForm({
     // 並行上傳每張,完成一張就 +1
     const results = await Promise.all(
       preparedFiles.map(async (f) => {
-        const fd = new FormData();
-        fd.set("file", f);
-        const res = await uploadPhotoAction(fd);
+        const res = await uploadSingleFile(f);
         setUploadProgress((p) => ({ ...p, done: p.done + 1 }));
-        return res;
+        return { file: f, res };
       })
     );
 
     const newPaths: string[] = [];
-    let firstError: string | null = null;
-    let failedCount = 0;
-    for (const r of results) {
-      if (r.ok && r.path) newPaths.push(r.path);
-      else if (!r.ok) {
-        failedCount += 1;
-        if (!firstError) firstError = r.error;
+    const newFailed: { id: string; file: File; error: string }[] = [];
+    for (const { file, res } of results) {
+      if (res.ok) {
+        newPaths.push(res.path);
+      } else {
+        newFailed.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          file,
+          error: res.error,
+        });
       }
     }
     if (newPaths.length) {
@@ -705,14 +753,38 @@ export function NewLogForm({
         ...newPaths.map<LogPhoto>((path) => ({ path, caption: "" })),
       ]);
     }
-    if (firstError) {
+    if (newFailed.length) {
+      setFailedUploads((prev) => [...prev, ...newFailed]);
       toast.error(
-        failedCount > 1 ? `${failedCount} 張照片上傳失敗` : "照片上傳失敗",
-        { description: firstError },
+        newFailed.length > 1
+          ? `${newFailed.length} 張照片上傳失敗`
+          : "照片上傳失敗",
+        { description: "可在下方對該張按「重試這張」" },
       );
     }
     setUploading(false);
     setUploadProgress({ done: 0, total: 0 });
+  }
+
+  async function retryFailedUpload(id: string) {
+    const entry = failedUploads.find((f) => f.id === id);
+    if (!entry) return;
+    const res = await uploadSingleFile(entry.file);
+    if (res.ok) {
+      sessionUploadsRef.current.add(res.path);
+      setPhotos((p) => [...p, { path: res.path, caption: "" }]);
+      setFailedUploads((prev) => prev.filter((f) => f.id !== id));
+      toast.success("這張上傳成功");
+    } else {
+      setFailedUploads((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, error: res.error } : f)),
+      );
+      toast.error("仍然失敗", { description: res.error });
+    }
+  }
+
+  function removeFailedUpload(id: string) {
+    setFailedUploads((prev) => prev.filter((f) => f.id !== id));
   }
 
   function removePhoto(path: string) {
@@ -767,6 +839,9 @@ export function NewLogForm({
         toast.error("簽名讀取失敗,請重試");
         return;
       }
+      // 記住簽名 60 分鐘:工地主任退回後修還能套用、複核也共用
+      if (rememberSig) writeRememberedSig(dataUrl);
+      else clearRememberedSig();
       signaturePromise = (async () => {
         const fd = new FormData();
         fd.set("dataUrl", dataUrl);
@@ -1303,6 +1378,50 @@ export function NewLogForm({
             </div>
           </div>
         )}
+
+        {/* 失敗的照片留在這裡 — 工地主任現場訊號不穩,讓他可以針對單張重試
+            (avoids 整批失敗就全部重來)。重試成功會自動移到下方成功 list。 */}
+        {failedUploads.length > 0 && (
+          <div className="mt-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] p-3">
+            <div className="mb-2 text-xs font-medium text-[#B91C1C]">
+              {failedUploads.length} 張照片上傳失敗 — 可單張重試
+            </div>
+            <ul className="space-y-2">
+              {failedUploads.map((f) => (
+                <li
+                  key={f.id}
+                  className="flex items-center justify-between gap-2 rounded-md bg-white px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-foreground">
+                      {f.file.name}
+                    </div>
+                    <div className="truncate text-xs text-[#B91C1C]">
+                      {f.error}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => retryFailedUpload(f.id)}
+                    disabled={uploading}
+                    className="inline-flex h-9 shrink-0 items-center rounded-md border border-[#FCA5A5] bg-white px-3 text-xs font-medium text-[#B91C1C] hover:bg-[#FEE2E2] disabled:opacity-50"
+                  >
+                    重試這張
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeFailedUpload(f.id)}
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-[#FEE2E2] hover:text-[#B91C1C]"
+                    aria-label="放棄這張"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {photos.length > 0 && (
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
             {photos.map((p) => (
@@ -1408,11 +1527,31 @@ export function NewLogForm({
               maxWidth={4}
               canvasProps={{
                 className: "w-full",
-                style: { width: "100%", height: "260px", touchAction: "none" },
+                style: {
+                  width: "100%",
+                  height: "clamp(180px, 28vh, 260px)",
+                  touchAction: "none",
+                },
               }}
             />
           </div>
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex items-center justify-between">
+            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={rememberSig}
+                onChange={(e) => setRememberSig(e.target.checked)}
+                className="size-4 cursor-pointer accent-[#003153]"
+              />
+              <span>
+                記住簽名(60 分鐘內)
+                {hasStoredSig && (
+                  <span className="ml-1 text-xs text-[#4A7C59]">
+                    ✓ 已套用上次
+                  </span>
+                )}
+              </span>
+            </label>
             <button
               type="button"
               onClick={clearSig}

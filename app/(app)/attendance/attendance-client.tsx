@@ -61,11 +61,15 @@ const NO_CASE = "__none__";
 export function AttendanceClient({
   cases,
   initialToday,
+  role,
 }: {
   cases: CaseOption[];
   initialToday: AttendanceItem[];
+  /** 用來判斷是否在下班打卡 toast 加「順手填日誌」action — 只 supervisor / owner 寫日誌 */
+  role?: string | null;
 }) {
   const router = useRouter();
+  const canWriteLog = role === "site_supervisor" || role === "owner";
   const geo = useGeolocation({ autoFetch: true });
   const [selectedCaseId, setSelectedCaseId] = useState<string>("");
   const [autoPickedId, setAutoPickedId] = useState<string>("");
@@ -243,7 +247,23 @@ export function AttendanceClient({
             : res.within_geofence === true && res.distance_m !== null
               ? `離工地 ${formatDistance(res.distance_m)}`
               : "";
-        toast.success(label, detail ? { description: detail } : undefined);
+        // 下班打卡 + 有選真實案件 + 可寫日誌 → 加「順手填日誌」action,
+        // 工地主任 5 點趕填的痛點之一就是少這一步流程銜接
+        const showFillLogAction =
+          eventType === "clock_out" && canWriteLog && !noCase && effectiveCaseId;
+        toast.success(label, {
+          ...(detail ? { description: detail } : {}),
+          ...(showFillLogAction
+            ? {
+                duration: 8000,
+                action: {
+                  label: "順手填日誌",
+                  onClick: () =>
+                    router.push(`/logs/new?case=${effectiveCaseId}`),
+                },
+              }
+            : {}),
+        });
         setNote("");
         router.refresh();
       } catch (e) {
@@ -333,26 +353,47 @@ export function AttendanceClient({
         />
       </section>
 
-      {/* 4) 上下班按鈕 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          size="xl"
-          onClick={() => submit("clock_in")}
-          disabled={geo.status !== "ok" || submitting || !effectiveCaseId}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          {submitting ? "送出中…" : "上班打卡"}
-        </Button>
-        <Button
-          size="xl"
-          onClick={() => submit("clock_out")}
-          disabled={geo.status !== "ok" || submitting || !effectiveCaseId}
-          variant="outline"
-          className="border-primary text-primary hover:bg-primary/5"
-        >
-          {submitting ? "送出中…" : "下班打卡"}
-        </Button>
-      </div>
+      {/* 4) 上下班按鈕 — 工地主任視角:button gray 沒原因會崩潰,
+              改成 label 直接告訴他「現在缺什麼才能打」 */}
+      {(() => {
+        // 依優先級顯示狀態(GPS 沒鎖 > 沒選案件 > 送出中 > 可送出)
+        const waitGps = geo.status === "locating";
+        const gpsError = geo.status === "error";
+        const needCase = !effectiveCaseId;
+        const labelFor = (verb: string) =>
+          submitting
+            ? "送出中…"
+            : waitGps
+              ? "等 GPS 定位…"
+              : gpsError
+                ? "GPS 無法取得"
+                : needCase
+                  ? "請先選案件"
+                  : verb;
+        const disabled =
+          submitting || waitGps || gpsError || needCase;
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              size="xl"
+              onClick={() => submit("clock_in")}
+              disabled={disabled}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {labelFor("上班打卡")}
+            </Button>
+            <Button
+              size="xl"
+              onClick={() => submit("clock_out")}
+              disabled={disabled}
+              variant="outline"
+              className="border-primary text-primary hover:bg-primary/5"
+            >
+              {labelFor("下班打卡")}
+            </Button>
+          </div>
+        );
+      })()}
 
       {/* 離線排隊 — 有待送出時顯示 */}
       <PendingQueueCard pending={pending} flushing={flushing} onRetry={flushQueue} />

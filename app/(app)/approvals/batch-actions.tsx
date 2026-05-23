@@ -11,6 +11,11 @@ import { batchApproveAction } from "./[id]/actions";
 import { uploadSignatureAction } from "../logs/[id]/photo-actions";
 import { formatWeatherSummary } from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
+import {
+  clearRememberedSig,
+  readRememberedSig,
+  writeRememberedSig,
+} from "@/lib/remembered-signature";
 import type { ApprovalStage, DailyLog } from "@/lib/types";
 
 type LogRow = DailyLog & {
@@ -25,49 +30,8 @@ const VERB: Record<ApprovalStage, string> = {
   approve: "核定通過",
 };
 
-// 「記住本次簽名」的 localStorage key 與過期 TTL(60 分鐘)
-const REMEMBER_KEY = "yumin-approval-sig-v1";
-const REMEMBER_TTL_MS = 60 * 60 * 1000;
-
-type RememberedSig = { dataUrl: string; savedAt: number };
-
-function readRememberedSig(): RememberedSig | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(REMEMBER_KEY);
-    if (!raw) return null;
-    const obj = JSON.parse(raw) as RememberedSig;
-    if (!obj?.dataUrl || !obj?.savedAt) return null;
-    if (Date.now() - obj.savedAt > REMEMBER_TTL_MS) {
-      window.localStorage.removeItem(REMEMBER_KEY);
-      return null;
-    }
-    return obj;
-  } catch {
-    return null;
-  }
-}
-
-function writeRememberedSig(dataUrl: string) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      REMEMBER_KEY,
-      JSON.stringify({ dataUrl, savedAt: Date.now() } satisfies RememberedSig),
-    );
-  } catch {
-    // quota exceeded — silently ignore
-  }
-}
-
-function clearRememberedSig() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(REMEMBER_KEY);
-  } catch {
-    // ignore
-  }
-}
+// 「記住本次簽名」的 localStorage 已抽到 lib/remembered-signature.ts,
+// approval-actions / new-log-form 都共用同一個 60-min cache。
 
 type QuickFilter = "all" | "no_photos" | "no_items" | "waiting_2d";
 
@@ -442,7 +406,7 @@ function BatchApprovalModal({
                   className: "w-full",
                   style: {
                     width: "100%",
-                    height: "260px",
+                    height: "clamp(180px, 28vh, 260px)",
                     touchAction: "none",
                   },
                 }}

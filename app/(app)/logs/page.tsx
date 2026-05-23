@@ -58,8 +58,9 @@ export default async function LogsPage({
   const isOfficeStaff = role === "office_staff";
   const canCreateLog = isSupervisor || role === "owner";
 
-  // 預設 scope:supervisor 看自己的(沿用原 UX),其他角色看全部。
-  const defaultScope: Scope = isSupervisor ? "mine" : "all";
+  // 預設 scope = "all":工地主任視角反映「要找上週同事的灌漿日誌複製」也常見,
+  // mine 仍然 1 click 可切。原本 supervisor 預設 mine 但反而讓人找不到歷史日誌。
+  const defaultScope: Scope = "all";
   const scope: Scope =
     sp.scope === "all" || sp.scope === "mine" ? (sp.scope as Scope) : defaultScope;
 
@@ -162,12 +163,22 @@ export default async function LogsPage({
         <Empty scope={scope} canCreateLog={canCreateLog} />
       ) : (
         <div className="space-y-3 md:space-y-4">
-          {groups.map((g) => {
+          {groups.map((g, gi) => {
             const hasActionable = g.counts.draft + g.counts.submitted > 0;
+            // 工地主任視角:approved 案件不該被收起來(常需要複製昨天日誌)。
+            // 規則:有 actionable / 是第一組 / 該案最後一筆 ≤7 天內 → 展開。
+            const daysSinceLatest = g.latestDate
+              ? Math.floor(
+                  (Date.now() - new Date(g.latestDate).getTime()) /
+                    (24 * 60 * 60 * 1000),
+                )
+              : Infinity;
+            const isRecent = daysSinceLatest <= 7;
+            const shouldOpen = hasActionable || gi === 0 || isRecent;
             return (
               <details
                 key={g.caseId}
-                open={hasActionable}
+                open={shouldOpen}
                 className="group rounded-lg border border-[#E0DCD6] bg-card transition-colors hover:border-accent open:border-[#D4CFC8]"
               >
                 <summary className="cursor-pointer list-none p-3.5 md:p-5 [&::-webkit-details-marker]:hidden">

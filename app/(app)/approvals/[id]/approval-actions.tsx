@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,11 @@ import {
   nextPendingRedirect,
 } from "./actions";
 import { uploadSignatureAction } from "../../logs/[id]/photo-actions";
+import {
+  readRememberedSig,
+  writeRememberedSig,
+  clearRememberedSig,
+} from "@/lib/remembered-signature";
 import type { ApprovalStage } from "@/lib/types";
 
 const VERB: Record<ApprovalStage, string> = {
@@ -32,7 +37,25 @@ export function ApprovalActions({
   const [comment, setComment] = useState("");
   // 退回原因 chip 改成 toggle:每個 chip 可獨立選/取消,送出時與自由文字合併
   const [selectedChips, setSelectedChips] = useState<string[]>([]);
+  // 「記住簽名」勾選 — 預設根據是否已有 cache 推斷:有就維持勾,沒就不勾
+  const [remember, setRemember] = useState(false);
+  const [hasStoredSig, setHasStoredSig] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  // mount 時若有 60min 內的快取簽名 → 自動套用 + 預設「記住」也勾上
+  useEffect(() => {
+    if (mode !== "approve") return;
+    const stored = readRememberedSig();
+    if (stored && sigRef.current) {
+      try {
+        sigRef.current.fromDataURL(stored.dataUrl);
+        setRemember(true);
+        setHasStoredSig(true);
+      } catch {
+        // canvas 還沒 mount 完成 — 略過
+      }
+    }
+  }, [mode]);
 
   function toggleChip(chip: string) {
     setSelectedChips((prev) =>
@@ -50,6 +73,7 @@ export function ApprovalActions({
 
   function clearSig() {
     sigRef.current?.clear();
+    setHasStoredSig(false);
   }
 
   function handleApprove() {
@@ -62,6 +86,10 @@ export function ApprovalActions({
       toast.error("簽名讀取失敗,請重試");
       return;
     }
+    // 套用 remember 設定 — 勾選保留 60min,取消勾就清掉 cache
+    if (remember) writeRememberedSig(dataUrl);
+    else clearRememberedSig();
+
     const signaturePromise = (async () => {
       const fd = new FormData();
       fd.set("dataUrl", dataUrl);
@@ -152,11 +180,32 @@ export function ApprovalActions({
               maxWidth={4}
               canvasProps={{
                 className: "w-full",
-                style: { width: "100%", height: "260px", touchAction: "none" },
+                style: {
+                  width: "100%",
+                  // 響應式高度:橫向手機 / 矮螢幕用較小高度避免擠出畫面
+                  height: "clamp(180px, 28vh, 260px)",
+                  touchAction: "none",
+                },
               }}
             />
           </div>
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex items-center justify-between">
+            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="size-4 cursor-pointer accent-[#003153]"
+              />
+              <span>
+                記住簽名(60 分鐘內)
+                {hasStoredSig && (
+                  <span className="ml-1 text-xs text-[#4A7C59]">
+                    ✓ 已套用上次
+                  </span>
+                )}
+              </span>
+            </label>
             <button
               type="button"
               onClick={clearSig}
