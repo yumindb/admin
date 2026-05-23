@@ -71,29 +71,20 @@ jobs:
           EOF
 
       - name: Dump Postgres (public schema)
+        shell: bash
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          set -o pipefail
           mkdir -p out
           pg_dump "$SUPABASE_DB_URL" \
             --schema=public \
             --no-owner --no-acl \
             --quote-all-identifiers \
-            --verbose 2> out/pg_dump.log \
+            2> out/pg_dump.log \
             | gzip > out/db_${{ steps.ts.outputs.ts }}.sql.gz
           ls -lh out/
-
-      - name: Diagnose Supabase S3 access
-        run: |
-          echo "::group::List buckets via rclone lsd"
-          rclone lsd supabase: -vv 2>&1 | tail -50 || true
-          echo "::endgroup::"
-          echo "::group::Try listing daily-photos with HTTP headers"
-          rclone lsf supabase:daily-photos --max-depth 1 -vv --dump headers 2>&1 | tail -80 || true
-          echo "::endgroup::"
-          echo "::group::Try with provider=Minio fallback"
-          rclone lsf :s3,provider=Minio,access_key_id=${{ secrets.SUPABASE_S3_ACCESS_KEY }},secret_access_key=${{ secrets.SUPABASE_S3_SECRET_KEY }},endpoint=${{ secrets.SUPABASE_S3_ENDPOINT }},region=${{ secrets.SUPABASE_S3_REGION }},force_path_style=true:daily-photos --max-depth 1 -vv 2>&1 | tail -40 || true
-          echo "::endgroup::"
+          echo "Dump size: $(stat -c%s out/db_${{ steps.ts.outputs.ts }}.sql.gz) bytes"
 
       - name: Mirror Storage buckets
         run: |
