@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useGeolocation, accuracyLevel } from "@/lib/use-geolocation";
 import {
@@ -68,12 +69,6 @@ export function AttendanceClient({
   const [autoPickedId, setAutoPickedId] = useState<string>("");
   const [note, setNote] = useState("");
   const [submitting, startTransition] = useTransition();
-  const [submitMsg, setSubmitMsg] = useState<
-    | { kind: "ok"; text: string }
-    | { kind: "error"; text: string }
-    | { kind: "queued"; text: string }
-    | null
-  >(null);
 
   // 離線佇列(Phase 2.24)— mount + online 事件時 flush
   const [pending, setPending] = useState<PendingClock[]>([]);
@@ -199,15 +194,13 @@ export function AttendanceClient({
       });
       await refreshPending();
       const label = eventType === "clock_in" ? "上班" : "下班";
-      setSubmitMsg({
-        kind: "queued",
-        text: `${label}打卡已離線存檔（${reason}）— 連上網路會自動送出`,
+      toast.warning(`${label}打卡已離線存檔`, {
+        description: `${reason} — 連上網路會自動送出`,
       });
       setNote("");
     } catch {
-      setSubmitMsg({
-        kind: "error",
-        text: "離線排隊也失敗了(此瀏覽器不支援 IndexedDB)— 請改連 wifi / 換瀏覽器再試",
+      toast.error("離線排隊失敗", {
+        description: "此瀏覽器不支援 IndexedDB — 請改連 wifi / 換瀏覽器再試",
       });
     }
   }
@@ -215,7 +208,7 @@ export function AttendanceClient({
   async function submit(eventType: "clock_in" | "clock_out") {
     if (geo.status !== "ok") return;
     if (noteRequired && !note.trim()) {
-      setSubmitMsg({ kind: "error", text: "未選案件時請填說明(例:在辦公室)" });
+      toast.error("未選案件時請填說明(例:在辦公室)");
       return;
     }
 
@@ -234,22 +227,21 @@ export function AttendanceClient({
     fd.set("note", note);
 
     startTransition(async () => {
-      setSubmitMsg(null);
       try {
         const res = await clockAction(fd);
         if (!res.ok) {
           // server 端業務錯誤 — 不該重試,直接報
-          setSubmitMsg({ kind: "error", text: res.error });
+          toast.error(res.error);
           return;
         }
         const label = eventType === "clock_in" ? "上班打卡成功" : "下班打卡成功";
         const detail =
           res.within_geofence === false && res.distance_m !== null
-            ? `（已標註:離工地 ${formatDistance(res.distance_m)},超出範圍）`
+            ? `已標註:離工地 ${formatDistance(res.distance_m)},超出範圍`
             : res.within_geofence === true && res.distance_m !== null
-              ? `（離工地 ${formatDistance(res.distance_m)}）`
+              ? `離工地 ${formatDistance(res.distance_m)}`
               : "";
-        setSubmitMsg({ kind: "ok", text: label + detail });
+        toast.success(label, detail ? { description: detail } : undefined);
         setNote("");
         router.refresh();
       } catch (e) {
@@ -258,7 +250,7 @@ export function AttendanceClient({
         if (isOfflineErrorMessage(msg)) {
           await queueOffline(eventType, "送出失敗");
         } else {
-          setSubmitMsg({ kind: "error", text: "送出失敗:" + msg });
+          toast.error("送出失敗", { description: msg });
         }
       }
     });
@@ -359,20 +351,6 @@ export function AttendanceClient({
           {submitting ? "送出中…" : "下班打卡"}
         </Button>
       </div>
-
-      {submitMsg && (
-        <div
-          className={`rounded-md px-3 py-2 text-sm ${
-            submitMsg.kind === "ok"
-              ? "border border-[#A7D7B1] bg-[#ECFDF5] text-[#15803D]"
-              : submitMsg.kind === "queued"
-                ? "border border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"
-                : "border border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
-          }`}
-        >
-          {submitMsg.text}
-        </div>
-      )}
 
       {/* 離線排隊 — 有待送出時顯示 */}
       <PendingQueueCard pending={pending} flushing={flushing} onRetry={flushQueue} />

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { getCompanyShort } from "@/lib/companies";
 import {
   Crown,
@@ -513,19 +514,18 @@ function StaffTableRow({
   const role = ROLE_BY_KEY.get(staff.role as UserRole);
   const Icon = role?.icon ?? UserCog;
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [confirmingToggle, setConfirmingToggle] = useState(false);
 
   function performToggle() {
     const next = !staff.is_active;
-    setError(null);
     setConfirmingToggle(false);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("user_id", staff.id);
       fd.set("next", String(next));
       const res = await toggleActiveAction(fd);
-      if (!res.ok) setError(res.error ?? "操作失敗");
+      if (!res.ok) toast.error(res.error ?? "操作失敗");
+      else toast.success(next ? "已啟用" : "已停用");
     });
   }
 
@@ -544,9 +544,6 @@ function StaffTableRow({
             </span>
           )}
         </div>
-        {error && (
-          <p className="mt-1 text-xs text-[#B91C1C]">{error}</p>
-        )}
       </td>
       <td className="px-4 py-3 font-mono text-muted-foreground">
         {staff.username ?? staff.email ?? "—"}
@@ -710,19 +707,18 @@ function StaffCard({
   onReset: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [confirmingToggle, setConfirmingToggle] = useState(false);
 
   function performToggle() {
     const next = !staff.is_active;
-    setError(null);
     setConfirmingToggle(false);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("user_id", staff.id);
       fd.set("next", String(next));
       const res = await toggleActiveAction(fd);
-      if (!res.ok) setError(res.error ?? "操作失敗");
+      if (!res.ok) toast.error(res.error ?? "操作失敗");
+      else toast.success(next ? "已啟用" : "已停用");
     });
   }
 
@@ -773,12 +769,6 @@ function StaffCard({
       >
         L{role.level}．{role.label}
       </div>
-
-      {error && (
-        <p className="mt-2 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-2 py-1 text-xs text-[#B91C1C]">
-          {error}
-        </p>
-      )}
 
       {canManage && (
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#F0EBE4] pt-3">
@@ -992,6 +982,10 @@ function CreateModal({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<StaffActionResult | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
 
+  useEffect(() => {
+    if (state?.error) toast.error(state.error);
+  }, [state]);
+
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -999,7 +993,10 @@ function CreateModal({ onClose }: { onClose: () => void }) {
     startTransition(async () => {
       const res = await createStaffAction(undefined, fd);
       setState(res);
-      if (res.ok) onClose();
+      if (res.ok) {
+        toast.success("帳號已建立");
+        onClose();
+      }
     });
   }
 
@@ -1057,11 +1054,6 @@ function CreateModal({ onClose }: { onClose: () => void }) {
             {ROLE_BY_KEY.get(role)?.permission}
           </p>
         </div>
-        {state?.error && (
-          <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-            {state.error}
-          </p>
-        )}
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
             取消
@@ -1090,6 +1082,10 @@ function EditModal({
   const [state, setState] = useState<StaffActionResult | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
 
+  useEffect(() => {
+    if (state?.error) toast.error(state.error);
+  }, [state]);
+
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -1098,7 +1094,10 @@ function EditModal({
     startTransition(async () => {
       const res = await updateStaffAction(undefined, fd);
       setState(res);
-      if (res.ok) onClose();
+      if (res.ok) {
+        toast.success("已儲存");
+        onClose();
+      }
     });
   }
 
@@ -1132,11 +1131,6 @@ function EditModal({
             {ROLE_BY_KEY.get(role)?.permission}
           </p>
         </div>
-        {state?.error && (
-          <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-            {state.error}
-          </p>
-        )}
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
             取消
@@ -1167,6 +1161,10 @@ function ResetModal({
   const [savedPassword, setSavedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    if (state?.error) toast.error(state.error);
+  }, [state]);
+
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -1176,6 +1174,7 @@ function ResetModal({
       const res = await resetPasswordAction(undefined, fd);
       setState(res);
       if (res.ok) {
+        toast.success("密碼已重設");
         setSavedPassword(pw);
         setCopied(false);
       }
@@ -1231,11 +1230,6 @@ function ResetModal({
             </div>
           )}
         </div>
-        {state?.error && (
-          <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-            {state.error}
-          </p>
-        )}
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
             {savedPassword ? "關閉" : "取消"}

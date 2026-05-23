@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { CasePicker, type CasePickerOption } from "@/components/case-picker";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions";
@@ -35,7 +36,6 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
   const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
   const [photos, setPhotos] = useState<FieldReportPhoto[]>(initial?.photos ?? []);
-  const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number }>({
     done: 0,
@@ -53,7 +53,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     const validFiles = Array.from(files).filter((f) => {
       if (!f.type.startsWith("image/")) return false;
       if (f.size > 8 * 1024 * 1024) {
-        setError(`照片 ${f.name} 超過 8MB,跳過`);
+        toast.error(`照片 ${f.name} 超過 8MB`, { description: "已跳過此張" });
         return false;
       }
       return true;
@@ -61,7 +61,6 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     if (!validFiles.length) return;
 
     setUploading(true);
-    setError(null);
     setProgress({ done: 0, total: validFiles.length });
 
     const prepared = await Promise.all(validFiles.map((f) => compressPhoto(f)));
@@ -78,15 +77,24 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
 
     const newPhotos: FieldReportPhoto[] = [];
     let firstError: string | null = null;
+    let failedCount = 0;
     for (const r of results) {
       if (r.ok && r.path) newPhotos.push({ path: r.path, caption: "" });
-      else if (!r.ok && !firstError) firstError = r.error;
+      else if (!r.ok) {
+        failedCount += 1;
+        if (!firstError) firstError = r.error;
+      }
     }
     if (newPhotos.length) {
       for (const p of newPhotos) sessionUploadsRef.current.add(p.path);
       setPhotos((arr) => [...arr, ...newPhotos]);
     }
-    if (firstError) setError(firstError);
+    if (firstError) {
+      toast.error(
+        failedCount > 1 ? `${failedCount} 張照片上傳失敗` : "照片上傳失敗",
+        { description: firstError },
+      );
+    }
     setUploading(false);
     setProgress({ done: 0, total: 0 });
   }
@@ -105,13 +113,12 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
   }
 
   function submit() {
-    setError(null);
     if (!caseId) {
-      setError("請先選案場");
+      toast.error("請先選案場");
       return;
     }
     if (!note.trim() && photos.length === 0) {
-      setError("至少寫幾個字或加一張照片");
+      toast.error("至少寫幾個字或加一張照片");
       return;
     }
 
@@ -125,9 +132,10 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         ? await updateFieldReportAction({ ...payload, reportId })
         : await createFieldReportAction({ ...payload, submitLocation });
       if (!res.ok) {
-        setError(res.error ?? "送出失敗");
+        toast.error(res.error ?? "送出失敗");
         return;
       }
+      toast.success(reportId ? "回報已更新" : "回報已送出");
       router.push(`/field-reports/${res.reportId}`);
     });
   }
@@ -207,12 +215,6 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
             </li>
           ))}
         </ul>
-      )}
-
-      {error && (
-        <p className="rounded-lg border-2 border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-base text-[#B91C1C]">
-          {error}
-        </p>
       )}
 
       {!reportId && (

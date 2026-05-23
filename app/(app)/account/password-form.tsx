@@ -2,11 +2,11 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
+import { toast } from "sonner";
 import { changePasswordAction, type ChangePasswordState } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { NextStepHint } from "@/components/next-step-hint";
 
 export function PasswordForm() {
   const [state, formAction] = useActionState<ChangePasswordState, FormData>(
@@ -15,23 +15,18 @@ export function PasswordForm() {
   );
   const formRef = useRef<HTMLFormElement>(null);
 
-  // 成功後清空欄位 — 避免新密碼留在 input 殘影裡
   useEffect(() => {
-    if (state?.ok) {
+    if (!state) return;
+    if (state.ok) {
+      toast.success(state.message);
       formRef.current?.reset();
+    } else {
+      toast.error(state.error);
     }
   }, [state]);
 
   return (
     <form ref={formRef} action={formAction} className="space-y-4">
-      {state?.ok === true && (
-        <NextStepHint tone="success">{state.message}</NextStepHint>
-      )}
-      {state?.ok === false && (
-        <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-          {state.error}
-        </p>
-      )}
 
       <div className="space-y-2">
         <Label htmlFor="current_password">目前密碼</Label>

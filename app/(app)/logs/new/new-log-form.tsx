@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -221,7 +222,6 @@ export function NewLogForm({
   const [reportDest, setReportDest] = useState<Map<string, MergeDest>>(
     () => new Map()
   );
-  const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   // 點照片放大檢視用 — 為 null 時不顯示;設成 path 時開啟 lightbox 顯示該張
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
@@ -239,7 +239,6 @@ export function NewLogForm({
 
   function clearSig() {
     sigRef.current?.clear();
-    setError(null);
   }
 
   // mount 後:還原 localStorage 草稿 + 補 logDate 預設(今天)
@@ -496,7 +495,7 @@ export function NewLogForm({
       );
       const r = await createExtraOrUnsignedAction(fd);
       if (!r.ok) {
-        setError(`建立追加工項失敗:${r.error}`);
+        toast.error("建立追加工項失敗", { description: r.error });
         setOverflowAttempt(null);
         setSplittingOverflow(false);
         return;
@@ -524,7 +523,6 @@ export function NewLogForm({
       };
       setUnsignedAdded((prev) => [...prev, newItem]);
       setPickedUnsigned((prev) => [...prev, newValue]);
-      setError(null);
     } finally {
       setOverflowAttempt(null);
       setSplittingOverflow(false);
@@ -605,7 +603,6 @@ export function NewLogForm({
       return lines.join("\n");
     }
 
-    setError(null);
 
     // 1. 文字併到「重要事項」(只在 dest='notes' 時);photos-only 文字直接丟
     const noteBlocks: string[] = [];
@@ -655,7 +652,7 @@ export function NewLogForm({
     const validFiles = Array.from(files).filter((f) => {
       if (!f.type.startsWith("image/")) return false;
       if (f.size > 8 * 1024 * 1024) {
-        setError(`照片 ${f.name} 超過 8MB,跳過`);
+        toast.error(`照片 ${f.name} 超過 8MB`, { description: "已跳過此張" });
         return false;
       }
       return true;
@@ -663,7 +660,6 @@ export function NewLogForm({
     if (!validFiles.length) return;
 
     setUploading(true);
-    setError(null);
     setUploadProgress({ done: 0, total: validFiles.length });
 
     const preparedFiles = await Promise.all(validFiles.map((f) => compressPhoto(f)));
@@ -681,9 +677,13 @@ export function NewLogForm({
 
     const newPaths: string[] = [];
     let firstError: string | null = null;
+    let failedCount = 0;
     for (const r of results) {
       if (r.ok && r.path) newPaths.push(r.path);
-      else if (!r.ok && !firstError) firstError = r.error;
+      else if (!r.ok) {
+        failedCount += 1;
+        if (!firstError) firstError = r.error;
+      }
     }
     if (newPaths.length) {
       for (const p of newPaths) sessionUploadsRef.current.add(p);
@@ -692,7 +692,12 @@ export function NewLogForm({
         ...newPaths.map<LogPhoto>((path) => ({ path, caption: "" })),
       ]);
     }
-    if (firstError) setError(firstError);
+    if (firstError) {
+      toast.error(
+        failedCount > 1 ? `${failedCount} 張照片上傳失敗` : "照片上傳失敗",
+        { description: firstError },
+      );
+    }
     setUploading(false);
     setUploadProgress({ done: 0, total: 0 });
   }
@@ -727,27 +732,26 @@ export function NewLogForm({
   }
 
   function submit(intent: "draft" | "submit" | "post_edit") {
-    setError(null);
     if (!caseId) {
-      setError("請選擇案件");
+      toast.error("請選擇案件");
       return;
     }
     const totalPicked =
       picked.length + pickedExtra.length + pickedUnsigned.length;
     if (intent === "submit" && totalPicked === 0) {
-      setError("送出前至少要選 1 個工項(合約內 / 合約外 / 未簽約 任一)");
+      toast.error("送出前至少要選 1 個工項(合約內 / 合約外 / 未簽約 任一)");
       return;
     }
 
     let signaturePromise: Promise<string | undefined> = Promise.resolve(undefined);
     if (intent === "submit") {
       if (sigRef.current?.isEmpty()) {
-        setError("送出前請在下方簽名");
+        toast.error("送出前請在下方簽名");
         return;
       }
       const dataUrl = sigRef.current?.toDataURL("image/png");
       if (!dataUrl) {
-        setError("簽名讀取失敗,請重試");
+        toast.error("簽名讀取失敗,請重試");
         return;
       }
       signaturePromise = (async () => {
@@ -764,7 +768,7 @@ export function NewLogForm({
       try {
         signatureUrl = await signaturePromise;
       } catch (e) {
-        setError((e as Error).message);
+        toast.error((e as Error).message);
         return;
       }
       // 把計算出的累計值寫進 row,讓存進 DB / 報表 / PDF 看的都是自動加總
@@ -823,7 +827,7 @@ export function NewLogForm({
         submitLocation,
       });
       if (!res.ok) {
-        setError(res.error ?? "儲存失敗");
+        toast.error(res.error ?? "儲存失敗");
         return;
       }
       // 清掉本地草稿
@@ -832,6 +836,13 @@ export function NewLogForm({
           localStorage.removeItem(draftKey);
         } catch {}
       }
+      const successMsg =
+        intent === "submit"
+          ? "日誌已送出"
+          : intent === "post_edit"
+            ? "日誌已更新"
+            : "草稿已儲存";
+      toast.success(successMsg);
       router.push(`/logs/${res.logId}`);
     });
   }
@@ -1385,12 +1396,6 @@ export function NewLogForm({
             </button>
           </div>
         </Section>
-      )}
-
-      {error && (
-        <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-          {error}
-        </p>
       )}
 
       {!logId && autosaved && (

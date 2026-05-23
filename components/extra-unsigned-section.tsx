@@ -18,6 +18,7 @@
  */
 
 import { useMemo, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { Plus, Pencil, Trash2, FilePlus2 } from "lucide-react";
 import {
   WorkItemEditModal,
@@ -65,10 +66,6 @@ export function ExtraUnsignedSection({
   // 多選打包:勾選的工項 ids
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bundleDialogOpen, setBundleDialogOpen] = useState(false);
-  const [feedback, setFeedback] = useState<
-    | { tone: "info" | "warn" | "error"; msg: string }
-    | null
-  >(null);
   const [isPending, startTransition] = useTransition();
 
   const title = kind === "extra" ? "合約外項目（已簽約追加）" : "未簽約施工內容";
@@ -99,7 +96,6 @@ export function ExtraUnsignedSection({
   function openCreate() {
     setModalMode("create");
     setModalTarget(undefined);
-    setFeedback(null);
     setModalOpen(true);
   }
 
@@ -114,7 +110,6 @@ export function ExtraUnsignedSection({
       brandNote: row.brandNote,
       itemType: row.itemType,
     });
-    setFeedback(null);
     setModalOpen(true);
   }
 
@@ -125,22 +120,19 @@ export function ExtraUnsignedSection({
       fd.set("work_item_id", row.id);
       const result = await deleteWorkItemAction(fd);
       if (!result.ok) {
-        setFeedback({ tone: "error", msg: result.error });
+        toast.error(result.error);
         return;
       }
-      setFeedback({
-        tone: result.warning ? "warn" : "info",
-        msg: result.warning ?? "已刪除",
-      });
+      if (result.warning) toast.warning(result.warning);
+      else toast.success("已刪除");
     });
   }
 
   function openBundle() {
     if (selectedIds.size === 0) {
-      setFeedback({ tone: "warn", msg: "請先勾選要打包的工項" });
+      toast.warning("請先勾選要打包的工項");
       return;
     }
-    setFeedback(null);
     setBundleDialogOpen(true);
   }
 
@@ -199,20 +191,6 @@ export function ExtraUnsignedSection({
         <p className="mb-3 text-sm text-muted-foreground">
           勾選多筆同時要追加的工項,按上方「建立追加合約」可一次打包成一份報價單(可填 bundle 優惠價)。
         </p>
-      )}
-
-      {feedback && (
-        <div
-          className={`mb-3 rounded-md border px-3 py-2 text-sm ${
-            feedback.tone === "error"
-              ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
-              : feedback.tone === "warn"
-                ? "border-[#FCD34D] bg-[#FFFBEB] text-[#92400E]"
-                : "border-[#A7F3D0] bg-[#ECFDF5] text-[#4A7C59]"
-          }`}
-        >
-          {feedback.msg}
-        </div>
       )}
 
       {rows.length === 0 ? (
@@ -380,10 +358,7 @@ export function ExtraUnsignedSection({
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           onSaved={() => {
-            setFeedback({
-              tone: "info",
-              msg: modalMode === "create" ? `已新增${title}` : "已更新",
-            });
+            toast.success(modalMode === "create" ? `已新增${title}` : "已更新");
           }}
           caseId={caseId}
           sectionOptions={[]}
@@ -402,9 +377,8 @@ export function ExtraUnsignedSection({
           onSaved={(name) => {
             setBundleDialogOpen(false);
             clearSelection();
-            setFeedback({
-              tone: "info",
-              msg: `已建立追加合約「${name}」,所選工項已轉到合約外。`,
+            toast.success(`已建立追加合約「${name}」`, {
+              description: "所選工項已轉到合約外",
             });
           }}
         />
@@ -436,15 +410,13 @@ function BundleContractDialog({
   const [name, setName] = useState(`${today} 追加合約`);
   const [bundlePrice, setBundlePrice] = useState("");
   const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function submit() {
     if (!name.trim()) {
-      setError("合約名稱必填");
+      toast.error("合約名稱必填");
       return;
     }
-    setError(null);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("case_id", caseId);
@@ -455,7 +427,7 @@ function BundleContractDialog({
       fd.set("work_item_ids", JSON.stringify(rows.map((r) => r.id)));
       const r = await createExtraContractAction(fd);
       if (!r.ok) {
-        setError(r.error);
+        toast.error(r.error);
         return;
       }
       onSaved(name.trim());
@@ -555,11 +527,6 @@ function BundleContractDialog({
             />
           </div>
 
-          {error && (
-            <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-              {error}
-            </p>
-          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">

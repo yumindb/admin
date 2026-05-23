@@ -13,6 +13,7 @@
  */
 
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 import { Pencil, Unlink, ChevronDown, Pencil as PencilIcon, Trash2 } from "lucide-react";
 import {
   WorkItemEditModal,
@@ -64,10 +65,6 @@ export function ExtraContractsSection({
     useState<WorkItemEditTarget | undefined>(undefined);
   // 編輯合約 modal
   const [contractEditing, setContractEditing] = useState<ContractWithItems | null>(null);
-  const [feedback, setFeedback] = useState<
-    | { tone: "info" | "warn" | "error"; msg: string }
-    | null
-  >(null);
   const [isPending, startTransition] = useTransition();
 
   function openItemEdit(item: ContractItem) {
@@ -80,7 +77,6 @@ export function ExtraContractsSection({
       brandNote: item.brandNote,
       itemType: "extra",
     });
-    setFeedback(null);
     setItemModalOpen(true);
   }
 
@@ -91,12 +87,11 @@ export function ExtraContractsSection({
       fd.set("work_item_id", item.id);
       const r = await deleteWorkItemAction(fd);
       if (!r.ok) {
-        setFeedback({ tone: "error", msg: r.error });
+        toast.error(r.error);
+      } else if (r.warning) {
+        toast.warning(r.warning);
       } else {
-        setFeedback({
-          tone: r.warning ? "warn" : "info",
-          msg: r.warning ?? "已刪除",
-        });
+        toast.success("已刪除");
       }
     });
   }
@@ -113,9 +108,9 @@ export function ExtraContractsSection({
       fd.set("contract_id", c.id);
       const r = await unbundleExtraContractAction(fd);
       if (!r.ok) {
-        setFeedback({ tone: "error", msg: r.error });
+        toast.error(r.error);
       } else {
-        setFeedback({ tone: "info", msg: "已拆解,工項已退回未簽約區" });
+        toast.success("已拆解", { description: "工項已退回未簽約區" });
       }
     });
   }
@@ -145,20 +140,6 @@ export function ExtraContractsSection({
         </h2>
       </div>
 
-      {feedback && (
-        <div
-          className={`mb-3 rounded-md border px-3 py-2 text-sm ${
-            feedback.tone === "error"
-              ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
-              : feedback.tone === "warn"
-                ? "border-[#FCD34D] bg-[#FFFBEB] text-[#92400E]"
-                : "border-[#A7F3D0] bg-[#ECFDF5] text-[#4A7C59]"
-          }`}
-        >
-          {feedback.msg}
-        </div>
-      )}
-
       {contracts.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-10 text-center text-sm text-muted-foreground">
           目前沒有追加合約。從下方「未簽約」區塊勾選多筆工項,按「建立追加合約」即可打包成一份報價單。
@@ -185,7 +166,7 @@ export function ExtraContractsSection({
         <WorkItemEditModal
           open={itemModalOpen}
           onClose={() => setItemModalOpen(false)}
-          onSaved={() => setFeedback({ tone: "info", msg: "已更新" })}
+          onSaved={() => toast.success("已更新")}
           caseId={caseId}
           sectionOptions={[]}
           mode="edit"
@@ -198,10 +179,7 @@ export function ExtraContractsSection({
         <ContractEditModal
           contract={contractEditing}
           onClose={() => setContractEditing(null)}
-          onSaved={() => {
-            setContractEditing(null);
-            setFeedback({ tone: "info", msg: "合約已更新" });
-          }}
+          onSaved={() => setContractEditing(null)}
         />
       )}
     </div>
@@ -428,15 +406,13 @@ function ContractEditModal({
     contract.bundlePrice !== null ? String(contract.bundlePrice) : "",
   );
   const [note, setNote] = useState(contract.note ?? "");
-  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function submit() {
     if (!name.trim()) {
-      setError("合約名稱必填");
+      toast.error("合約名稱必填");
       return;
     }
-    setError(null);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("contract_id", contract.id);
@@ -445,9 +421,10 @@ function ContractEditModal({
       fd.set("note", note.trim());
       const r = await updateExtraContractAction(fd);
       if (!r.ok) {
-        setError(r.error);
+        toast.error(r.error);
         return;
       }
+      toast.success("追加合約已更新");
       onSaved();
     });
   }
@@ -491,11 +468,6 @@ function ContractEditModal({
               className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
-          {error && (
-            <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-              {error}
-            </p>
-          )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
           <button

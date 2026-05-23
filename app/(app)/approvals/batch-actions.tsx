@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { batchApproveAction } from "./[id]/actions";
 import { uploadSignatureAction } from "../logs/[id]/photo-actions";
@@ -217,7 +218,6 @@ function BatchApprovalModal({
   const sigRef = useRef<SignatureCanvas>(null);
   const [comment, setComment] = useState("");
   const [remember, setRemember] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     ok: string[];
     failed: { logId: string; reason: string }[];
@@ -240,18 +240,16 @@ function BatchApprovalModal({
 
   function clearSig() {
     sigRef.current?.clear();
-    setError(null);
   }
 
   function submit() {
-    setError(null);
     if (sigRef.current?.isEmpty()) {
-      setError("請先簽名");
+      toast.error("請先簽名");
       return;
     }
     const dataUrl = sigRef.current?.toDataURL("image/png");
     if (!dataUrl) {
-      setError("簽名讀取失敗,請重試");
+      toast.error("簽名讀取失敗,請重試");
       return;
     }
 
@@ -261,7 +259,7 @@ function BatchApprovalModal({
       fd.set("dataUrl", dataUrl);
       const upload = await uploadSignatureAction(fd);
       if (!upload.ok) {
-        setError(upload.error);
+        toast.error(upload.error);
         return;
       }
       // 2) 記住或清除暫存
@@ -355,12 +353,6 @@ function BatchApprovalModal({
               placeholder="備註(選填,所有勾選日誌共用)"
               className="mt-3 w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
-
-            {error && (
-              <p className="mt-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-                {error}
-              </p>
-            )}
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <Button

@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import SignatureCanvas from "react-signature-canvas";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   approveStageAction,
@@ -30,8 +31,6 @@ export function ApprovalActions({
   const [comment, setComment] = useState("");
   // 退回原因 chip 改成 toggle:每個 chip 可獨立選/取消,送出時與自由文字合併
   const [selectedChips, setSelectedChips] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function toggleChip(chip: string) {
@@ -50,19 +49,16 @@ export function ApprovalActions({
 
   function clearSig() {
     sigRef.current?.clear();
-    setError(null);
   }
 
   function handleApprove() {
-    setError(null);
-
     if (sigRef.current?.isEmpty()) {
-      setError(`請在下方簽名再${VERB[stage]}`);
+      toast.error(`請在下方簽名再${VERB[stage]}`);
       return;
     }
     const dataUrl = sigRef.current?.toDataURL("image/png");
     if (!dataUrl) {
-      setError("簽名讀取失敗,請重試");
+      toast.error("簽名讀取失敗,請重試");
       return;
     }
     const signaturePromise = (async () => {
@@ -78,7 +74,7 @@ export function ApprovalActions({
       try {
         signatureUrl = await signaturePromise;
       } catch (e) {
-        setError((e as Error).message);
+        toast.error((e as Error).message);
         return;
       }
       const res = await approveStageAction({
@@ -87,28 +83,27 @@ export function ApprovalActions({
         comment: comment.trim() || undefined,
       });
       if (!res.ok) {
-        setError(res.error);
+        toast.error(res.error);
         return;
       }
-      setSuccess(`已${VERB[stage]},跳下一份…`);
+      toast.success(`已${VERB[stage]}`, { description: "跳下一份…" });
       await nextPendingRedirect(logId);
     });
   }
 
   function handleReject() {
-    setError(null);
     const finalComment = buildRejectComment();
     if (!finalComment) {
-      setError("退回需要填原因");
+      toast.error("退回需要填原因");
       return;
     }
     startTransition(async () => {
       const res = await rejectStageAction({ logId, comment: finalComment });
       if (!res.ok) {
-        setError(res.error);
+        toast.error(res.error);
         return;
       }
-      setSuccess("已退回,跳下一份…");
+      toast.success("已退回", { description: "跳下一份…" });
       await nextPendingRedirect(logId);
     });
   }
@@ -258,16 +253,6 @@ export function ApprovalActions({
         </div>
       )}
 
-      {error && (
-        <p className="mt-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-          {error}
-        </p>
-      )}
-      {success && (
-        <p className="mt-3 rounded-md border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-2 text-sm text-[#4A7C59]">
-          {success}
-        </p>
-      )}
     </div>
   );
 }
