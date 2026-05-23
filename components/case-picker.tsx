@@ -14,6 +14,17 @@ export type CasePickerOption = {
 };
 
 /**
+ * Picker 第一段「特殊選項」— 例如打卡頁的「在公司 / 移動中」。
+ * 不參與距離排序,固定在最上面。
+ */
+export type CasePickerExtraOption = {
+  id: string;
+  label: string;
+  description?: string;
+  icon?: string;
+};
+
+/**
  * 大按鈕 + 全螢幕清單的案場選擇器。
  * 給現場工人用 — 點一下展開大字大按鈕的案場清單,點一下就選好。
  *
@@ -26,15 +37,20 @@ export function CasePicker({
   onChange,
   emptyText = "沒有可用案場",
   sortByDistance = true,
+  extraOptions,
+  placeholder = "👉 點這裡選案場",
 }: {
   cases: CasePickerOption[];
   value: string;
   onChange: (id: string) => void;
   emptyText?: string;
   sortByDistance?: boolean;
+  extraOptions?: CasePickerExtraOption[];
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selected = cases.find((c) => c.id === value);
+  const selectedExtra = extraOptions?.find((e) => e.id === value);
 
   // 靜默取位置(已授權才取;沒授權就 fallback 用原順序)
   const myLoc = useSilentLocationOnce();
@@ -92,9 +108,19 @@ export function CasePicker({
                 {selected.name}
               </div>
             </>
+          ) : selectedExtra ? (
+            <div className="text-xl font-semibold text-primary">
+              {selectedExtra.icon ? `${selectedExtra.icon} ` : ""}
+              {selectedExtra.label}
+              {selectedExtra.description && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  {selectedExtra.description}
+                </span>
+              )}
+            </div>
           ) : (
             <div className="text-xl font-medium text-muted-foreground">
-              👉 點這裡選案場
+              {placeholder}
             </div>
           )}
         </div>
@@ -126,6 +152,51 @@ export function CasePicker({
                 ×
               </button>
             </div>
+            {extraOptions && extraOptions.length > 0 && (
+              <ul className="border-b border-[#E0DCD6]">
+                {extraOptions.map((ex) => {
+                  const isSel = ex.id === value;
+                  return (
+                    <li key={ex.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange(ex.id);
+                          setOpen(false);
+                        }}
+                        className={`flex w-full items-start gap-3 px-5 py-5 text-left transition-colors ${
+                          isSel
+                            ? "bg-[#FAF7F2]"
+                            : "hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border-2 ${
+                            isSel
+                              ? "border-accent bg-accent text-white"
+                              : "border-[#E0DCD6] bg-white"
+                          }`}
+                          aria-hidden
+                        >
+                          {isSel ? "✓" : ""}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-lg font-semibold text-primary">
+                            {ex.icon ? `${ex.icon} ` : ""}
+                            {ex.label}
+                          </span>
+                          {ex.description && (
+                            <span className="mt-0.5 block text-sm text-muted-foreground">
+                              {ex.description}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             {cases.length === 0 ? (
               <p className="px-5 py-12 text-center text-base text-muted-foreground">
                 {emptyText}

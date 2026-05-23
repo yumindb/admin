@@ -524,11 +524,12 @@ function SelectedItemCard({
 
       {/* 第二列:數量 + 模式 segmented control */}
       <div className="mt-2.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+        {/* 戴手套手指誤觸 -/+ 的機率很高,所以 stepper 加大到 44px (Apple HIG) + gap-2 */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onMinus}
-            className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
             aria-label="減"
           >
             −
@@ -545,12 +546,12 @@ function SelectedItemCard({
               if (!Number.isFinite(n)) return;
               onChangeQty(clampStored(isPct ? n / 100 : n));
             }}
-            className="h-10 w-16 rounded-md border border-[#E0DCD6] bg-white px-1 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+            className="h-11 w-20 rounded-md border border-[#E0DCD6] bg-white px-1 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
           <button
             type="button"
             onClick={onPlus}
-            className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-[#E0DCD6] bg-white text-lg text-[#5A5050] hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
             aria-label="加"
           >
             ＋
@@ -584,7 +585,7 @@ function ModeSegment({
   // 用兩個並排的按鈕做 segmented control;active 那邊填銅金底色,
   // 一眼就看得出「兩個模式可切換」。鎖定狀態時整個變半透明,點擊無效。
   const segBase =
-    "inline-flex h-10 items-center justify-center px-3 text-sm font-medium transition-colors";
+    "inline-flex h-11 items-center justify-center px-3 text-sm font-medium transition-colors";
   return (
     <div
       className={cn(

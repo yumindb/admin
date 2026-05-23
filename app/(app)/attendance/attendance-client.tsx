@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { CasePicker, type CasePickerExtraOption } from "@/components/case-picker";
 import { useGeolocation, accuracyLevel } from "@/lib/use-geolocation";
 import {
   evaluateGeofence,
@@ -261,7 +262,9 @@ export function AttendanceClient({
       {/* 1) 定位狀態卡 */}
       <LocationStatusCard geo={geo} />
 
-      {/* 2) 案件選擇 */}
+      {/* 2) 案件選擇 — 用 CasePicker 取代 native <select>
+              (原生 select 不支援搜尋、距離數字 tabular-nums 在不同瀏覽器跑掉,
+               UI 審查與工地主任都點過名要改) */}
       <section className="rounded-md border border-[#E0DCD6] bg-card p-4">
         <div className="mb-2 flex items-baseline justify-between">
           <h2 className="text-sm font-medium text-primary">選擇案件</h2>
@@ -271,32 +274,29 @@ export function AttendanceClient({
             </span>
           )}
         </div>
-        <select
+        <CasePicker
+          cases={cases.map((c) => ({
+            id: c.id,
+            name: `${c.name}${c.status === "paused" ? "〔暫停〕" : ""}`,
+            code: c.code,
+            lat: c.lat,
+            lng: c.lng,
+          }))}
           value={effectiveCaseId}
-          onChange={(e) => {
-            setSelectedCaseId(e.target.value);
+          onChange={(id) => {
+            setSelectedCaseId(id);
             setAutoPickedId(""); // 使用者一旦手動選,就不再被 recommended 覆蓋
           }}
-          className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base text-foreground outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-          disabled={geo.status === "locating"}
-        >
-          <option value="">— 請選擇 —</option>
-          <option value={NO_CASE}>📍 在公司 / 移動中（不指定案件）</option>
-          {casesByDistance.map((c) => {
-            const distLabel =
-              geo.status === "ok" && c.lat !== null && c.lng !== null
-                ? `  · ${formatDistance(haversineMeters({ lat: geo.fix.lat, lng: geo.fix.lng }, { lat: c.lat, lng: c.lng }))}`
-                : c.lat === null
-                  ? "  · 案件無座標"
-                  : "";
-            const status = c.status === "paused" ? " 〔暫停〕" : "";
-            return (
-              <option key={c.id} value={c.id}>
-                {(c.code ? `${c.code}｜` : "") + c.name + status + distLabel}
-              </option>
-            );
-          })}
-        </select>
+          extraOptions={[
+            {
+              id: NO_CASE,
+              label: "不在任何工地",
+              description: "例:在路上、回辦公室、加油站",
+              icon: "🏢",
+            },
+          ]}
+          placeholder="👉 點這裡選案件"
+        />
 
         {/* 顯示選中案件的 geofence 評估 */}
         {evalForSelected && evalForSelected.distanceM !== null && (

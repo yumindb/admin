@@ -38,17 +38,25 @@ export function BottomTabNav({ tabs }: { tabs: BottomTab[] }) {
       >
         {tabs.map((tab) => {
           const active = isTabActive(pathname, tab.href);
+          // active 加 2px 銅金頂條 + 暖米白底,工地強光下一眼看出當前所在分頁
+          // min-h 60px 確保 iOS Safari 字級縮小時仍維持 Apple HIG 44px 觸控目標
           return (
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-col items-center justify-center gap-1 py-2.5 text-xs transition-colors ${
+              className={`relative flex min-h-[60px] flex-col items-center justify-center gap-1 py-2.5 text-xs transition-colors ${
                 active
-                  ? "text-accent"
+                  ? "bg-[#FAF7F2] text-accent"
                   : "text-muted-foreground hover:text-foreground active:bg-[#F5F1EC]"
               }`}
               aria-current={active ? "page" : undefined}
             >
+              {active && (
+                <span
+                  aria-hidden
+                  className="absolute inset-x-0 top-0 h-0.5 bg-accent"
+                />
+              )}
               <Icon name={tab.icon} />
               <span className="font-medium leading-tight">{tab.label}</span>
             </Link>

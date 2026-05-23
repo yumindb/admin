@@ -1304,7 +1304,7 @@ export function NewLogForm({
                   <button
                     type="button"
                     onClick={() => removePhoto(p.path)}
-                    className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-full bg-black/60 text-base text-white hover:bg-black/80"
+                    className="absolute right-1.5 top-1.5 inline-flex size-10 items-center justify-center rounded-full bg-black/70 text-xl text-white shadow-md hover:bg-black/85 active:bg-black"
                     aria-label="刪除"
                   >
                     ×

@@ -200,7 +200,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
                 <button
                   type="button"
                   onClick={() => removePhoto(idx)}
-                  className="absolute right-2 top-2 inline-flex size-10 items-center justify-center rounded-full bg-black/70 text-2xl text-white shadow-md hover:bg-black/85 active:bg-black"
+                  className="absolute right-2 top-2 inline-flex size-11 items-center justify-center rounded-full bg-black/70 text-2xl text-white shadow-md hover:bg-black/85 active:bg-black"
                   aria-label="刪除這張"
                 >
                   ×
