@@ -198,6 +198,9 @@ export function NewLogForm({
   // 「新增臨時項」即時加入的 extra/unsigned 工項;case 切換時會重設
   const [extraAdded, setExtraAdded] = useState<PickerItem[]>([]);
   const [unsignedAdded, setUnsignedAdded] = useState<PickerItem[]>([]);
+  // 高亮 + 滾動到剛新增的工項(臨時項 / overflow split) — 工地主任視角:
+  // 新工項加在 picker 很下面,不知道有沒有成功 / 加在哪裡
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
   // 新增臨時項 dialog 控制
   const [tempDialogKind, setTempDialogKind] = useState<"extra" | "unsigned" | null>(null);
   // 主任輸入超過契約量時的 dialog 控制(item 1 of 2026-05-08 業主回饋)
@@ -487,6 +490,7 @@ export function NewLogForm({
       setUnsignedAdded((prev) => [...prev, newItem]);
       setPickedUnsigned((prev) => [...prev, newValue]);
     }
+    setHighlightedItemId(created.id);
   }
 
   // 主任在合約內 picker 輸入超出剩餘量(累計 + 本日 > 契約量)時,開 dialog 詢問是否
@@ -541,6 +545,9 @@ export function NewLogForm({
       }
 
       // 新工項放進「未簽約」picker:預設用 absolute mode + 帶上本日超出量。
+      // 重要:picker 端 totalQuantity 用 null(無 cap),不然 supervisor 想
+      // 再多填一點就會被 fillCap 卡住又跳另一個 overflow dialog。DB 端的
+      // quantity 仍存 estQuantity 給辦公室參考用,跟 picker 行為解耦。
       const newItem: PickerItem = {
         id: r.workItemId,
         parentId: null,
@@ -549,7 +556,7 @@ export function NewLogForm({
         tenderCode: null,
         name: newName,
         unit: item.unit,
-        totalQuantity: estQuantity,
+        totalQuantity: null,
       };
       const newQtyForPicker =
         mode === "percent" && item.totalQuantity != null
@@ -562,6 +569,9 @@ export function NewLogForm({
       };
       setUnsignedAdded((prev) => [...prev, newItem]);
       setPickedUnsigned((prev) => [...prev, newValue]);
+      // 高亮 + 滾動到新工項 — supervisor 視角:新工項加在 picker 很下面,
+      // 不知道有沒有加成功
+      setHighlightedItemId(r.workItemId);
     } finally {
       setOverflowAttempt(null);
       setSplittingOverflow(false);
@@ -1217,6 +1227,8 @@ export function NewLogForm({
             onChange={setPicked}
             aggregates={priorAggregates?.[caseId]}
             onOverflow={handleOverflow}
+            highlightItemId={highlightedItemId}
+            onHighlightConsumed={() => setHighlightedItemId(null)}
           />
         )}
       </Section>
@@ -1284,6 +1296,8 @@ export function NewLogForm({
                 value={pickedUnsigned}
                 onChange={setPickedUnsigned}
                 aggregates={priorAggregates?.[caseId]}
+                highlightItemId={highlightedItemId}
+                onHighlightConsumed={() => setHighlightedItemId(null)}
               />
             )}
           </div>
@@ -2068,49 +2082,24 @@ function OverflowSplitDialog({
     >
       <div className="w-full max-w-md rounded-lg border border-[#A07850]/40 bg-card shadow-lg">
         <div className="border-b border-[#E0DCD6] bg-[#FAF7F2] px-5 py-3">
-          <h3 className="text-lg font-semibold text-primary">
-            超出契約量 — 是否建立追加工項?
-          </h3>
+          <h3 className="text-lg font-semibold text-primary">超出契約量</h3>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {item.name}
+          </p>
         </div>
-        <div className="space-y-4 px-5 py-5 text-sm leading-relaxed text-foreground">
-          <div className="rounded-md border border-[#E0DCD6] bg-white px-4 py-3">
-            <div className="text-xs text-muted-foreground">原工項</div>
-            <div className="mt-0.5 break-words font-medium">{item.name}</div>
-            {item.tenderCode && (
-              <div className="mt-0.5 font-mono text-xs text-muted-foreground">
-                {item.tenderCode}
-              </div>
-            )}
+        <div className="space-y-3 px-5 py-4 text-sm leading-relaxed text-foreground">
+          <div className="flex items-baseline justify-between gap-3 rounded-md border border-[#E0DCD6] bg-white px-3 py-2">
+            <span className="text-xs text-muted-foreground">剩餘可填</span>
+            <span className="font-medium tabular-nums">{capLabel}</span>
           </div>
-
-          <ul className="space-y-2">
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-[#A07850]" />
-              <span>
-                此工項剩餘可填:
-                <span className="ml-1 font-medium text-foreground">{capLabel}</span>
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-[#A07850]" />
-              <span>
-                你輸入的數量超出:
-                <span className="ml-1 font-semibold text-accent">{overflowLabel}</span>
-              </span>
-            </li>
-          </ul>
-
-          <div className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
-            <div className="font-medium">確認建立後,系統會:</div>
-            <ol className="mt-1 list-decimal space-y-1 pl-5">
-              <li>在「未簽約施工內容」自動建一筆同名追加工項({item.name} (追加))</li>
-              <li>把超出量 {overflowLabel} 帶到那筆,留待辦公室助理補報價</li>
-              <li>原工項本日數量自動夾在 {capLabel} 不變</li>
-            </ol>
+          <div className="flex items-baseline justify-between gap-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2">
+            <span className="text-xs text-[#B91C1C]">超出</span>
+            <span className="font-semibold tabular-nums text-[#B91C1C]">
+              {overflowLabel}
+            </span>
           </div>
-
           <p className="text-xs text-muted-foreground">
-            若只是手滑打錯,點「不,只填到剩餘量」就會把本日數量留在 {capLabel}。
+            建立追加工項 = 超出量自動寫到一筆「{item.name} (追加)」,辦公室之後補報價。
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
@@ -2120,7 +2109,7 @@ function OverflowSplitDialog({
             disabled={isPending}
             className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
           >
-            不,只填到剩餘量
+            手滑了,只填 {capLabel}
           </button>
           <button
             type="button"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkItemAggregate } from "@/lib/work-item-aggregates";
@@ -72,9 +72,20 @@ type Props = {
   aggregates?: Record<string, WorkItemAggregate>;
   /** 主任輸入超出剩餘量時觸發 — 父元件可以彈 dialog 詢問是否建立追加工項 */
   onOverflow?: (attempt: OverflowAttempt) => void;
+  /** 新增臨時項 / overflow split 後高亮 + 滾動到該工項卡片 — 設了會自動清除 */
+  highlightItemId?: string | null;
+  onHighlightConsumed?: () => void;
 };
 
-export function WorkItemsPicker({ items, value, onChange, aggregates, onOverflow }: Props) {
+export function WorkItemsPicker({
+  items,
+  value,
+  onChange,
+  aggregates,
+  onOverflow,
+  highlightItemId,
+  onHighlightConsumed,
+}: Props) {
   const [query, setQuery] = useState("");
   const [browserOpen, setBrowserOpen] = useState(value.length === 0);
 
@@ -302,6 +313,8 @@ export function WorkItemsPicker({ items, value, onChange, aggregates, onOverflow
                   onToggleMode={() => toggleMode(item.id)}
                   onRemove={() => toggle(item.id, false)}
                   onOverflow={onOverflow}
+                  highlight={highlightItemId === item.id}
+                  onHighlightConsumed={onHighlightConsumed}
                 />
               </li>
             ))}
@@ -393,6 +406,8 @@ function SelectedItemCard({
   onToggleMode,
   onRemove,
   onOverflow,
+  highlight = false,
+  onHighlightConsumed,
 }: {
   item: PickerItem;
   parentPath: string[];
@@ -403,7 +418,18 @@ function SelectedItemCard({
   onRemove: () => void;
   /** 父元件監聽超量輸入(只在 cap 是有限值時才會觸發) */
   onOverflow?: (attempt: OverflowAttempt) => void;
+  /** 新增臨時項 / overflow split 後對該卡片高亮 + 滾動到 view */
+  highlight?: boolean;
+  onHighlightConsumed?: () => void;
 }) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // 高亮被觸發時 scroll into view + 2.5 秒後通知父元件清掉(避免一直閃)
+  useEffect(() => {
+    if (!highlight) return;
+    cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const t = setTimeout(() => onHighlightConsumed?.(), 2500);
+    return () => clearTimeout(t);
+  }, [highlight, onHighlightConsumed]);
   const isPct = v.qty_mode === "percent";
   const modeLocked = !!aggregate;
   const priorTotal =
@@ -453,7 +479,15 @@ function SelectedItemCard({
   const totalPct = priorPct + addedPct;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[#A07850]/40 bg-[#FAF7F2] shadow-sm">
+    <div
+      ref={cardRef}
+      className={cn(
+        "overflow-hidden rounded-lg border bg-[#FAF7F2] shadow-sm transition-all duration-300",
+        highlight
+          ? "border-2 border-accent ring-4 ring-accent/30 shadow-md"
+          : "border border-[#A07850]/40",
+      )}
+    >
       {showProgress && (
         <div
           className="relative h-1 w-full bg-[#E8DFD3]"

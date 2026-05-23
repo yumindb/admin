@@ -103,10 +103,6 @@ export function AddTempWorkItemDialog({
   }
 
   const title = kind === "extra" ? "新增合約外項目" : "新增未簽約項目";
-  const helper =
-    kind === "unsigned"
-      ? "單價可以晚點再由辦公室補。送出後會自動加入下方清單並打勾,可立即填本日數量。"
-      : "已簽約追加項目。送出後會自動加入下方清單並打勾,可立即填本日數量。";
 
   return (
     <div
@@ -126,57 +122,74 @@ export function AddTempWorkItemDialog({
             <X className="size-4" />
           </button>
         </div>
-        <div className="space-y-3 px-5 py-4">
-          <p className="text-xs text-muted-foreground">{helper}</p>
-          <Field label="施工項目" required>
+
+        <div className="space-y-4 px-5 py-4">
+          {/* 主角:名稱欄 + 大送出鈕。屋主臨時加項,現場 supervisor 直接打名字就好。 */}
+          <div>
+            <p className="mb-2 text-sm font-medium text-primary">
+              屋主臨時加項?直接打名字就好,其他現場不用管。
+            </p>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
               placeholder="例:配電盤升級"
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-12 w-full rounded-md border-2 border-[#A07850]/40 bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="單位">
-              <input
-                type="text"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                placeholder="式 / 組 / ㎡"
-                className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-              />
-            </Field>
-            <Field label="預計總數量">
-              <input
-                type="number"
-                step="any"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="例:1"
-                className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-              />
-            </Field>
           </div>
-          <Field label="單價（選填，可由辦公室事後補）">
-            <input
-              type="number"
-              step="any"
-              value={unitPrice}
-              onChange={(e) => setUnitPrice(e.target.value)}
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </Field>
-          <Field label="備註（選填）">
-            <input
-              type="text"
-              value={brandNote}
-              onChange={(e) => setBrandNote(e.target.value)}
-              placeholder="例:屋主臨時要求 / 等業主決定材質"
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </Field>
+
+          {/* 配角:其他選填欄位包進 details 摺疊起來,降低視覺壓力 */}
+          <details className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2]/40">
+            <summary className="cursor-pointer list-none px-3 py-2 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex items-center gap-1">
+                <span aria-hidden>＋</span>
+                更多選項(單位 / 數量 / 單價 / 備註,辦公室之後可補)
+              </span>
+            </summary>
+            <div className="space-y-2.5 border-t border-dashed border-[#E0DCD6] px-3 py-3">
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="單位">
+                  <input
+                    type="text"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    placeholder="式 / 組 / ㎡"
+                    className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                  />
+                </Field>
+                <Field label="預計總量">
+                  <input
+                    type="number"
+                    step="any"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="例:1"
+                    className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                  />
+                </Field>
+              </div>
+              <Field label="單價">
+                <input
+                  type="number"
+                  step="any"
+                  value={unitPrice}
+                  onChange={(e) => setUnitPrice(e.target.value)}
+                  className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                />
+              </Field>
+              <Field label="備註">
+                <input
+                  type="text"
+                  value={brandNote}
+                  onChange={(e) => setBrandNote(e.target.value)}
+                  placeholder="例:屋主臨時要求 / 等業主決定材質"
+                  className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                />
+              </Field>
+            </div>
+          </details>
+
           {errorMsg && (
             <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
               {errorMsg}
@@ -196,7 +209,7 @@ export function AddTempWorkItemDialog({
             type="button"
             onClick={submit}
             disabled={isPending || !name.trim()}
-            className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex h-11 items-center rounded-md bg-primary px-5 text-base font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
             {isPending ? "新增中…" : "新增並打勾"}
           </button>
