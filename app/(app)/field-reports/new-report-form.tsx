@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CasePicker, type CasePickerOption } from "@/components/case-picker";
@@ -9,6 +9,15 @@ import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
 import { NextStepHint } from "@/components/next-step-hint";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
+import { isOfflineErrorMessage } from "@/lib/offline-clock-queue";
+import {
+  enqueueReport,
+  listPendingReports,
+  removeReport,
+  bumpReportAttempts,
+  MAX_REPORT_ATTEMPTS,
+  type PendingReport,
+} from "@/lib/offline-report-queue";
 import type { FieldReportPhoto } from "@/lib/types";
 
 export type CaseOption = CasePickerOption;
@@ -24,15 +33,42 @@ type Props = {
   };
 };
 
+// localStorage key prefix:
+// - new: yumin-fr-draft-new
+// - edit: yumin-fr-draft-<reportId>
+// 每個 reportId 各存自己,避免新表單還原時撞到編輯草稿
+const DRAFT_KEY_PREFIX = "yumin-fr-draft-";
+
+type DraftPayload = {
+  caseId: string;
+  note: string;
+  photos: FieldReportPhoto[];
+};
+
+function readDraft(key: string): DraftPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const obj = JSON.parse(raw) as DraftPayload;
+    if (typeof obj?.caseId !== "string" || typeof obj?.note !== "string") return null;
+    if (!Array.isArray(obj.photos)) return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 現場工人填回報用 — 一頁式、大按鈕、極簡步驟。
  * 1) 選案場 (彈出 sheet)
  * 2) 寫文字 (大 textarea,可空)
  * 3) 加照片 (大按鈕;每張可寫一句)
- * 4) 送出
+ * 4) 送出 — 若離線會自動進 IndexedDB queue,連線回來自動送
  */
 export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props) {
   const router = useRouter();
+  const draftKey = `${DRAFT_KEY_PREFIX}${reportId ?? "new"}`;
   const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
   const [photos, setPhotos] = useState<FieldReportPhoto[]>(initial?.photos ?? []);
@@ -43,10 +79,113 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
   });
   const [isPending, startTransition] = useTransition();
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [autosaved, setAutosaved] = useState(false);
   // 本次階段上傳到 Storage 的 path,使用者按 × 時要連 Storage 一起刪。
   const sessionUploadsRef = useRef<Set<string>>(new Set());
   // 隱式 GPS 戳記:已授權才靜默取(未授權不彈視窗、不擋送出)
   const silentLoc = useSilentLocationOnce();
+
+  // 離線排隊狀態(僅新建時走 queue;編輯不排隊 — 已存在的 record 等連線好再改即可)
+  const [pending, setPending] = useState<PendingReport[]>([]);
+  const [flushing, setFlushing] = useState(false);
+
+  // Mount: 還原草稿 + 撈離線佇列 + 嘗試 flush
+  useEffect(() => {
+    const draft = readDraft(draftKey);
+    if (draft) {
+      // 新表單才還原草稿;編輯模式以 server initial 為準
+      if (!reportId) {
+        if (draft.caseId) setCaseId(draft.caseId);
+        if (draft.note) setNote(draft.note);
+        if (draft.photos.length) setPhotos(draft.photos);
+        setAutosaved(true);
+      }
+    }
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refreshPending = useCallback(async () => {
+    try {
+      const list = await listPendingReports();
+      setPending(list);
+    } catch {
+      // IndexedDB 不可用 → 靜默,離線排隊不可用
+    }
+  }, []);
+
+  const flushQueue = useCallback(async () => {
+    if (flushing) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    setFlushing(true);
+    try {
+      const list = await listPendingReports();
+      for (const item of list) {
+        if (item.attempts >= MAX_REPORT_ATTEMPTS) continue;
+        try {
+          const res = await createFieldReportAction({
+            caseId: item.case_id,
+            note: item.note,
+            photos: item.photos,
+            submitLocation:
+              item.submit_lat !== null && item.submit_lng !== null
+                ? {
+                    lat: item.submit_lat,
+                    lng: item.submit_lng,
+                    accuracy_m: item.submit_accuracy_m,
+                  }
+                : null,
+          });
+          if (res.ok) {
+            await removeReport(item.id);
+          } else {
+            // server validation 失敗 — 不會再成功,記下 + 停止重試
+            await bumpReportAttempts(item.id, res.error ?? "未知錯誤");
+          }
+        } catch (e) {
+          await bumpReportAttempts(item.id, (e as Error).message ?? "未知錯誤");
+        }
+      }
+      await refreshPending();
+      router.refresh();
+    } finally {
+      setFlushing(false);
+    }
+  }, [flushing, refreshPending, router]);
+
+  useEffect(() => {
+    void refreshPending();
+    void flushQueue();
+    const handler = () => {
+      void flushQueue();
+    };
+    window.addEventListener("online", handler);
+    return () => window.removeEventListener("online", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounce 寫 localStorage(等 hydrated 才開始)
+  useEffect(() => {
+    if (!hydrated || reportId) return; // 編輯模式不存草稿
+    const t = setTimeout(() => {
+      try {
+        if (!caseId && !note && photos.length === 0) {
+          localStorage.removeItem(draftKey);
+          setAutosaved(false);
+          return;
+        }
+        localStorage.setItem(
+          draftKey,
+          JSON.stringify({ caseId, note, photos } satisfies DraftPayload),
+        );
+        setAutosaved(true);
+      } catch {
+        // quota exceeded — 靜默
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [hydrated, reportId, draftKey, caseId, note, photos]);
 
   async function onPickPhotos(files: FileList | null) {
     if (!files?.length) return;
@@ -69,9 +208,17 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
       prepared.map(async (f) => {
         const fd = new FormData();
         fd.set("file", f);
-        const res = await uploadPhotoAction(fd);
-        setProgress((p) => ({ ...p, done: p.done + 1 }));
-        return res;
+        try {
+          const res = await uploadPhotoAction(fd);
+          setProgress((p) => ({ ...p, done: p.done + 1 }));
+          return res;
+        } catch (e) {
+          setProgress((p) => ({ ...p, done: p.done + 1 }));
+          return {
+            ok: false as const,
+            error: (e as Error).message ?? "上傳失敗",
+          };
+        }
       })
     );
 
@@ -90,9 +237,14 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
       setPhotos((arr) => [...arr, ...newPhotos]);
     }
     if (firstError) {
+      const isOffline = isOfflineErrorMessage(firstError);
       toast.error(
         failedCount > 1 ? `${failedCount} 張照片上傳失敗` : "照片上傳失敗",
-        { description: firstError },
+        {
+          description: isOffline
+            ? "目前訊號不穩,連上網路後再加一次照片"
+            : firstError,
+        },
       );
     }
     setUploading(false);
@@ -112,6 +264,41 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     setPhotos((arr) => arr.map((p, i) => (i === idx ? { ...p, caption } : p)));
   }
 
+  function clearDraft() {
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function queueOffline(reason: string) {
+    try {
+      await enqueueReport({
+        case_id: caseId,
+        note,
+        photos,
+        submit_lat: silentLoc?.lat ?? null,
+        submit_lng: silentLoc?.lng ?? null,
+        submit_accuracy_m: silentLoc?.accuracy_m ?? null,
+      });
+      await refreshPending();
+      toast.warning("回報已離線存檔", {
+        description: `${reason} — 連上網路會自動送出`,
+      });
+      // 排隊成功 — 清掉表單 + 草稿讓使用者繼續寫下一筆
+      clearDraft();
+      setCaseId("");
+      setNote("");
+      setPhotos([]);
+      sessionUploadsRef.current.clear();
+    } catch {
+      toast.error("離線排隊失敗", {
+        description: "此瀏覽器不支援 IndexedDB — 請連上 wifi / 換瀏覽器再試",
+      });
+    }
+  }
+
   function submit() {
     if (!caseId) {
       toast.error("請先選案場");
@@ -122,21 +309,37 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
       return;
     }
 
+    // 顯式離線:不打 server 直接排隊(只在新建時排;編輯不適用)
+    if (!reportId && typeof navigator !== "undefined" && !navigator.onLine) {
+      void queueOffline("目前離線");
+      return;
+    }
+
     startTransition(async () => {
       // 僅「建立」時帶 submitLocation;更新時不重寫(保留原始位置)
       const submitLocation = silentLoc
         ? { lat: silentLoc.lat, lng: silentLoc.lng, accuracy_m: silentLoc.accuracy_m }
         : null;
       const payload = { caseId, note, photos };
-      const res = reportId
-        ? await updateFieldReportAction({ ...payload, reportId })
-        : await createFieldReportAction({ ...payload, submitLocation });
-      if (!res.ok) {
-        toast.error(res.error ?? "送出失敗");
-        return;
+      try {
+        const res = reportId
+          ? await updateFieldReportAction({ ...payload, reportId })
+          : await createFieldReportAction({ ...payload, submitLocation });
+        if (!res.ok) {
+          toast.error(res.error ?? "送出失敗");
+          return;
+        }
+        toast.success(reportId ? "回報已更新" : "回報已送出");
+        clearDraft();
+        router.push(`/field-reports/${res.reportId}`);
+      } catch (e) {
+        const msg = (e as Error).message ?? "未知錯誤";
+        if (!reportId && isOfflineErrorMessage(msg)) {
+          await queueOffline("送出失敗");
+        } else {
+          toast.error("送出失敗", { description: msg });
+        }
       }
-      toast.success(reportId ? "回報已更新" : "回報已送出");
-      router.push(`/field-reports/${res.reportId}`);
     });
   }
 
@@ -144,6 +347,9 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
 
   return (
     <div className="space-y-5">
+      {/* 離線排隊 — 有待送出時顯示 */}
+      <PendingReportsCard pending={pending} flushing={flushing} onRetry={flushQueue} />
+
       {/* 1. 案場 */}
       <CasePicker cases={cases} value={caseId} onChange={setCaseId} />
 
@@ -217,6 +423,12 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         </ul>
       )}
 
+      {!reportId && autosaved && (
+        <p className="text-center text-xs text-muted-foreground">
+          ✓ 已自動暫存到此手機,下次回來會還原
+        </p>
+      )}
+
       {!reportId && (
         <NextStepHint tone="info">
           送出後工地主任填日誌時會看到，可勾選併入。pending 時還能編輯／刪除。
@@ -244,6 +456,63 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         onChange={setLightboxPath}
       />
     </div>
+  );
+}
+
+function PendingReportsCard({
+  pending,
+  flushing,
+  onRetry,
+}: {
+  pending: PendingReport[];
+  flushing: boolean;
+  onRetry: () => void;
+}) {
+  if (pending.length === 0) return null;
+  const failed = pending.filter((p) => p.attempts >= MAX_REPORT_ATTEMPTS);
+  return (
+    <section className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] p-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-[#92400E]">
+          離線回報待送出 ({pending.length} 筆)
+          {flushing && <span className="ml-2 text-xs">送出中…</span>}
+        </h3>
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={flushing}
+          className="inline-flex items-center rounded-md border border-[#FDE68A] bg-white px-3 py-1 text-xs text-[#92400E] hover:bg-[#FFF7E0] disabled:opacity-50"
+        >
+          立即重試
+        </button>
+      </div>
+      <ul className="space-y-1 text-xs text-[#92400E]">
+        {pending.map((p) => {
+          const time = new Date(p.client_created_at).toLocaleTimeString("zh-TW", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "Asia/Taipei",
+          });
+          const photosLabel = p.photos.length > 0 ? `,${p.photos.length} 張照片` : "";
+          return (
+            <li key={p.id} className="break-words">
+              · {time} 建立{photosLabel}
+              {p.attempts > 0 && (
+                <span className="ml-1">
+                  (試了 {p.attempts}/{MAX_REPORT_ATTEMPTS} 次{p.last_error ? `:${p.last_error}` : ""})
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {failed.length > 0 && (
+        <p className="mt-2 text-xs text-[#B91C1C]">
+          ⚠ 有 {failed.length} 筆已重試 {MAX_REPORT_ATTEMPTS} 次失敗,請聯絡辦公室手動補登。
+        </p>
+      )}
+    </section>
   );
 }
 
