@@ -151,3 +151,33 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### R2 bucket usage" >> $GITHUB_STEP_SUMMARY
           rclone size r2:${R2_BUCKET} >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure (email)
+        if: failure()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.NOTIFY_EMAIL_USER }}
+          password: ${{ secrets.NOTIFY_EMAIL_APP_PASSWORD }}
+          subject: "🚨【裕民備份失敗】${{ steps.ts.outputs.date }} 請立即確認 🚨"
+          from: "裕民備份監控 <${{ secrets.NOTIFY_EMAIL_USER }}>"
+          to: yumindb@gmail.com, evelyn.evagor@gmail.com
+          priority: high
+          body: |
+            ⚠️ 裕民工務 admin 系統 — 每日備份失敗
+
+            日期：${{ steps.ts.outputs.date }}
+            時間戳：${{ steps.ts.outputs.ts }}
+            觸發方式：${{ github.event_name }}
+
+            👉 點此查看詳細錯誤訊息：
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            意義：昨晚的「資料庫 + 工程照片 + 簽名 + PDF」沒有成功備份到 Cloudflare。
+            行動：請立即點上方連結查看是哪一步失敗，修好之後手動重跑備份（Actions → Daily Backup to R2 → Run workflow）。
+
+            ——
+            此信由 GitHub Actions 自動發出，請勿回覆。
