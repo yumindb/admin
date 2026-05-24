@@ -34,10 +34,33 @@ type CaseGroup = {
 
 type Scope = "all" | "mine";
 
+// 日期範圍 quick filter:預設 90 天涵蓋一個季度,避免列表頁全表掃。
+// caseFilterId 進來時自動切 'all' — 使用者已經 drill 進單一案件,他要看全期。
+const RANGE_OPTIONS = [
+  { key: "30", label: "近 30 天", days: 30 },
+  { key: "90", label: "近 3 個月", days: 90 },
+  { key: "180", label: "近半年", days: 180 },
+  { key: "all", label: "全部", days: null },
+] as const;
+type RangeKey = (typeof RANGE_OPTIONS)[number]["key"];
+const DEFAULT_RANGE: RangeKey = "90";
+const ALL_HARD_LIMIT = 500;
+
+function rangeFromParam(raw: string | undefined): RangeKey {
+  const found = RANGE_OPTIONS.find((o) => o.key === raw);
+  return found ? found.key : DEFAULT_RANGE;
+}
+
+function dateBoundaryISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+}
+
 export default async function LogsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ case?: string; scope?: string }>;
+  searchParams: Promise<{ case?: string; scope?: string; range?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -64,6 +87,10 @@ export default async function LogsPage({
   const scope: Scope =
     sp.scope === "all" || sp.scope === "mine" ? (sp.scope as Scope) : defaultScope;
 
+  // 案件 filter 在時自動切 'all'(進案件查歷史是顯式行為,該給全期)
+  const rangeKey: RangeKey = caseFilterId ? "all" : rangeFromParam(sp.range);
+  const rangeOpt = RANGE_OPTIONS.find((o) => o.key === rangeKey)!;
+
   let query = supabase
     .from("daily_logs")
     .select("*, cases(name, code)")
@@ -76,9 +103,16 @@ export default async function LogsPage({
   if (caseFilterId) {
     query = query.eq("case_id", caseFilterId);
   }
+  if (rangeOpt.days !== null) {
+    query = query.gte("log_date", dateBoundaryISO(rangeOpt.days));
+  } else {
+    // 'all' 仍然 hard limit 防爆;到達上限會在 UI 提示「再縮日期範圍」
+    query = query.limit(ALL_HARD_LIMIT);
+  }
 
   const { data: logs, error } = await query;
   const list = (logs ?? []) as LogRow[];
+  const hitAllLimit = rangeOpt.days === null && list.length >= ALL_HARD_LIMIT;
 
   const groups = groupByCase(list);
   const filteredCaseName =
@@ -96,7 +130,16 @@ export default async function LogsPage({
     const params = new URLSearchParams();
     params.set("scope", next);
     if (caseFilterId) params.set("case", caseFilterId);
+    if (!caseFilterId && rangeKey !== DEFAULT_RANGE) params.set("range", rangeKey);
     return `/logs?${params.toString()}`;
+  }
+
+  function rangeHref(next: RangeKey): string {
+    const params = new URLSearchParams();
+    if (scope !== defaultScope) params.set("scope", scope);
+    if (next !== DEFAULT_RANGE) params.set("range", next);
+    const qs = params.toString();
+    return qs ? `/logs?${qs}` : "/logs";
   }
 
   return (
@@ -124,7 +167,7 @@ export default async function LogsPage({
       <div
         role="tablist"
         aria-label="日誌範圍"
-        className="mb-4 inline-flex w-full rounded-md border border-[#E0DCD6] bg-card p-1 md:w-auto"
+        className="mb-3 inline-flex w-full rounded-md border border-[#E0DCD6] bg-card p-1 md:w-auto"
       >
         <ScopeTab
           href={tabHref("all")}
@@ -137,6 +180,35 @@ export default async function LogsPage({
           label="我的日誌"
         />
       </div>
+
+      {/* 日期範圍 quick pills — 案件 filter 在時隱藏(已切全期) */}
+      {!caseFilterId && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">期間：</span>
+          {RANGE_OPTIONS.map((opt) => {
+            const active = opt.key === rangeKey;
+            return (
+              <Link
+                key={opt.key}
+                href={rangeHref(opt.key)}
+                className={`inline-flex items-center rounded-full border px-2.5 py-1 transition-colors ${
+                  active
+                    ? "border-accent bg-[#F5F1EC] font-medium text-primary"
+                    : "border-[#E0DCD6] bg-white text-foreground hover:border-accent"
+                }`}
+              >
+                {opt.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {hitAllLimit && (
+        <p className="mb-4 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-sm text-[#92400E]">
+          日誌很多，目前只顯示最新 {ALL_HARD_LIMIT} 筆。建議縮短期間或從上方選特定案件查看。
+        </p>
+      )}
 
       {caseFilterId && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm md:px-4 md:py-3">

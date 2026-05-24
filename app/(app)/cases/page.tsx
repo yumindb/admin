@@ -25,7 +25,7 @@ const PHOTO_PREVIEW_MAX = 4;
 // 但網頁不會直接掛 — 顯示 banner 提醒管理員「該升級分頁了」。
 const CASE_HARD_LIMIT = 200;
 
-type Search = Promise<{ all?: string }>;
+type Search = Promise<{ all?: string; q?: string }>;
 
 export default async function CasesOverviewPage({
   searchParams,
@@ -34,21 +34,31 @@ export default async function CasesOverviewPage({
 }) {
   const params = await searchParams;
   const showAll = params.all === "1";
+  const q = (params.q ?? "").trim();
+  const isSearching = q.length > 0;
 
   const supabase = await createClient();
   const actor = await tryGetActor();
   const canCreateCase =
     actor?.role === "office_staff" || actor?.role === "owner";
 
-  // 1) 案件:預設只 active + paused(進行中),showAll=1 才撈 closed
-  //    closed 案件通常 90% 的列表時間都不需要看,排除掉就大幅減少後續日誌與工項的撈取量。
-  //    再加 HARD_LIMIT 防爆:萬一資料長到極端,query 不會爆量。
+  // 1) 案件:
+  //    - 預設只 active + paused(進行中),showAll=1 才撈 closed
+  //    - 有 q 關鍵字時:跨「全部狀態」搜尋(連結案都查得到),仍 hard-limit 200 筆
+  //    - closed 案件通常 90% 的列表時間都不需要看,排除掉就大幅減少後續日誌與工項的撈取量
   let caseQuery = supabase
     .from("cases")
     .select("*")
     .order("started_at", { ascending: false, nullsFirst: false })
     .limit(CASE_HARD_LIMIT);
-  if (!showAll) {
+  if (isSearching) {
+    // 名稱 / 案號 / 地點 / 業主皆模糊搜
+    const safe = q.replace(/[%_\\]/g, (m) => "\\" + m);
+    const pattern = `%${safe}%`;
+    caseQuery = caseQuery.or(
+      `name.ilike.${pattern},code.ilike.${pattern},location.ilike.${pattern},client.ilike.${pattern}`,
+    );
+  } else if (!showAll) {
     caseQuery = caseQuery.in("status", ["active", "paused"]);
   }
   const { data: cases, error } = await caseQuery;
@@ -270,36 +280,78 @@ export default async function CasesOverviewPage({
 
       <CasesKpiBar kpis={kpis} />
 
-      {hitLimit && (
-        <div className="mb-4 rounded-md border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-sm text-[#92400E]">
-          <strong>已達顯示上限：</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
-          （依開工日排序）。案件總數已超出，請通知開發者升級為真正的分頁。
+      {/* 搜尋(跨全部狀態,含結案)— 找不到案件時最直覺的補救路徑 */}
+      <form
+        method="get"
+        action="/cases"
+        className="mb-4 flex flex-wrap items-center gap-2"
+      >
+        <input
+          type="search"
+          name="q"
+          defaultValue={q}
+          placeholder="搜尋案件名稱 / 案號 / 地點 / 業主"
+          className="h-10 min-w-0 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+        />
+        <button
+          type="submit"
+          className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          搜尋
+        </button>
+        {isSearching && (
+          <Link
+            href="/cases"
+            className="h-10 inline-flex items-center rounded-md border border-[#E0DCD6] px-3 text-sm text-muted-foreground hover:border-accent"
+          >
+            清除
+          </Link>
+        )}
+      </form>
+
+      {isSearching && (
+        <div className="mb-4 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm">
+          <span className="text-muted-foreground">搜尋「</span>
+          <span className="font-medium text-foreground">{q}</span>
+          <span className="text-muted-foreground">
+            」找到 {allCases.length} 筆（含已結案）
+          </span>
         </div>
       )}
 
-      <div className="mb-4 flex items-center justify-end gap-3 text-sm">
-        {showAll ? (
-          <>
-            <span className="text-muted-foreground">顯示全部（含已結案）</span>
-            <Link
-              href="/cases"
-              className="text-[#A07850] underline-offset-2 hover:underline"
-            >
-              只看進行中
-            </Link>
-          </>
-        ) : (
-          <>
-            <span className="text-muted-foreground">只看進行中</span>
-            <Link
-              href="/cases?all=1"
-              className="text-[#A07850] underline-offset-2 hover:underline"
-            >
-              顯示全部（含已結案）
-            </Link>
-          </>
-        )}
-      </div>
+      {hitLimit && (
+        <div className="mb-4 rounded-md border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-sm text-[#92400E]">
+          <strong>已達顯示上限：</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
+          （依開工日排序）。
+          {isSearching ? "請縮窄關鍵字。" : "請通知開發者升級為真正的分頁,或試上方搜尋。"}
+        </div>
+      )}
+
+      {!isSearching && (
+        <div className="mb-4 flex items-center justify-end gap-3 text-sm">
+          {showAll ? (
+            <>
+              <span className="text-muted-foreground">顯示全部（含已結案）</span>
+              <Link
+                href="/cases"
+                className="text-[#A07850] underline-offset-2 hover:underline"
+              >
+                只看進行中
+              </Link>
+            </>
+          ) : (
+            <>
+              <span className="text-muted-foreground">只看進行中</span>
+              <Link
+                href="/cases?all=1"
+                className="text-[#A07850] underline-offset-2 hover:underline"
+              >
+                顯示全部（含已結案）
+              </Link>
+            </>
+          )}
+        </div>
+      )}
 
       {error && (
         <p className="mb-4 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">

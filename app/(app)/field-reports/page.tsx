@@ -15,6 +15,28 @@ const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
 
 const REPORTERS: UserRole[] = ["field_assistant", "site_supervisor", "owner"];
 
+// 日期範圍 quick filter — 配 logs 頁同一套邏輯
+const RANGE_OPTIONS = [
+  { key: "30", label: "近 30 天", days: 30 },
+  { key: "90", label: "近 3 個月", days: 90 },
+  { key: "180", label: "近半年", days: 180 },
+  { key: "all", label: "全部", days: null },
+] as const;
+type RangeKey = (typeof RANGE_OPTIONS)[number]["key"];
+const DEFAULT_RANGE: RangeKey = "90";
+const ALL_HARD_LIMIT = 500;
+
+function rangeFromParam(raw: string | undefined): RangeKey {
+  const found = RANGE_OPTIONS.find((o) => o.key === raw);
+  return found ? found.key : DEFAULT_RANGE;
+}
+
+function dateBoundaryISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
 type ReportRow = FieldReport & {
   cases: { name: string; code: string | null } | null;
   author: { full_name: string | null } | null;
@@ -49,7 +71,11 @@ function groupByCase(list: ReportRow[]): CaseGroup[] {
   return [...map.values()].sort((a, b) => b.latest.localeCompare(a.latest));
 }
 
-export default async function FieldReportsPage() {
+export default async function FieldReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; case_q?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -67,6 +93,25 @@ export default async function FieldReportsPage() {
   const isFieldAssistant = profile?.role === "field_assistant";
   const canCreate = !!profile && REPORTERS.includes(profile.role as UserRole);
 
+  const sp = await searchParams;
+  const rangeKey: RangeKey = rangeFromParam(sp.range);
+  const rangeOpt = RANGE_OPTIONS.find((o) => o.key === rangeKey)!;
+  const caseQ = (sp.case_q ?? "").trim();
+  const isSearching = caseQ.length > 0;
+
+  // 有 case_q 時:先查符合的 cases.id,再用 .in() 過濾 field_reports
+  let matchedCaseIds: string[] | null = null;
+  if (isSearching) {
+    const safe = caseQ.replace(/[%_\\]/g, (m) => "\\" + m);
+    const pattern = `%${safe}%`;
+    const { data: matched } = await supabase
+      .from("cases")
+      .select("id")
+      .or(`name.ilike.${pattern},code.ilike.${pattern}`)
+      .limit(200);
+    matchedCaseIds = (matched ?? []).map((c) => c.id as string);
+  }
+
   let query = supabase
     .from("field_reports")
     .select("*, cases(name, code), author:profiles!author_id(full_name)")
@@ -75,10 +120,43 @@ export default async function FieldReportsPage() {
   if (isFieldAssistant) {
     query = query.eq("author_id", user.id);
   }
+  if (matchedCaseIds) {
+    if (matchedCaseIds.length === 0) {
+      // 沒符合的 case → 強制空結果
+      query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+    } else {
+      query = query.in("case_id", matchedCaseIds);
+    }
+  } else if (rangeOpt.days !== null) {
+    // 有 case 搜尋時不套 date filter(讓使用者看到該案完整歷史)
+    query = query.gte("created_at", dateBoundaryISO(rangeOpt.days));
+  } else {
+    query = query.limit(ALL_HARD_LIMIT);
+  }
 
   const { data, error } = await query;
   const list = ((data ?? []) as ReportRow[]) ?? [];
   const totalPendingCount = list.filter((r) => r.status === "pending").length;
+  const hitAllLimit = rangeOpt.days === null && list.length >= ALL_HARD_LIMIT;
+
+  // 額外查「期間外仍有 pending」— 不限日期算個數,提醒使用者擴大範圍
+  let outsidePendingCount = 0;
+  if (!isFieldAssistant && rangeOpt.days !== null) {
+    const { count } = await supabase
+      .from("field_reports")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .lt("created_at", dateBoundaryISO(rangeOpt.days));
+    outsidePendingCount = count ?? 0;
+  }
+
+  function rangeHref(next: RangeKey): string {
+    const params = new URLSearchParams();
+    if (next !== DEFAULT_RANGE) params.set("range", next);
+    if (caseQ) params.set("case_q", caseQ);
+    const qs = params.toString();
+    return qs ? `/field-reports?${qs}` : "/field-reports";
+  }
 
   // Storage 已轉 private — 把每筆回報「第一張」縮圖換成 signed URL(5 min)
   const firstPhotoPaths: string[] = [];
@@ -119,6 +197,83 @@ export default async function FieldReportsPage() {
       {error && (
         <p className="mb-4 rounded-lg border-2 border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-base text-[#B91C1C]">
           載入失敗:{error.message}
+        </p>
+      )}
+
+      {/* 案件搜尋(辦公室助理 / 老闆 / 主任視角才有用 — 現場人員一般只看自己) */}
+      {!isFieldAssistant && (
+        <form
+          method="get"
+          action="/field-reports"
+          className="mb-3 flex flex-wrap items-center gap-2"
+        >
+          <input
+            type="search"
+            name="case_q"
+            defaultValue={caseQ}
+            placeholder="按案件名稱 / 案號搜尋"
+            className="h-10 min-w-0 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+          <button
+            type="submit"
+            className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            搜尋
+          </button>
+          {isSearching && (
+            <Link
+              href="/field-reports"
+              className="h-10 inline-flex items-center rounded-md border border-[#E0DCD6] px-3 text-sm text-muted-foreground hover:border-accent"
+            >
+              清除
+            </Link>
+          )}
+        </form>
+      )}
+
+      {/* 日期範圍 quick pills(case 搜尋時隱藏 — 看該案完整歷史較有用) */}
+      {!isSearching && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">期間：</span>
+          {RANGE_OPTIONS.map((opt) => {
+            const active = opt.key === rangeKey;
+            return (
+              <Link
+                key={opt.key}
+                href={rangeHref(opt.key)}
+                className={`inline-flex items-center rounded-full border px-2.5 py-1 transition-colors ${
+                  active
+                    ? "border-accent bg-[#F5F1EC] font-medium text-primary"
+                    : "border-[#E0DCD6] bg-white text-foreground hover:border-accent"
+                }`}
+              >
+                {opt.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {isSearching && (
+        <div className="mb-4 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm">
+          <span className="text-muted-foreground">案件搜尋「</span>
+          <span className="font-medium text-foreground">{caseQ}</span>
+          <span className="text-muted-foreground">
+            」找到 {list.length} 筆回報(顯示完整歷史)
+          </span>
+        </div>
+      )}
+
+      {hitAllLimit && (
+        <p className="mb-4 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-sm text-[#92400E]">
+          回報很多,目前只顯示最新 {ALL_HARD_LIMIT} 筆。建議縮短期間查看。
+        </p>
+      )}
+
+      {outsidePendingCount > 0 && (
+        <p className="mb-4 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-sm text-[#92400E]">
+          期間外還有 <strong>{outsidePendingCount}</strong> 筆「待整合」回報未顯示 ——
+          <Link href="/field-reports?range=all" className="ml-1 underline">看全部</Link>
         </p>
       )}
 
