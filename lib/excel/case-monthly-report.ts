@@ -49,9 +49,9 @@ export function buildCaseMonthlyReportXlsx(
   // ---- Sheet 1:工項彙總 ----
   const wiRows: (string | number)[][] = [];
   wiRows.push([
-    `案件:${caseName}${caseCode ? `（${caseCode}）` : ""}`,
+    `案件：${caseName}${caseCode ? `（${caseCode}）` : ""}`,
   ]);
-  wiRows.push([`月份:${ym}`]);
+  wiRows.push([`月份：${ym}`]);
   wiRows.push([]);
   wiRows.push([
     "編碼",
@@ -103,7 +103,7 @@ export function buildCaseMonthlyReportXlsx(
     ]);
   }
   if (wiRows.length === 4) {
-    wiRows.push(["", "(本月無工項記錄)", "", "", "", ""]);
+    wiRows.push(["", "（本月無工項記錄）", "", "", "", ""]);
   }
 
   const wsWi = XLSX.utils.aoa_to_sheet(wiRows);
@@ -119,7 +119,7 @@ export function buildCaseMonthlyReportXlsx(
   // ---- Sheet 2:合約外項目 ----
   // 主要來源是 case_work_items[item_type='extra'](本月有動的列出);舊資料 jsonb 仍附於下方。
   const exRows: (string | number)[][] = [];
-  exRows.push([`案件:${caseName} 月份:${ym} 合約外項目（已簽約追加）`]);
+  exRows.push([`案件：${caseName} 月份：${ym} 合約外項目（已簽約追加）`]);
   exRows.push([]);
   exRows.push([
     "工項",
@@ -146,7 +146,7 @@ export function buildCaseMonthlyReportXlsx(
       it.contract_note ?? "",
     ]);
   }
-  if (exRows.length === 3) exRows.push(["(本月無合約外工項記錄)", "", "", "", "", "", "", ""]);
+  if (exRows.length === 3) exRows.push(["（本月無合約外工項記錄）", "", "", "", "", "", "", ""]);
 
   // 舊資料 jsonb 附在下方
   const legacyExtras: { log_date: string; e: DailyLogExtraItem }[] = [];
@@ -196,7 +196,7 @@ export function buildCaseMonthlyReportXlsx(
 
   // ---- Sheet 3:未簽約 ----
   const unRows: (string | number)[][] = [];
-  unRows.push([`案件:${caseName} 月份:${ym} 未簽約施工內容`]);
+  unRows.push([`案件：${caseName} 月份：${ym} 未簽約施工內容`]);
   unRows.push([]);
   unRows.push([
     "工項",
@@ -223,7 +223,7 @@ export function buildCaseMonthlyReportXlsx(
       it.brand_note ?? "",
     ]);
   }
-  if (unRows.length === 3) unRows.push(["(本月無未簽約工項記錄)", "", "", "", "", "", "", ""]);
+  if (unRows.length === 3) unRows.push(["（本月無未簽約工項記錄）", "", "", "", "", "", "", ""]);
 
   // 舊資料 jsonb
   const legacyUnsigned: { log_date: string; u: DailyLogUnsignedItem }[] = [];

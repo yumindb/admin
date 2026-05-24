@@ -52,14 +52,14 @@ export async function clockAction(formData: FormData): Promise<ClockResult> {
   if (!parsed.success) {
     return {
       ok: false,
-      error: "資料格式錯誤:" + parsed.error.issues.map((i) => i.message).join(", "),
+      error: "資料格式錯誤：" + parsed.error.issues.map((i) => i.message).join(", "),
     };
   }
   const data = parsed.data;
 
   // 沒選 case 時 note 必填(在公司 / 跨工地移動需要說明)
   if (!data.case_id && !(data.note && data.note.trim())) {
-    return { ok: false, error: "未選擇案件時請說明地點/原因(例:在辦公室 / 移動中)" };
+    return { ok: false, error: "未選擇案件時請說明地點/原因（例：在辦公室 / 移動中）" };
   }
 
   const supabase = await createClient();
@@ -74,7 +74,7 @@ export async function clockAction(formData: FormData): Promise<ClockResult> {
       .eq("id", data.case_id)
       .maybeSingle();
     if (caseErr) {
-      return { ok: false, error: "讀取案件失敗:" + caseErr.message };
+      return { ok: false, error: "讀取案件失敗：" + caseErr.message };
     }
     if (!caseRow) {
       return { ok: false, error: "找不到此案件" };
@@ -113,7 +113,7 @@ export async function clockAction(formData: FormData): Promise<ClockResult> {
     .single();
 
   if (error || !row) {
-    return { ok: false, error: "打卡寫入失敗:" + (error?.message ?? "未知錯誤") };
+    return { ok: false, error: "打卡寫入失敗：" + (error?.message ?? "未知錯誤") };
   }
 
   revalidatePath("/attendance");

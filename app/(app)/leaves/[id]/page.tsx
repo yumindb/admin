@@ -128,8 +128,8 @@ export default async function LeaveDetailPage({
       {canAct && (
         <section className="mb-6">
           <NextStepHint tone="info">
-            這份輪到你簽核(身分:{ROLE_LABEL[me.role]})。
-            通過後會自動往上送下一關;退回則整份結束。
+            這份輪到你簽核（身分：{ROLE_LABEL[me.role]}）。
+            通過後會自動往上送下一關；退回則整份結束。
           </NextStepHint>
           <div className="mt-4">
             <ApprovalButtons requestId={r.id} />
@@ -140,7 +140,7 @@ export default async function LeaveDetailPage({
       {isApplicant && status === "pending" && (
         <section className="mb-6">
           <NextStepHint tone="muted">
-            尚在簽核中,你可以取消這份申請(取消後不可復原,若要請假請重送)。
+            尚在簽核中，你可以取消這份申請（取消後不可復原，若要請假請重送）。
           </NextStepHint>
           <div className="mt-4">
             <CancelButton requestId={r.id} />

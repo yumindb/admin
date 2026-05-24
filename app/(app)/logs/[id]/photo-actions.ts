@@ -50,7 +50,7 @@ export async function uploadPhotoAction(formData: FormData) {
       contentType: file.type,
       upsert: false,
     });
-  if (upErr) return { ok: false as const, error: "上傳失敗:" + upErr.message };
+  if (upErr) return { ok: false as const, error: "上傳失敗：" + upErr.message };
 
   // bucket 已私有 — 回 signed URL 給 client 即時預覽。
   // helper 用 service-role client,bypass RLS。
@@ -104,7 +104,7 @@ export async function deletePhotoAction(publicUrl: string) {
   }
 
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
-  if (error) return { ok: false as const, error: "刪除失敗:" + error.message };
+  if (error) return { ok: false as const, error: "刪除失敗：" + error.message };
   return { ok: true as const };
 }
 
@@ -148,7 +148,7 @@ export async function uploadSignatureAction(formData: FormData) {
   const { error: upErr } = await supabase.storage
     .from(SIG_BUCKET)
     .upload(path, buf, { contentType, upsert: false });
-  if (upErr) return { ok: false as const, error: "上傳失敗:" + upErr.message };
+  if (upErr) return { ok: false as const, error: "上傳失敗：" + upErr.message };
 
   // signature bucket 已私有 — 回 signed URL(5 min)。
   const signed = await getSignedUrl(SIG_BUCKET, path);

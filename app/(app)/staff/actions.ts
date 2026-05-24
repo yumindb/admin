@@ -158,7 +158,7 @@ export async function toggleActiveAction(formData: FormData): Promise<StaffActio
   const next = formData.get("next") === "true";
   if (!userId) return { ok: false, error: "缺少使用者 ID" };
   if (userId === auth.currentUserId) {
-    return { ok: false, error: "不能停用自己的帳號" };
+    return { ok: false, error: "無法停用您自己的帳號" };
   }
 
   const admin = createServiceClient();

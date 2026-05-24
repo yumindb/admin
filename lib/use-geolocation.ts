@@ -16,15 +16,15 @@ export type GeoState =
   | { status: "error"; code: GeoErrorCode; message: string };
 
 export type GeoErrorCode =
-  | "unsupported"      // 瀏覽器沒 Geolocation API(罕見)
+  | "unsupported"      // 瀏覽器沒 Geolocation API（罕見）
   | "permission_denied" // user 拒絕授權
-  | "unavailable"      // 系統無法取得位置(GPS 關閉、wifi 太弱)
+  | "unavailable"      // 系統無法取得位置（GPS 關閉、wifi 太弱）
   | "timeout"          // 超時
-  | "insecure";        // 非 https 不會給(localhost 例外)
+  | "insecure";        // 非 https 不會給（localhost 例外）
 
 const DEFAULT_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,  // 要求 GPS 而非 IP / wifi-only
-  maximumAge: 30_000,        // 30s 內的舊讀數可接受(省電 + 加速)
+  maximumAge: 30_000,        // 30s 內的舊讀數可接受（省電 + 加速）
   timeout: 15_000,           // 15s 沒回 → 視為 timeout
 };
 
@@ -63,7 +63,7 @@ export function useGeolocation(opts: { autoFetch?: boolean } = {}): GeoState & {
       setState({
         status: "error",
         code: "insecure",
-        message: "需在 HTTPS 環境下使用(本機開發例外)。",
+        message: "需在 HTTPS 環境下使用（本機開發例外）。",
       });
       return;
     }
@@ -94,7 +94,7 @@ export function useGeolocation(opts: { autoFetch?: boolean } = {}): GeoState & {
           code === "permission_denied"
             ? "請允許瀏覽器使用定位權限。手機端可在「網站設定」開啟。"
             : code === "unavailable"
-              ? "無法取得位置。請確認 GPS / 定位服務已開啟,並到戶外/窗邊再試一次。"
+              ? "無法取得位置。請確認 GPS / 定位服務已開啟，並到戶外/窗邊再試一次。"
               : "定位超時。請重新點「重新定位」。";
         setState({ status: "error", code, message });
       },

@@ -173,7 +173,7 @@ export function StaffManager({
         </NextStepHint>
       </div>
 
-      {/* 公司 tab(動態;空時隱藏) */}
+      {/* 公司 tab（動態；空時隱藏） */}
       {companies.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[#E0DCD6] bg-card px-4 py-3">
           <span className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -540,7 +540,7 @@ function StaffTableRow({
           <span className="font-medium text-primary">{staff.full_name}</span>
           {isSelf && (
             <span className="rounded-full border border-[#A07850]/40 bg-[#F5F1EC] px-1.5 py-0 text-xs text-[#A07850]">
-              你
+              您
             </span>
           )}
         </div>
@@ -736,7 +736,7 @@ function StaffCard({
             </span>
             {isSelf && (
               <span className="shrink-0 rounded-full border border-[#A07850]/40 bg-[#F5F1EC] px-2 py-0.5 text-xs text-[#A07850]">
-                你
+                您
               </span>
             )}
           </div>
@@ -1022,10 +1022,10 @@ function CreateModal({ onClose }: { onClose: () => void }) {
             minLength={2}
             maxLength={30}
             pattern="[a-z0-9]{2,30}"
-            placeholder="小寫英文字母+數字,例:supervisor3"
+            placeholder="小寫英文字母+數字，例：supervisor3"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            僅小寫英文字母與數字,2-30 字。建立後不可變更。
+            僅小寫英文字母與數字，2-30 字。建立後不可變更。
           </p>
           <FieldError msg={state?.fieldErrors?.username?.[0]} />
         </div>

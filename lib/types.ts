@@ -20,8 +20,8 @@ export type WorkItemType =
   | "item"
   | "spec"
   | "manual"
-  | "extra"     // 合約外項目(已簽約追加;有單價/複價)
-  | "unsigned"; // 未簽約施工內容(待 office_staff 補報價、簽約後改為 extra)
+  | "extra"     // 合約外項目（已簽約追加；有單價/複價）
+  | "unsigned"; // 未簽約施工內容（待 office_staff 補報價、簽約後改為 extra）
 
 /** 合約外/未簽約 的報價狀態。pending=待報價,quoted=已報價(有單價即視為已報價) */
 export type QuoteStatus = "pending" | "quoted";
@@ -37,8 +37,8 @@ export type DailyWeather = {
 
 export type DailyLogWorkItem = {
   work_item_id: string;     // FK 到 case_work_items.id
-  qty: number;              // 永遠是「絕對量」(unit 的自然單位)。percent mode 也存 0-1 fraction。
-  qty_mode?: "absolute" | "percent"; // UI 顯示模式;default absolute
+  qty: number;              // 永遠是「絕對量」（unit 的自然單位）。percent mode 也存 0-1 fraction。
+  qty_mode?: "absolute" | "percent"; // UI 顯示模式；default absolute
   note?: string;
 };
 
@@ -102,15 +102,15 @@ export type DailyLog = {
   work_items: DailyLogWorkItem[];
   extra_items: DailyLogExtraItem[];      // 非合約內
   unsigned_items: DailyLogUnsignedItem[]; // 未簽約
-  photos: LogPhoto[];        // 舊資料 jsonb 可能是 string[],讀取時用 normalizeLogPhotos 處理
+  photos: LogPhoto[];        // 舊資料 jsonb 可能是 string[]，讀取時用 normalizeLogPhotos 處理
   vendor_notices: string | null;
   notes: string | null;
   status: LogStatus;
-  current_stage: ApprovalStage | null;     // submitted 時表當前在哪關;其他狀態為 null
+  current_stage: ApprovalStage | null;     // submitted 時表當前在哪關；其他狀態為 null
   submitted_at: string | null;
   pdf_path: string | null;                  // 核定通過後產生的 PDF 在 daily-log-pdfs bucket 的路徑
-  pdf_status: PdfStatus;                    // PDF 產生狀態(migration-2.11 起)
-  pdf_error: string | null;                 // 失敗原因(pdf_status='failed' 時填)
+  pdf_status: PdfStatus;                    // PDF 產生狀態（migration-2.11 起）
+  pdf_error: string | null;                 // 失敗原因（pdf_status='failed' 時填）
   // migration-2.22:首次送出時的 GPS 戳記。post-edit 不重寫,保留原始送出位置。
   submit_lat: number | null;
   submit_lng: number | null;
@@ -215,10 +215,10 @@ export type CaseWorkItem = {
   modified_by_user: boolean;
   import_id: string | null;
   // 以下為 migration-2.13 新增欄位,僅 item_type IN ('extra','unsigned') 使用
-  quote_status: QuoteStatus | null;        // 待報價/已報價;有單價即視為已報價
-  contract_signed_at: string | null;       // 未簽約 → 合約外的時間戳(legacy:已搬到 extra_contracts.signed_at,但欄位保留)
-  contract_note: string | null;            // 簽約備註(legacy:已搬到 extra_contracts.note)
-  created_by: string | null;               // 誰建立(標單匯入為 null;手動新增帶 auth.uid)
+  quote_status: QuoteStatus | null;        // 待報價/已報價；有單價即視為已報價
+  contract_signed_at: string | null;       // 未簽約 → 合約外的時間戳（legacy：已搬到 extra_contracts.signed_at，但欄位保留）
+  contract_note: string | null;            // 簽約備註（legacy：已搬到 extra_contracts.note）
+  created_by: string | null;               // 誰建立（標單匯入為 null；手動新增帶 auth.uid）
   // migration-2.16 新增:item_type='extra' 必有,指向所屬「追加合約」
   extra_contract_id: string | null;
   created_at: string;

@@ -144,7 +144,7 @@ export function HistoryFilters({ rows }: { rows: HistoryRow[] }) {
                 </p>
               )}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>簽核時間:{r.createdAtLabel}</span>
+                <span>簽核時間：{r.createdAtLabel}</span>
                 <Link
                   href={`/logs/${r.logId}`}
                   className="text-accent hover:underline"

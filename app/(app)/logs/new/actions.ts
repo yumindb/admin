@@ -32,14 +32,14 @@ type SaveLogPayload = {
   workItems: DailyLogWorkItem[];
   extraItems: DailyLogExtraItem[];
   unsignedItems: DailyLogUnsignedItem[];
-  photos: LogPhoto[];    // 每張帶 path + caption(caption 可為空字串)
+  photos: LogPhoto[];    // 每張帶 path + caption（caption 可為空字串）
   vendorNotices: string;
   notes: string;
   intent: "draft" | "submit" | "post_edit";
-  fillSignatureUrl?: string;  // submit 時必帶 — 填表人手寫簽名;post_edit 不需要
-  mergedReportIds?: string[]; // 整合的現場回報 ids,送出時翻 merged
-  editReason?: string;        // post_edit 用,目前 UI 暫不收集,預留欄位
-  submitLocation?: SubmitLocationInput | null;  // 送出時的位置(可選;client 沒授權時為 null)
+  fillSignatureUrl?: string;  // submit 時必帶 — 填表人手寫簽名；post_edit 不需要
+  mergedReportIds?: string[]; // 整合的現場回報 ids，送出時翻 merged
+  editReason?: string;        // post_edit 用，目前 UI 暫不收集，預留欄位
+  submitLocation?: SubmitLocationInput | null;  // 送出時的位置（可選；client 沒授權時為 null）
 };
 
 const EDITABLE_FIELDS: DailyLogEditableField[] = [
@@ -80,7 +80,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       role !== "office_staff" &&
       role !== "owner"
     ) {
-      return { ok: false, error: "你的角色無法編輯日誌" };
+      return { ok: false, error: "您的角色無法編輯日誌" };
     }
     if (!payload.logId) {
       return { ok: false, error: "缺少 logId" };
@@ -96,7 +96,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
   if (payload.intent === "submit" && !hasContent) {
     return {
       ok: false,
-      error: "送出前至少要填 1 個工項(主工項 / 合約外 / 未簽約 任一)",
+      error: "送出前至少要填 1 個工項（主工項 / 合約外 / 未簽約 任一）",
     };
   }
   if (payload.intent === "submit" && !payload.fillSignatureUrl) {
@@ -184,7 +184,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
         reason: payload.editReason?.trim() || null,
       });
     if (revErr) {
-      return { ok: false, error: "寫入編輯紀錄失敗:" + revErr.message };
+      return { ok: false, error: "寫入編輯紀錄失敗：" + revErr.message };
     }
 
     // 簽核階段重設規則(post_edit 時依角色決定退回到哪一關):
@@ -220,12 +220,12 @@ export async function saveLogAction(payload: SaveLogPayload) {
       .eq("status", expectedStatus)
       .select("id");
     if (updErr) {
-      return { ok: false, error: "儲存失敗:" + updErr.message };
+      return { ok: false, error: "儲存失敗：" + updErr.message };
     }
     if (!updRows || updRows.length === 0) {
       return {
         ok: false,
-        error: "日誌狀態已被他人變更(可能剛被核定 / 退回),請重新整理",
+        error: "日誌狀態已被他人變更（可能剛被核定 / 退回），請重新整理",
       };
     }
 
@@ -310,7 +310,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       .update(updatePayload)
       .eq("id", logId)
       .eq("supervisor_id", user.id);
-    if (error) return { ok: false, error: "儲存失敗:" + error.message };
+    if (error) return { ok: false, error: "儲存失敗：" + error.message };
   } else {
     const insertPayload: Record<string, unknown> = {
       case_id: payload.caseId,
@@ -335,7 +335,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       .insert(insertPayload)
       .select("id")
       .single();
-    if (error || !data) return { ok: false, error: "建立失敗:" + error?.message };
+    if (error || !data) return { ok: false, error: "建立失敗：" + error?.message };
     logId = data.id;
   }
 
@@ -350,7 +350,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       decision: "approved",
       signature_url: payload.fillSignatureUrl,
     });
-    if (sigErr) return { ok: false, error: "簽名儲存失敗:" + sigErr.message };
+    if (sigErr) return { ok: false, error: "簽名儲存失敗：" + sigErr.message };
   }
 
   // 把整合進來的現場回報翻成 merged。
@@ -373,7 +373,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       return {
         ok: true,
         logId,
-        warning: "日誌已存,但讀取現場回報狀態失敗:" + readErr.message,
+        warning: "日誌已存，但讀取現場回報狀態失敗:" + readErr.message,
       };
     }
 
@@ -397,7 +397,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       return {
         ok: true,
         logId,
-        warning: `日誌已存,但 ${conflicts.length} 筆現場回報已被他人整合或封存,未重複合併`,
+        warning: `日誌已存，但 ${conflicts.length} 筆現場回報已被他人整合或封存，未重複合併`,
       };
     }
 
@@ -417,7 +417,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
         return {
           ok: true,
           logId,
-          warning: "日誌已存,但部分現場回報狀態更新失敗:" + mergeErr.message,
+          warning: "日誌已存，但部分現場回報狀態更新失敗:" + mergeErr.message,
         };
       }
       if ((updRows?.length ?? 0) < idsToMerge.length) {
@@ -425,7 +425,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
         return {
           ok: true,
           logId,
-          warning: `日誌已存,但部分現場回報在合併瞬間被他人搶先處理`,
+          warning: `日誌已存，但部分現場回報在合併瞬間被他人搶先處理`,
         };
       }
     }

@@ -19,8 +19,8 @@ const USER_AGENT = "yumin-admin/1.0 (https://github.com/yumindb/admin)";
 export type GeocodeResult = {
   lat: number;
   lng: number;
-  display_name: string;        // 完整地址(Nominatim 回的格式化字串)
-  importance: number;          // Nominatim 給的「相關度」,0-1
+  display_name: string;        // 完整地址（Nominatim 回的格式化字串）
+  importance: number;          // Nominatim 給的「相關度」，0-1
 };
 
 async function rawGeocode(
@@ -43,7 +43,7 @@ async function rawGeocode(
       "Accept-Language": "zh-TW,zh",
     },
   });
-  if (!resp.ok) throw new Error(`geocode 失敗: HTTP ${resp.status}`);
+  if (!resp.ok) throw new Error(`geocode 失敗： HTTP ${resp.status}`);
   const body = (await resp.json()) as Array<{
     lat: string;
     lon: string;

@@ -58,7 +58,7 @@ export function PhotoGallery({
               </button>
               <p className="whitespace-pre-line text-sm">
                 {p.caption || (
-                  <span className="text-muted-foreground">(未附說明)</span>
+                  <span className="text-muted-foreground">（未附說明）</span>
                 )}
               </p>
             </li>

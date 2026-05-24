@@ -59,7 +59,7 @@ export function buildCrossCaseSummaryXlsx(
   }
 
   if (rows.length === 0) {
-    out.push(["", "(無資料)", "", "", "", "", "", "", ""]);
+    out.push(["", "（無資料）", "", "", "", "", "", "", ""]);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(out);

@@ -28,17 +28,17 @@ const PAGE_COPY: Record<
   },
   review: {
     title: "待複核",
-    subtitle: "你送出的日誌等你自己複核確認",
+    subtitle: "您送出的日誌等您自己複核確認",
     emptyHint: "送出新日誌後會出現在這裡。可在「我的日誌」找草稿",
   },
   audit: {
     title: "待審核",
-    subtitle: "工地主任複核完的日誌等你審核文件完整性",
+    subtitle: "工地主任複核完的日誌等您審核文件完整性",
     emptyHint: "工地主任複核後會出現在這裡",
   },
   approve: {
     title: "待核定",
-    subtitle: "辦公室助理審核通過的日誌等你最後核定",
+    subtitle: "辦公室助理審核通過的日誌等您最後核定",
     emptyHint: "辦公室助理審核後會出現在這裡",
   },
 };
@@ -95,7 +95,7 @@ export default async function ApprovalsPage() {
 
       <div className="mb-6">
         <NextStepHint tone="muted">
-          四關流程:填表 → 複核(工地主任) → 審核(辦公室助理) → 核定(老闆)。
+          四關流程：填表 → 複核（工地主任） → 審核（辦公室助理） → 核定（老闆）。
           每關退回都會回到「我的日誌」讓主任修正後重送。
         </NextStepHint>
       </div>

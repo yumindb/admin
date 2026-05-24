@@ -106,7 +106,7 @@ export async function createExtraContractAction(
       .in("id", data.work_item_ids);
     if (readErr) throw wrapDbError(readErr, "讀取工項失敗");
     if (!targetItems || targetItems.length !== data.work_item_ids.length) {
-      return { ok: false, error: "有工項找不到,請重新整理頁面" };
+      return { ok: false, error: "有工項找不到，請重新整理頁面" };
     }
     for (const it of targetItems) {
       if (it.case_id !== data.case_id) {
@@ -135,7 +135,7 @@ export async function createExtraContractAction(
       .single();
     if (cErr || !contract) {
       console.error("[createExtraContractAction] insert contract failed", cErr);
-      return { ok: false, error: `建立合約失敗:${cErr?.message ?? "unknown"}` };
+      return { ok: false, error: `建立合約失敗：${cErr?.message ?? "unknown"}` };
     }
     const contractId = contract.id as string;
 
@@ -156,7 +156,7 @@ export async function createExtraContractAction(
       await supabase.from("extra_contracts").delete().eq("id", contractId);
       return {
         ok: false,
-        error: `工項更新失敗,已回滾合約:${updErr.message}`,
+        error: `工項更新失敗，已回滾合約：${updErr.message}`,
       };
     }
 

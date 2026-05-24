@@ -17,7 +17,7 @@ function classify(message: string): ErrorKind {
 const COPY: Record<ErrorKind, { title: string; body: string }> = {
   permission: {
     title: "權限不足",
-    body: "你的帳號沒有權限執行這個操作。如果你覺得這是誤判，請聯絡系統管理員。",
+    body: "您的帳號沒有權限執行這個操作。如果您覺得這是誤判，請聯絡系統管理員。",
   },
   auth: {
     title: "請先登入",
@@ -25,7 +25,7 @@ const COPY: Record<ErrorKind, { title: string; body: string }> = {
   },
   notfound: {
     title: "找不到資料",
-    body: "你要存取的資料不存在，可能已被刪除或網址有誤。",
+    body: "您要存取的資料不存在，可能已被刪除或網址有誤。",
   },
   generic: {
     title: "發生錯誤",

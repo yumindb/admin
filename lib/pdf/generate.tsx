@@ -189,7 +189,7 @@ export async function generatePdfForLog(logId: string): Promise<
   const data: PdfData = {
     log,
     case: {
-      name: log.cases?.name ?? "(已刪除案件)",
+      name: log.cases?.name ?? "（已刪除案件）",
       code: log.cases?.code ?? null,
       company: log.cases?.company ?? "—",
       location: log.cases?.location ?? null,

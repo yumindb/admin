@@ -151,7 +151,7 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                           placeholder={col.placeholder}
                           className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                         />
-                        {/* 快速選 chips:只在值為空時顯示,避免擠版面 */}
+                        {/* 快速選 chips：只在值為空時顯示，避免擠版面 */}
                         {col.suggestions && col.suggestions.length > 0 &&
                           !String(row[col.key] ?? "").trim() && (
                             <div className="flex flex-wrap gap-1 pt-0.5">

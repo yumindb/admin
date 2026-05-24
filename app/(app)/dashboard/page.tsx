@@ -219,12 +219,12 @@ export default async function DashboardPage() {
           {isOwner ? "老闆儀表板" : "辦公室儀表板"}
         </h1>
         <p className="mt-1.5 text-base text-muted-foreground">
-          全公司今天的紅綠燈,有紅燈再點進去處理
+          全公司今天的紅綠燈，有紅燈再點進去處理
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* 卡 1:待核定 / 待審 */}
+        {/* 卡 1：待核定 / 待審 */}
         <DashCard
           tone={pendingCount > 0 ? (oldestPendingDays !== null && oldestPendingDays >= 2 ? "red" : "amber") : "green"}
           title={isOwner ? "待核定" : "待審核"}
@@ -232,9 +232,9 @@ export default async function DashboardPage() {
           unit="份"
           hint={
             pendingCount === 0
-              ? "全部簽完,辛苦了"
+              ? "全部簽完，辛苦了"
               : oldestPendingDays !== null && oldestPendingDays >= 2
-                ? `最久等了 ${oldestPendingDays} 天,該處理了`
+                ? `最久等了 ${oldestPendingDays} 天，該處理了`
                 : oldestPendingDays !== null && oldestPendingDays >= 1
                   ? `最久等了 ${oldestPendingDays} 天`
                   : "今天剛送出的"
@@ -242,7 +242,7 @@ export default async function DashboardPage() {
           cta={pendingCount > 0 ? { href: pendingPath, label: "跳去簽" } : undefined}
         />
 
-        {/* 卡 2:進度落後 */}
+        {/* 卡 2：進度落後 */}
         <DashCard
           tone={behindCases.length > 0 ? "red" : "green"}
           title="進度落後案場"
@@ -251,7 +251,7 @@ export default async function DashboardPage() {
           hint={
             behindCases.length === 0
               ? "沒有進度落後的案場"
-              : `< 30% 且開工 > 60 天:${behindCases
+              : `< 30% 且開工 > 60 天：${behindCases
                   .slice(0, 3)
                   .map((c) => `${c.code ?? ""}${c.code ? "｜" : ""}${c.name} (${c.pct}%)`)
                   .join("、")}${behindCases.length > 3 ? "…" : ""}`
@@ -263,7 +263,7 @@ export default async function DashboardPage() {
           }
         />
 
-        {/* 卡 3:今日未打卡主任 */}
+        {/* 卡 3：今日未打卡主任 */}
         <DashCard
           tone={missingClockIn.length > 0 ? "amber" : "green"}
           title="今日未打卡主任"
@@ -284,7 +284,7 @@ export default async function DashboardPage() {
           }
         />
 
-        {/* 卡 4:合約外 + 未簽約累計金額 */}
+        {/* 卡 4：合約外 + 未簽約累計金額 */}
         <DashCard
           tone={totalExtraSum > 0 ? "amber" : "green"}
           title="合約外 + 未簽約金額"
@@ -304,7 +304,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-6 rounded-md border border-[#E0DCD6] bg-card px-4 py-3 text-sm text-muted-foreground">
-        💡 提示:資料每次打開都重撈,不需要刷新。LINE 通知串接後,有事直接彈訊息給你。
+        💡 提示：資料每次打開都重撈，不需要刷新。LINE 通知串接後，有事直接彈訊息給你。
       </div>
     </div>
   );

@@ -81,7 +81,7 @@ export function ExtraContractsSection({
   }
 
   function handleItemDelete(item: ContractItem) {
-    if (!confirm(`確定刪除「${item.name}」?此動作無法復原。`)) return;
+    if (!confirm(`確定刪除「${item.name}」？此動作無法復原。`)) return;
     startTransition(async () => {
       const fd = new FormData();
       fd.set("work_item_id", item.id);
@@ -99,7 +99,7 @@ export function ExtraContractsSection({
   function handleUnbundle(c: ContractWithItems) {
     if (
       !confirm(
-        `確定拆解「${c.name}」?\n\n合約內 ${c.items.length} 筆工項會退回「未簽約」,合約本身會刪除。歷史日誌的進度仍會保留。`,
+        `確定拆解「${c.name}」？\n\n合約內 ${c.items.length} 筆工項會退回「未簽約」，合約本身會刪除。歷史日誌的進度仍會保留。`,
       )
     )
       return;
@@ -130,7 +130,7 @@ export function ExtraContractsSection({
             共 {contracts.length} 份
             {totalContractsValue > 0 && (
               <span className="ml-3">
-                合計金額:
+                合計金額：
                 <span className="ml-1 tabular-nums text-foreground">
                   {totalContractsValue.toLocaleString("zh-TW")}
                 </span>
@@ -142,7 +142,7 @@ export function ExtraContractsSection({
 
       {contracts.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-10 text-center text-sm text-muted-foreground">
-          目前沒有追加合約。從下方「未簽約」區塊勾選多筆工項,按「建立追加合約」即可打包成一份報價單。
+          目前沒有追加合約。從下方「未簽約」區塊勾選多筆工項，按「建立追加合約」即可打包成一份報價單。
         </div>
       ) : (
         <div className="space-y-4">
@@ -238,14 +238,14 @@ function ContractCard({
             {contract.bundlePrice !== null ? (
               <>
                 <span>
-                  bundle 優惠價:
+                  bundle 優惠價：
                   <span className="ml-1 font-semibold tabular-nums text-foreground">
                     {contract.bundlePrice.toLocaleString("zh-TW")}
                   </span>
                 </span>
                 {showBundleDelta && (
                   <span className="text-xs text-muted-foreground">
-                    (工項加總 {itemsSum.toLocaleString("zh-TW")},
+                    （工項加總 {itemsSum.toLocaleString("zh-TW")},
                     {bundleDelta < 0 ? "折讓 " : "加價 "}
                     {Math.abs(bundleDelta).toLocaleString("zh-TW")})
                   </span>
@@ -253,11 +253,11 @@ function ContractCard({
               </>
             ) : itemsSum > 0 ? (
               <span>
-                工項加總:
+                工項加總：
                 <span className="ml-1 font-semibold tabular-nums text-foreground">
                   {itemsSum.toLocaleString("zh-TW")}
                 </span>
-                <span className="ml-1 text-xs text-muted-foreground">(未填 bundle 價)</span>
+                <span className="ml-1 text-xs text-muted-foreground">（未填 bundle 價）</span>
               </span>
             ) : (
               <span className="text-xs text-muted-foreground">未填單價</span>
@@ -449,7 +449,7 @@ function ContractEditModal({
               className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
-          <Field label="bundle 優惠價(整份合約金額,可空)">
+          <Field label="bundle 優惠價（整份合約金額，可空）">
             <input
               type="number"
               step="any"
@@ -464,7 +464,7 @@ function ContractEditModal({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={2}
-              placeholder="例:2026-05-08 LINE 同意追加"
+              placeholder="例：2026-05-08 LINE 同意追加"
               className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>

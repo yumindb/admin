@@ -59,7 +59,7 @@ export default async function LeavesPage() {
           <p className="mt-1.5 text-base text-muted-foreground">
             {canCreate
               ? "送出後會自動依層級往上送簽。可隨時取消尚未完成的申請。"
-              : "下面是等你簽核的請假申請。"}
+              : "下面是等您簽核的請假申請。"}
           </p>
         </div>
         {canCreate && (
@@ -73,7 +73,7 @@ export default async function LeavesPage() {
         )}
       </div>
 
-      {/* 待我簽核 — 永遠擺在最上面,有就最優先處理 */}
+      {/* 待我簽核 — 永遠擺在最上面，有就最優先處理 */}
       <section className="mb-9">
         <div className="mb-3 flex items-center gap-2">
           <h2 className="text-lg font-semibold text-primary">待我簽核</h2>
@@ -112,7 +112,7 @@ export default async function LeavesPage() {
                 按右上「新請假」開始填單
               </p>
               <NextStepHint tone="muted" className="mt-4 text-left">
-                送出後會自動依層級往上簽,你會在這裡看到每一關進度。
+                送出後會自動依層級往上簽，你會在這裡看到每一關進度。
               </NextStepHint>
             </div>
           ) : (

@@ -8,7 +8,7 @@ export default function NotFound() {
         <p className="text-sm tracking-widest text-[#A07850]">NOT FOUND</p>
         <h1 className="text-2xl font-semibold text-foreground md:text-3xl">找不到這個頁面</h1>
         <p className="text-base text-[#5A5050]">
-          你要造訪的頁面不存在，可能網址打錯，或這份資料已經被刪除。
+          您要造訪的頁面不存在，可能網址打錯，或這份資料已經被刪除。
         </p>
       </div>
       <div className="flex flex-wrap gap-3">

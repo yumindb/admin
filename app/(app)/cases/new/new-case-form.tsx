@@ -64,7 +64,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
   // 動態組欄位:沒標單時隱藏「上層分類」,有標單時加進來放在最後
   const manualItemCols = useMemo<ColumnDef<ManualItemDraft>[]>(() => {
     const base: ColumnDef<ManualItemDraft>[] = [
-      { key: "name", label: "工項名稱", required: true, placeholder: "例:配電盤升級" },
+      { key: "name", label: "工項名稱", required: true, placeholder: "例：配電盤升級" },
       { key: "unit", label: "單位", placeholder: "式 / 組 / m" },
       { key: "quantity", label: "數量", type: "number", inputMode: "decimal" },
       { key: "unit_price", label: "單價", type: "number", inputMode: "decimal" },
@@ -327,7 +327,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
             <div className="text-xs text-muted-foreground">
               工項 {willImportCount} 項
               <span className="ml-1 opacity-70">
-                (另含 {parsed.stats.sections} 個分類層 · 勾略過 {skippedIds.size} 筆)
+                （另含 {parsed.stats.sections} 個分類層 · 勾略過 {skippedIds.size} 筆）
               </span>
             </div>
           </div>
@@ -339,18 +339,18 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
         </section>
       )}
 
-      {/* 4) 手動新增工項 — 沒標單也能列幾筆;跟標單匯入並存無妨 */}
+      {/* 4) 手動新增工項 — 沒標單也能列幾筆；跟標單匯入並存無妨 */}
       <section className="rounded-md border border-[#E0DCD6] bg-card p-4 md:p-5">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <div className="text-sm font-medium text-primary">
             手動新增工項{manualValidCount > 0 ? `（${manualValidCount}）` : "（選填）"}
           </div>
           <span className="text-xs text-muted-foreground">
-            沒有標單可在這裡列幾筆;之後也可在案件頁繼續加
+            沒有標單可在這裡列幾筆；之後也可在案件頁繼續加
           </span>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">
-          手動工項會以 item_type=&quot;manual&quot; 寫入,排在標單匯入項之後。空名稱的列會被忽略。
+          手動工項會以 item_type=&quot;manual&quot; 寫入，排在標單匯入項之後。空名稱的列會被忽略。
         </p>
         <ExtraItemsEditor<ManualItemDraft>
           rows={manualItems}
@@ -358,7 +358,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
           empty={EMPTY_MANUAL_ITEM}
           columns={manualItemCols}
           addLabel="+ 新增一項工項"
-          emptyHint="留空也可以,之後在案件頁加"
+          emptyHint="留空也可以，之後在案件頁加"
         />
       </section>
 
@@ -370,7 +370,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
 
       {!parsed && manualValidCount === 0 && (
         <NextStepHint tone="info">
-          沒有標單也可以只建立案件,之後再到案件頁補匯入;或在上方「手動新增工項」直接列幾筆。
+          沒有標單也可以只建立案件，之後再到案件頁補匯入；或在上方「手動新增工項」直接列幾筆。
         </NextStepHint>
       )}
 

@@ -167,7 +167,7 @@ export function CasesOverviewList({
 
   return (
     <>
-      {/* Company tabs(僅有 ≥1 公司時才顯示) */}
+      {/* Company tabs（僅有 ≥1 公司時才顯示） */}
       {companies.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#E0DCD6] bg-card px-4 py-3">
           <span className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -196,7 +196,7 @@ export function CasesOverviewList({
         </div>
       )}
 
-      {/* 搜尋:案件名稱 / 案號 / 業主 / 施工地點 — 200 筆內快速找特定案件 */}
+      {/* 搜尋：案件名稱 / 案號 / 業主 / 施工地點 — 200 筆內快速找特定案件 */}
       <div className="mb-3 rounded-lg border border-[#E0DCD6] bg-card px-4 py-2.5">
         <label className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">搜尋</span>
@@ -294,7 +294,7 @@ export function CasesOverviewList({
             </p>
             <p className="text-sm text-muted-foreground">
               {q
-                ? "試試其他關鍵字,或切換公司／狀態 tab"
+                ? "試試其他關鍵字，或切換公司／狀態 tab"
                 : "切換其他公司／狀態 tab 可看到更多案件"}
             </p>
           </div>
@@ -504,7 +504,7 @@ function EmptyState() {
       <div className="mb-3 text-5xl text-[#E0DCD6]">＋</div>
       <p className="mb-1.5 text-base text-foreground">還沒有任何案件</p>
       <p className="mb-6 text-sm text-muted-foreground">
-        點下方按鈕開新案,接著上傳 .xlsx 自動建立工項
+        點下方按鈕開新案，接著上傳 .xlsx 自動建立工項
       </p>
       <Link
         href="/cases/new"

@@ -83,7 +83,7 @@ function isValidLatLng(lat: number, lng: number): boolean {
     lat <= 90 &&
     lng >= -180 &&
     lng <= 180 &&
-    !(lat === 0 && lng === 0) // 海上 0,0 幾乎一定是錯,不接受
+    !(lat === 0 && lng === 0) // 海上 0,0 幾乎一定是錯，不接受
   );
 }
 

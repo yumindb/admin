@@ -72,7 +72,7 @@ export function ExtraUnsignedSection({
   const emptyHint =
     kind === "extra"
       ? "目前沒有合約外項目。簽約追加的工項會在這裡。"
-      : "目前沒有未簽約施工內容。現場有臨時施工但尚未報價/簽約時,會在這裡列出。";
+      : "目前沒有未簽約施工內容。現場有臨時施工但尚未報價/簽約時，會在這裡列出。";
   const addLabel = kind === "extra" ? "新增合約外項目" : "新增未簽約項目";
 
   const selectedRows = useMemo(
@@ -114,7 +114,7 @@ export function ExtraUnsignedSection({
   }
 
   function handleDelete(row: ExtraUnsignedRow) {
-    if (!confirm(`確定刪除「${row.name}」嗎?此動作無法復原。`)) return;
+    if (!confirm(`確定刪除「${row.name}」嗎？此動作無法復原。`)) return;
     startTransition(async () => {
       const fd = new FormData();
       fd.set("work_item_id", row.id);
@@ -151,7 +151,7 @@ export function ExtraUnsignedSection({
               共 {rows.length} 筆
               {totalQuoted > 0 && (
                 <span className="ml-3">
-                  已報價金額合計:
+                  已報價金額合計：
                   <span className="ml-1 tabular-nums text-foreground">
                     {totalQuoted.toLocaleString("zh-TW")}
                   </span>
@@ -189,7 +189,7 @@ export function ExtraUnsignedSection({
 
       {kind === "unsigned" && rows.length > 0 && editable && (
         <p className="mb-3 text-sm text-muted-foreground">
-          勾選多筆同時要追加的工項,按上方「建立追加合約」可一次打包成一份報價單(可填 bundle 優惠價)。
+          勾選多筆同時要追加的工項，按上方「建立追加合約」可一次打包成一份報價單（可填 bundle 優惠價）。
         </p>
       )}
 
@@ -368,7 +368,7 @@ export function ExtraUnsignedSection({
         />
       )}
 
-      {/* 建立追加合約 dialog (kind='unsigned' 才會打開) */}
+      {/* 建立追加合約 dialog （kind='unsigned' 才會打開） */}
       {bundleDialogOpen && (
         <BundleContractDialog
           caseId={caseId}
@@ -471,7 +471,7 @@ function BundleContractDialog({
               ))}
             </ul>
             <div className="mt-1 text-right text-xs text-muted-foreground">
-              工項複價加總:
+              工項複價加總：
               <span className="ml-1 tabular-nums text-foreground">
                 {itemsSum.toLocaleString("zh-TW")}
               </span>
@@ -493,7 +493,7 @@ function BundleContractDialog({
 
           <div className="block">
             <span className="mb-1 block text-xs font-medium text-muted-foreground">
-              bundle 優惠價(整份合約金額,可空)
+              bundle 優惠價（整份合約金額，可空）
             </span>
             <input
               type="number"
@@ -506,10 +506,10 @@ function BundleContractDialog({
             {showBundleDelta && (
               <p className="mt-1 text-xs text-muted-foreground">
                 {bundleDelta < 0
-                  ? `相較工項加總,折讓 ${Math.abs(bundleDelta).toLocaleString("zh-TW")}`
+                  ? `相較工項加總，折讓 ${Math.abs(bundleDelta).toLocaleString("zh-TW")}`
                   : bundleDelta > 0
-                    ? `相較工項加總,加價 ${bundleDelta.toLocaleString("zh-TW")}`
-                    : "與工項加總相同(無折讓)"}
+                    ? `相較工項加總，加價 ${bundleDelta.toLocaleString("zh-TW")}`
+                    : "與工項加總相同（無折讓）"}
               </p>
             )}
           </div>
@@ -522,7 +522,7 @@ function BundleContractDialog({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={2}
-              placeholder="例:2026-05-08 LINE 同意追加,業主要求"
+              placeholder="例：2026-05-08 LINE 同意追加，業主要求"
               className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </div>

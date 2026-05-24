@@ -37,7 +37,7 @@ export default async function AccountPage() {
         我的帳號
       </h1>
       <p className="mb-7 text-base text-muted-foreground">
-        修改密碼或檢視個人資料。如果忘記目前密碼,請聯絡辦公室助理或老闆協助重設。
+        修改密碼或檢視個人資料。如果忘記目前密碼，請聯絡辦公室助理或老闆協助重設。
       </p>
 
       <section className="mb-8 rounded-lg border border-[#E0DCD6] bg-card p-5">
@@ -52,7 +52,7 @@ export default async function AccountPage() {
           <Row label="電話" value={profile?.phone ?? "—"} />
         </dl>
         <p className="mt-3 text-xs text-muted-foreground">
-          以上欄位若需更動,請聯絡管理員。
+          以上欄位若需更動，請聯絡管理員。
         </p>
       </section>
 
@@ -61,7 +61,7 @@ export default async function AccountPage() {
           修改密碼
         </h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          需要先輸入目前密碼,再輸入新密碼兩次。
+          需要先輸入目前密碼，再輸入新密碼兩次。
         </p>
         <PasswordForm />
       </section>

@@ -76,7 +76,7 @@ export default async function AttendancePage() {
         上下班打卡
       </h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        系統會記錄你的位置與離工地距離。允許瀏覽器使用定位後,會自動推薦最近案件。
+        系統會記錄你的位置與離工地距離。允許瀏覽器使用定位後，會自動推薦最近案件。
       </p>
 
       <AttendanceClient

@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     .from("daily_logs")
     .update({
       pdf_status: "failed",
-      pdf_error: "PDF 產生超過 10 分鐘無回應,背景任務可能已中斷,請點重新產生。",
+      pdf_error: "PDF 產生超過 10 分鐘無回應，背景任務可能已中斷，請點重新產生。",
     })
     .in("id", stuckIds);
 

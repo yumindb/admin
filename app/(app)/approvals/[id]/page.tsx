@@ -151,7 +151,7 @@ export default async function ApprovalDetailPage({
           {isBackfilledLog(l) && (
             <span
               className="rounded-full border border-[#FDBA74] bg-[#FFF7ED] px-2 py-0.5 text-xs text-[#C2410C]"
-              title="此日誌的施工日期跟實際填寫日期不同(隔天以上補填)"
+              title="此日誌的施工日期跟實際填寫日期不同（隔天以上補填）"
             >
               補件
             </span>
@@ -161,23 +161,23 @@ export default async function ApprovalDetailPage({
           {l.cases?.name}
         </h1>
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
-          <span>日期:{formatDateTW(l.log_date)}</span>
+          <span>日期：{formatDateTW(l.log_date)}</span>
           <span>{getWeekdayLabel(l.log_date)}</span>
           <span>
-            表報編號:
+            表報編號：
             {buildReportNumber({
               caseCode: l.cases?.code ?? null,
               logDate: l.log_date,
               daySeq,
             })}
           </span>
-          <span>工地主任:{l.profiles?.full_name ?? "—"}</span>
-          <span>天氣:{formatWeatherSummary(l.weather)}</span>
+          <span>工地主任：{l.profiles?.full_name ?? "—"}</span>
+          <span>天氣：{formatWeatherSummary(l.weather)}</span>
         </div>
       </div>
 
       {/* 簽核摘要卡 — 老闆 2 分鐘決定簽或退要先看到的東西。
-          手機上其他七大段預設摺疊,要看細節再點開。 */}
+          手機上其他七大段預設摺疊，要看細節再點開。 */}
       <SignSection title="簽核摘要" alwaysOpen>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
           <SummaryCard
@@ -390,8 +390,8 @@ export default async function ApprovalDetailPage({
       <div className="mb-4">
         <NextStepHint tone="info">
           {allowedStage === "approve"
-            ? "確認上方內容後,在下方簽名按「核定通過」,系統自動跳下一份。要退回切到「退回」分頁。"
-            : `確認上方內容後在下方簽名按「${stageCopy.verb}」,系統會把日誌推到下一關。要退回切到「退回」分頁,主任會在「我的日誌」看到並可修正後重送。`}
+            ? "確認上方內容後，在下方簽名按「核定通過」，系統自動跳下一份。要退回切到「退回」分頁。"
+            : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。要退回切到「退回」分頁，主任會在「我的日誌」看到並可修正後重送。`}
         </NextStepHint>
       </div>
       <ApprovalActions logId={id} stage={allowedStage} />
@@ -526,7 +526,7 @@ function ApprovalExtraUnsignedTable({
             const meta = wiMap.get(w.work_item_id);
             return (
               <tr key={`${w.work_item_id}-${i}`} className="border-b border-[#E0DCD6]">
-                <td className="h-14 px-4 align-top">{meta?.name ?? "(已刪除)"}</td>
+                <td className="h-14 px-4 align-top">{meta?.name ?? "（已刪除）"}</td>
                 <td className="h-14 px-4 align-top">{meta?.unit ?? "—"}</td>
                 <td className="h-14 px-4 align-top text-right tabular-nums">
                   {fmt(w, meta?.unit ?? null)}

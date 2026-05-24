@@ -36,7 +36,7 @@ function groupByCase(list: ReportRow[]): CaseGroup[] {
     if (!g) {
       g = {
         caseId: key,
-        caseName: r.cases?.name ?? "(已刪除案件)",
+        caseName: r.cases?.name ?? "（已刪除案件）",
         caseCode: r.cases?.code ?? null,
         reports: [],
         latest: r.created_at,
@@ -100,11 +100,11 @@ export default async function FieldReportsPage() {
           </h1>
           <p className="mt-1.5 text-base text-muted-foreground">
             {isFieldAssistant
-              ? "下面是你拍過、寫過的紀錄。要新增請按下方「新增回報」。"
-              : "現場拍照與文字紀錄,你也可以自己加。工地主任填日誌時可勾選整合。"}
+              ? "下面是您拍過、寫過的紀錄。要新增請按下方「新增回報」。"
+              : "現場拍照與文字紀錄，您也可以自己加。工地主任填日誌時可勾選整合。"}
           </p>
         </div>
-        {/* 桌機版:右上角藥丸形按鈕 — 跟手機 FAB 同配色,只是不浮空 */}
+        {/* 桌機版：右上角藥丸形按鈕 — 跟手機 FAB 同配色，只是不浮空 */}
         {canCreate && (
           <Link
             href="/field-reports/new"
@@ -194,9 +194,9 @@ export default async function FieldReportsPage() {
         </div>
       )}
 
-      {/* 手機 FAB(extended):浮在右下,坐在底部 tab bar 上方。圖標 + 文字
-          並排,讓使用者一眼看出來這顆鈕是做什麼的。field_assistant 已有
-          底部 tab「新增回報」,不重複顯示。 */}
+      {/* 手機 FAB(extended)：浮在右下，坐在底部 tab bar 上方。圖標 + 文字
+          並排，讓使用者一眼看出來這顆鈕是做什麼的。field_assistant 已有
+          底部 tab「新增回報」，不重複顯示。 */}
       {canCreate && !isFieldAssistant && (
         <Link
           href="/field-reports/new"
@@ -252,7 +252,7 @@ function ReportCard({
         <div className="min-w-0 flex-1">
           {!hideCaseName && (
             <div className="break-words text-lg font-semibold leading-snug text-primary">
-              {r.cases?.name ?? "(已刪除案件)"}
+              {r.cases?.name ?? "（已刪除案件）"}
             </div>
           )}
           <div className={hideCaseName ? "text-sm text-muted-foreground" : "mt-0.5 text-sm text-muted-foreground"}>
@@ -291,7 +291,7 @@ function ReportCard({
         </p>
       ) : !firstPhoto ? (
         <p className="px-4 py-6 text-center text-base text-muted-foreground">
-          (空白)
+          （空白）
         </p>
       ) : null}
     </Link>
@@ -309,7 +309,7 @@ function Empty({
     <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#E0DCD6] bg-card px-6 py-20 text-center">
       <div className="mb-4 text-7xl">📷</div>
       <p className="mb-2 text-lg font-medium text-foreground">
-        {isFieldAssistant ? "你還沒有任何回報" : "還沒有現場回報"}
+        {isFieldAssistant ? "您還沒有任何回報" : "還沒有現場回報"}
       </p>
       <p className="text-base text-muted-foreground">
         {isFieldAssistant && canCreate

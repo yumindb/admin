@@ -172,7 +172,7 @@ export async function createCaseAction(
         .map((r) => r.data);
       manualItems = validated;
     } catch {
-      return { error: "手動工項資料無法解析,請檢查格式。" };
+      return { error: "手動工項資料無法解析，請檢查格式。" };
     }
   }
 
@@ -226,7 +226,7 @@ export async function createCaseAction(
   if (!row) {
     if (lastError?.code === "23505" && /code/i.test(lastError.message ?? "")) {
       return userProvidedCode
-        ? { fieldErrors: { code: [`案件編號「${code}」已被使用,請換一個。`] } }
+        ? { fieldErrors: { code: [`案件編號「${code}」已被使用，請換一個。`] } }
         : { error: "系統忙線中（自動編號連續撞號），請稍後再試。" };
     }
     return { error: "建立失敗：" + (lastError?.message ?? "未知錯誤") };
@@ -361,7 +361,7 @@ export async function createCaseAction(
       .insert(rows);
     if (insErr) {
       return {
-        error: `案件已建立${tender ? "(標單也已匯入)" : ""},但手動工項插入失敗:${insErr.message}。請至案件頁面手動補建。`,
+        error: `案件已建立${tender ? "（標單也已匯入）" : ""}，但手動工項插入失敗：${insErr.message}。請至案件頁面手動補建。`,
         caseId,
       };
     }

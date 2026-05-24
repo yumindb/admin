@@ -40,10 +40,10 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 
 // 完整版 — 顯示在 NextStepHint / 簽核紀錄 etc.
 const STAGE_LABEL: Record<string, string> = {
-  fill: "填表(工地主任)",
-  review: "複核(工地主任)",
-  audit: "審核(辦公室助理)",
-  approve: "核定(老闆)",
+  fill: "填表（工地主任）",
+  review: "複核（工地主任）",
+  audit: "審核（辦公室助理）",
+  approve: "核定（老闆）",
 };
 
 // 簡短版 — 接在 status badge 後綴用,如「簽核中:審核」
@@ -203,7 +203,7 @@ export default async function LogDetailPage({
     const editor = Array.isArray(r.editor) ? r.editor[0] : r.editor;
     return {
       id: r.id,
-      editorName: editor?.full_name ?? "(已離職 / 未命名)",
+      editorName: editor?.full_name ?? "（已離職 / 未命名）",
       editorRole: r.editor_role,
       editedAt: r.edited_at,
       logStatusAtEdit: r.log_status_at_edit,
@@ -247,7 +247,7 @@ export default async function LogDetailPage({
         </Link>
         <span className="mx-1.5">／</span>
         <span>
-          {l.cases?.name ?? "(已刪除)"} ·{" "}
+          {l.cases?.name ?? "（已刪除）"} ·{" "}
           {formatDateTW(l.log_date)}
         </span>
       </nav>
@@ -266,7 +266,7 @@ export default async function LogDetailPage({
             {isBackfilledLog(l) && (
               <span
                 className="inline-block rounded-full border border-[#FDBA74] bg-[#FFF7ED] px-2.5 py-0.5 text-xs text-[#C2410C]"
-                title="此日誌的施工日期跟實際填寫日期不同(隔天以上補填)"
+                title="此日誌的施工日期跟實際填寫日期不同（隔天以上補填）"
               >
                 補件
               </span>
@@ -278,7 +278,7 @@ export default async function LogDetailPage({
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
             <span>
-              表報編號:
+              表報編號：
               {buildReportNumber({
                 caseCode: l.cases?.code ?? null,
                 logDate: l.log_date,
@@ -286,7 +286,7 @@ export default async function LogDetailPage({
               })}
             </span>
             <span>{getWeekdayLabel(l.log_date)}</span>
-            <span>天氣:{formatWeatherSummary(l.weather)}</span>
+            <span>天氣：{formatWeatherSummary(l.weather)}</span>
             {l.manpower?.today_total !== undefined && (
               <span>本日出工 {l.manpower.today_total} 人</span>
             )}
@@ -359,17 +359,17 @@ export default async function LogDetailPage({
       {l.status === "draft" && isOwnerOfLog && (
         <div className="mb-6">
           <NextStepHint tone="warning" title="尚未送出">
-            這份還是草稿,老闆不會收到。確認內容後請按右上「編輯」→ 表單底「送出核定」。
+            這份還是草稿，老闆不會收到。確認內容後請按右上「編輯」→ 表單底「送出核定」。
           </NextStepHint>
         </div>
       )}
-      {/* 四關正式流程的 status hint:依 current_stage × 角色 細分 */}
+      {/* 四關正式流程的 status hint：依 current_stage × 角色 細分 */}
       {l.status === "submitted" && (() => {
         const stage = l.current_stage;
         const stageLabel: Record<string, string> = {
-          review: "複核(工地主任)",
-          audit: "審核(辦公室助理)",
-          approve: "核定(老闆)",
+          review: "複核（工地主任）",
+          audit: "審核（辦公室助理）",
+          approve: "核定（老闆）",
         };
         const myStage =
           profile?.role === "site_supervisor"
@@ -383,21 +383,21 @@ export default async function LogDetailPage({
         if (isMyTurn) {
           return (
             <div className="mb-6">
-              <NextStepHint tone="info" title={`待你${stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}`}>
-                這份等你處理,點右上「前往{stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}」進入。
+              <NextStepHint tone="info" title={`待您${stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}`}>
+                這份等你處理，點右上「前往{stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}」進入。
               </NextStepHint>
             </div>
           );
         }
         return (
           <div className="mb-6">
-            <NextStepHint tone="info" title={`已送出,目前在「${stage ? stageLabel[stage] : "?"}」階段`}>
+            <NextStepHint tone="info" title={`已送出，目前在「${stage ? stageLabel[stage] : "?"}」階段`}>
               {stage === "review"
                 ? "工地主任複核中。"
                 : stage === "audit"
                 ? "辦公室助理審核中。"
                 : stage === "approve"
-                ? "老闆核定中,簽名後即完成。"
+                ? "老闆核定中，簽名後即完成。"
                 : "等待中。"}
             </NextStepHint>
           </div>
@@ -406,14 +406,14 @@ export default async function LogDetailPage({
       {l.status === "rejected" && isOwnerOfLog && (
         <div className="mb-6">
           <NextStepHint tone="warning" title="已被退回">
-            請查看下方「簽核歷程」的退回原因,點右上「編輯」修正後重新送出。
+            請查看下方「簽核歷程」的退回原因，點右上「編輯」修正後重新送出。
           </NextStepHint>
         </div>
       )}
       {l.status === "approved" && (
         <div className="mb-6">
           <NextStepHint tone="success" title="已核定">
-            這份已完成核定,簽名與時間記錄在下方「簽核歷程」。對應工項的「累計完成」也已更新。
+            這份已完成核定，簽名與時間記錄在下方「簽核歷程」。對應工項的「累計完成」也已更新。
           </NextStepHint>
         </div>
       )}
@@ -512,7 +512,7 @@ export default async function LogDetailPage({
         </Section>
       )}
 
-      {/* 舊資料相容:升等前 jsonb 內的 free-form 合約外/未簽約 */}
+      {/* 舊資料相容：升等前 jsonb 內的 free-form 合約外/未簽約 */}
       {l.extra_items?.length > 0 && (
         <Section title={`（舊）合約外（free-form） (${l.extra_items.length})`}>
           <ExtraItemsTable
@@ -705,7 +705,7 @@ function GroupRows({
               {wi?.tender_code ?? "—"}
             </td>
             <td className="h-14 px-4 align-top">
-              {wi?.name ?? "(已刪除工項)"}
+              {wi?.name ?? "（已刪除工項）"}
             </td>
             <td className="h-14 px-4 align-top text-right tabular-nums">
               {formatLogQty(w.qty, w.qty_mode, wi?.unit ?? null)}
@@ -767,7 +767,7 @@ function NewExtraUnsignedTable({
             return (
               <tr key={`${w.work_item_id}-${i}`} className="border-b border-[#E0DCD6]">
                 <td className="h-14 px-4 align-top">
-                  <div>{meta?.name ?? "(已刪除)"}</div>
+                  <div>{meta?.name ?? "（已刪除）"}</div>
                 </td>
                 <td className="h-14 px-4 align-top">{meta?.unit ?? "—"}</td>
                 <td className="h-14 px-4 text-right align-top tabular-nums">

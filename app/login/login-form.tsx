@@ -31,7 +31,7 @@ export function LoginForm({ next }: { next: string }) {
           minLength={2}
           maxLength={30}
           pattern="[a-z0-9]{2,30}"
-          placeholder="例:owner"
+          placeholder="例：owner"
         />
       </div>
 

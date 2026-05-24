@@ -10,7 +10,7 @@ export type AttendanceReportRow = {
   created_at: string;       // ISO
   user_name: string;
   user_role: string;        // 中文 label
-  case_label: string;       // "code｜name" or "(無案件)"
+  case_label: string;       // "code｜name" or "（無案件）"
   event_type: "clock_in" | "clock_out";
   lat: number;
   lng: number;
@@ -41,8 +41,8 @@ export function buildAttendanceReportXlsx(input: {
 
   const data: (string | number)[][] = [];
   data.push([`現場出勤報表`]);
-  data.push([`範圍:${rangeLabel}`]);
-  data.push([`筆數:${rows.length}`]);
+  data.push([`範圍：${rangeLabel}`]);
+  data.push([`筆數：${rows.length}`]);
   data.push([]);
   data.push([
     "日期",
@@ -53,8 +53,8 @@ export function buildAttendanceReportXlsx(input: {
     "上/下班",
     "緯度",
     "經度",
-    "精度(m)",
-    "距工地(m)",
+    "精度（m）",
+    "距工地（m）",
     "在範圍",
     "備註",
   ]);

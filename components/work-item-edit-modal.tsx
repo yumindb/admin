@@ -21,7 +21,7 @@ import type { WorkItemType } from "@/lib/types";
 
 export type SectionOption = {
   id: string;
-  label: string; // e.g. "壹  土木工程" (depth 縮排前綴由父層處理)
+  label: string; // e.g. "壹  土木工程" （depth 縮排前綴由父層處理）
   depth: number;
 };
 
@@ -33,7 +33,7 @@ export type WorkItemEditTarget = {
   unitPrice: number | null;
   brandNote: string | null;
   itemType: WorkItemType;
-  parentId?: string | null;  // 編輯 manual 項目時要能改上層分類,需帶現值
+  parentId?: string | null;  // 編輯 manual 項目時要能改上層分類，需帶現值
 };
 
 type Props = {
@@ -194,10 +194,10 @@ export function WorkItemEditModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          {/* 上層分類:
+          {/* 上層分類：
                 - create 模式 + 非 extra/unsigned → 顯示
-                - edit 模式 + manual 項目 → 也顯示(允許搬到不同 section 底下)
-                - extra/unsigned 都是扁平 root,不顯示 */}
+                - edit 模式 + manual 項目 → 也顯示（允許搬到不同 section 底下）
+                - extra/unsigned 都是扁平 root，不顯示 */}
           {((mode === "create" && !extraUnsignedKind) ||
             (mode === "edit" && target?.itemType === "manual")) && (
             <Field label="上層分類">
@@ -269,7 +269,7 @@ export function WorkItemEditModal({
 
           {mode === "edit" && target?.itemType !== "manual" && (
             <p className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-xs text-muted-foreground">
-              編輯後此工項將標記為「已修改」,下次匯入時不會被覆蓋。
+              編輯後此工項將標記為「已修改」，下次匯入時不會被覆蓋。
             </p>
           )}
 

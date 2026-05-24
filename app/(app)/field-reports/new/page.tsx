@@ -48,10 +48,10 @@ export default async function NewFieldReportPage({
         新增回報
       </h1>
       <p className="mb-2 text-base text-muted-foreground">
-        選一個案場、寫幾個字或拍照,送出就好。
+        選一個案場、寫幾個字或拍照，送出就好。
       </p>
       <p className="mb-6 text-sm text-muted-foreground">
-        不知道要回報哪個案場?
+        不知道要回報哪個案場？
         <Link
           href="/my-cases"
           className="ml-1 text-accent underline-offset-4 hover:underline"

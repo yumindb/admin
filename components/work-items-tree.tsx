@@ -351,7 +351,7 @@ function Row({
             {node.itemType === "manual" && (
               <span
                 className="ml-1.5 inline-flex translate-y-[-1px] items-center rounded-full border border-[#E0DCD6] bg-[#FAF7F2] px-1.5 py-[1px] align-middle text-[10px] font-normal text-muted-foreground"
-                title="此工項為手動新增,不來自標單匯入"
+                title="此工項為手動新增，不來自標單匯入"
               >
                 手動
               </span>

@@ -96,7 +96,7 @@ export default async function NewLogPage({
     location: c.location as string | null,
     expectedEnd: c.expected_end as string | null,
     workItems: groupedContract.get(c.id as string) ?? [],
-    extraWorkItems: [], // legacy prop,保留結構;追加合約已不在日誌 picker 出現
+    extraWorkItems: [], // legacy prop，保留結構；追加合約已不在日誌 picker 出現
     unsignedWorkItems: groupedUnsigned.get(c.id as string) ?? [],
   }));
 
@@ -231,7 +231,7 @@ export default async function NewLogPage({
       }
       const srcWorkItems = (s.work_items ?? []) as DailyLogWorkItem[];
       const cloneContract: DailyLogWorkItem[] = [];
-      const cloneExtra: DailyLogWorkItem[] = []; // 不會再被使用(extra 不在 picker),保留以維持 prop 結構
+      const cloneExtra: DailyLogWorkItem[] = []; // 不會再被使用（extra 不在 picker），保留以維持 prop 結構
       const cloneUnsigned: DailyLogWorkItem[] = [];
       for (const w of srcWorkItems) {
         const t = itemTypeBySrcId.get(w.work_item_id);
@@ -286,7 +286,7 @@ export default async function NewLogPage({
         <div className="mb-7 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-sm text-[#92400E] md:px-4 md:py-3">
           從 {formatDateTW(prefilledFrom.sourceLogDate)} 的日誌複製。
           請檢查工項數量與外包人員後再送出。
-          照片、備註、簽名不會帶過來,日期已帶今天。
+          照片、備註、簽名不會帶過來，日期已帶今天。
         </div>
       )}
       {!prefilledFrom && <div className="mb-7" />}

@@ -85,7 +85,7 @@ export async function createFieldReportAction(payload: ReportPayload) {
     .select("id")
     .single();
   if (error || !data) {
-    return { ok: false, error: "儲存失敗:" + (error?.message ?? "unknown") };
+    return { ok: false, error: "儲存失敗：" + (error?.message ?? "unknown") };
   }
 
   revalidatePath("/field-reports");
@@ -116,7 +116,7 @@ export async function updateFieldReportAction(payload: ReportPayload & { reportI
     return { ok: false, error: "只能改自己的回報" };
   }
   if (existing.status !== "pending") {
-    return { ok: false, error: "已合併或封存的回報不能改" };
+    return { ok: false, error: "已合併或封存的回報無法修改" };
   }
 
   const { error } = await supabase
@@ -127,7 +127,7 @@ export async function updateFieldReportAction(payload: ReportPayload & { reportI
       photos: payload.photos,
     })
     .eq("id", payload.reportId);
-  if (error) return { ok: false, error: "更新失敗:" + error.message };
+  if (error) return { ok: false, error: "更新失敗：" + error.message };
 
   revalidatePath("/field-reports");
   revalidatePath(`/field-reports/${payload.reportId}`);

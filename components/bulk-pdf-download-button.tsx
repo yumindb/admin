@@ -82,7 +82,7 @@ export function BulkPdfDownloadButton({
       const totalSkipped = res.skipped + fetchFailed;
       if (totalSkipped > 0) {
         setError(
-          `成功 ${res.included - fetchFailed} 份,跳過 ${totalSkipped} 份(未核定 / 產 PDF / 下載失敗)`
+          `成功 ${res.included - fetchFailed} 份，跳過 ${totalSkipped} 份（未核定 / 產 PDF / 下載失敗）`
         );
       }
     });

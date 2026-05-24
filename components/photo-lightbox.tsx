@@ -81,8 +81,8 @@ export function PhotoLightbox({
         />
       </div>
 
-      {/* 照片說明 — 圖下方,點不會關閉。空字串 / null 不渲染。
-          手機優先:文字加大為 base/lg,讓現場拿手機看的人不用瞇眼;
+      {/* 照片說明 — 圖下方，點不會關閉。空字串 / null 不渲染。
+          手機優先：文字加大為 base/lg，讓現場拿手機看的人不用瞇眼；
           有捲軸時改為左對齊讀起來比較順。 */}
       {caption && (
         <div
@@ -121,7 +121,7 @@ export function PhotoLightbox({
         </button>
       )}
 
-      {/* 計數 X / N — 多於 1 張才顯示。位置改到右下,避開下方 caption */}
+      {/* 計數 X / N — 多於 1 張才顯示。位置改到右下，避開下方 caption */}
       {paths.length > 1 && idx >= 0 && (
         <div className="pointer-events-none absolute bottom-4 right-4 rounded-full bg-black/60 px-3 py-1 text-sm text-white">
           {idx + 1} / {paths.length}

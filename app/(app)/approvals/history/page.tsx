@@ -57,7 +57,7 @@ export default async function ApprovalsHistoryPage() {
           我簽過的
         </h1>
         <p className="mt-1.5 text-base text-muted-foreground">
-          你過去通過 / 退回的所有日誌簽核紀錄,共 {list.length} 筆。
+          您過去通過 / 退回的所有日誌簽核紀錄，共 {list.length} 筆。
         </p>
       </div>
 
@@ -84,7 +84,7 @@ export default async function ApprovalsHistoryPage() {
             logDateLabel: r.daily_logs?.log_date
               ? formatDateTW(r.daily_logs.log_date)
               : "—",
-            caseName: r.daily_logs?.cases?.name ?? "(已刪除案件)",
+            caseName: r.daily_logs?.cases?.name ?? "（已刪除案件）",
             caseCode: r.daily_logs?.cases?.code ?? null,
           }))}
         />

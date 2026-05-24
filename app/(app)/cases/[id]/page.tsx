@@ -382,7 +382,7 @@ export default async function CaseDetailPage({
         </div>
       </div>
 
-      {/* 匯入資訊 — 工項總數只算 leaf(item/spec/manual),不算 section 分類層 */}
+      {/* 匯入資訊 — 工項總數只算 leaf(item/spec/manual)，不算 section 分類層 */}
       {(() => {
         const leafCount = contractItems.filter(
           (it) => it.item_type !== "section",
@@ -443,7 +443,7 @@ export default async function CaseDetailPage({
       {/* 下一步提示 — 看當前狀態給不同訊息 */}
       {items.length > 0 && allLogs.length === 0 && (
         <NextStepHint tone="info" className="mb-5">
-          工項已建立。請工地主任登入後到「我的日誌」填日誌,送出核定後「累計完成」欄會自動累計。
+          工項已建立。請工地主任登入後到「我的日誌」填日誌，送出核定後「累計完成」欄會自動累計。
         </NextStepHint>
       )}
 
@@ -482,7 +482,7 @@ export default async function CaseDetailPage({
         />
       )}
 
-      {/* 工地出勤 — 近 14 天打卡時間軸(migration-2.21) */}
+      {/* 工地出勤 — 近 14 天打卡時間軸（migration-2.21） */}
       <div className="mt-10 mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-primary md:text-xl">
           工地出勤
@@ -499,7 +499,7 @@ export default async function CaseDetailPage({
       </div>
       <AttendanceTimeline events={timelineEvents} showUser showCase={false} emptyText="近 14 天無打卡紀錄" />
 
-      {/* 跨日誌彙整:照片 */}
+      {/* 跨日誌彙整：照片 */}
       <div className="mt-10 mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-primary md:text-xl">
           施工日誌照片
@@ -516,8 +516,8 @@ export default async function CaseDetailPage({
         <PhotoGallery photos={allPhotosSigned} layout="grid" />
       )}
 
-      {/* 追加合約 — 以「合約」為單位呈現(migration-2.16 後),
-          每份合約可包多筆工項,有自己的 bundle 優惠價 */}
+      {/* 追加合約 — 以「合約」為單位呈現（migration-2.16 後），
+          每份合約可包多筆工項，有自己的 bundle 優惠價 */}
       <ExtraContractsSection
         contracts={contractsForUI}
         progress={progress}
@@ -525,7 +525,7 @@ export default async function CaseDetailPage({
         editable={canEditWorkItems}
       />
 
-      {/* 未簽約施工內容 — 案件級工項,可補報價、多筆打包成追加合約 */}
+      {/* 未簽約施工內容 — 案件級工項，可補報價、多筆打包成追加合約 */}
       <ExtraUnsignedSection
         kind="unsigned"
         rows={unsignedItems}
@@ -534,8 +534,8 @@ export default async function CaseDetailPage({
         editable={canEditWorkItems}
       />
 
-      {/* 罕見路徑:沒掛合約的 extra 工項(理論上 migration-2.16 已全部搬完);
-          仍顯示舊版區塊讓 office 補綁,但通常為 0 筆 */}
+      {/* 罕見路徑：沒掛合約的 extra 工項（理論上 migration-2.16 已全部搬完）；
+          仍顯示舊版區塊讓 office 補綁，但通常為 0 筆 */}
       {orphanExtraRows.length > 0 && (
         <ExtraUnsignedSection
           kind="extra"
@@ -546,7 +546,7 @@ export default async function CaseDetailPage({
         />
       )}
 
-      {/* 舊資料相容:來自舊日誌的 jsonb 合約外/未簽約清單,只在還有舊資料時顯示 */}
+      {/* 舊資料相容：來自舊日誌的 jsonb 合約外/未簽約清單，只在還有舊資料時顯示 */}
       {legacyExtraRows.length > 0 && (
         <>
           <div className="mt-10 mb-4 flex items-center justify-between">

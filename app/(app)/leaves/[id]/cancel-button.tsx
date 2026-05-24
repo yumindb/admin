@@ -37,7 +37,7 @@ export function CancelButton({ requestId }: { requestId: string }) {
   return (
     <div className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] p-4">
       <p className="text-sm text-[#B91C1C]">
-        確定要取消?取消後不可復原,要請假請重送新的一份。
+        確定要取消？取消後不可復原，要請假請重送新的一份。
       </p>
       {error && (
         <p className="mt-2 rounded-md border border-[#FCA5A5] bg-white px-3 py-2 text-sm text-[#B91C1C]">

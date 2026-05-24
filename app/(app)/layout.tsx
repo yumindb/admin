@@ -135,8 +135,8 @@ export default async function AppLayout({
                 {company} · {roleLabel}
               </div>
             </Link>
-            {/* 手機版:小頭像連結 — 點開到 /account 改密碼 / 看身份。
-                桌機版上方那塊 Link 已負責,所以這顆 md:hidden。 */}
+            {/* 手機版：小頭像連結 — 點開到 /account 改密碼 / 看身份。
+                桌機版上方那塊 Link 已負責，所以這顆 md:hidden。 */}
             <Link
               href="/account"
               aria-label="我的帳號"

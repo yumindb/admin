@@ -137,7 +137,7 @@ export default async function FieldReportDetailPage({
             {status.label}
           </span>
           <h1 className="mt-2 text-2xl font-semibold text-primary md:text-3xl">
-            {r.cases?.name ?? "(已刪除案件)"}
+            {r.cases?.name ?? "（已刪除案件）"}
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
             <span>{r.cases?.code ?? "未編號"}</span>
@@ -165,9 +165,9 @@ export default async function FieldReportDetailPage({
         </div>
       </div>
 
-      {/* 辦公室助理 / 老闆專屬:下載全部照片 + 封存 / 刪除。
-          客製需求:主任沒併進日誌的回報要能下載照片 + 處理完刪除。
-          沒有照片時仍顯示(讓 office 能刪純文字回報);下載按鈕內部會自動 disable。 */}
+      {/* 辦公室助理 / 老闆專屬：下載全部照片 + 封存 / 刪除。
+          客製需求：主任沒併進日誌的回報要能下載照片 + 處理完刪除。
+          沒有照片時仍顯示（讓 office 能刪純文字回報）；下載按鈕內部會自動 disable。 */}
       {isOfficeOrOwner && !editFlag && (
         <OfficeReportTools
           reportId={id}
@@ -187,14 +187,14 @@ export default async function FieldReportDetailPage({
             >
               {formatDateTW(r.merged_log.log_date)} 的施工日誌
             </Link>
-            。原始回報保留作為審計紀錄,不可再編輯。
+            。原始回報保留作為審計紀錄，不可再編輯。
           </NextStepHint>
         </div>
       )}
       {r.status === "pending" && isAuthor && (
         <div className="mb-6">
           <NextStepHint tone="info">
-            等工地主任填日誌時整合。如果寫錯,可以點右上「編輯」修改或刪掉。
+            等工地主任填日誌時整合。如果寫錯，可以點右上「編輯」修改或刪掉。
           </NextStepHint>
         </div>
       )}
@@ -210,13 +210,13 @@ export default async function FieldReportDetailPage({
         {r.note ? (
           <p className="whitespace-pre-line text-sm">{r.note}</p>
         ) : (
-          <p className="text-sm text-muted-foreground">(沒有文字)</p>
+          <p className="text-sm text-muted-foreground">（沒有文字）</p>
         )}
       </Section>
 
       <Section title={`照片 (${reportPhotos.length})`}>
         {!reportPhotos.length ? (
-          <p className="text-sm text-muted-foreground">(沒有照片)</p>
+          <p className="text-sm text-muted-foreground">（沒有照片）</p>
         ) : (
           <PhotoGallery photos={signedPhotos} layout="row" />
         )}

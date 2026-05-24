@@ -174,12 +174,12 @@ export function LeaveRequestForm() {
 
       {/* 時數預覽 */}
       <div className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-4 py-3 text-sm">
-        <span className="text-muted-foreground">合計時數:</span>
+        <span className="text-muted-foreground">合計時數：</span>
         <span className="ml-1 text-base font-semibold tabular-nums text-primary">
           {hoursPreview === null ? "—" : `${hoursPreview} 小時`}
         </span>
         <span className="ml-2 text-xs text-muted-foreground">
-          (8 小時 = 1 天;以 0.5 小時為單位)
+          （8 小時 = 1 天；以 0.5 小時為單位）
         </span>
       </div>
 
@@ -196,7 +196,7 @@ export function LeaveRequestForm() {
           rows={4}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="例:回診、家中有事、子女學校活動…"
+          placeholder="例：回診、家中有事、子女學校活動…"
           className="block w-full resize-y rounded-md border border-[#E0DCD6] bg-white px-3 py-2.5 text-base leading-relaxed outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
       </div>

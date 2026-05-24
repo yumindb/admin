@@ -14,7 +14,7 @@ export function ApprovalButtons({ requestId }: { requestId: string }) {
   function submit() {
     setError(null);
     if (mode === "reject" && comment.trim().length < 2) {
-      setError("退回需要寫原因(至少 2 個字)");
+      setError("退回需要寫原因（至少 2 個字）");
       return;
     }
     startTransition(async () => {
@@ -70,8 +70,8 @@ export function ApprovalButtons({ requestId }: { requestId: string }) {
         onChange={(e) => setComment(e.target.value)}
         placeholder={
           mode === "approve"
-            ? "備註(選填)"
-            : "退回原因(必填,讓申請人知道哪裡要修)…"
+            ? "備註（選填）"
+            : "退回原因（必填，讓申請人知道哪裡要修）…"
         }
         className="block w-full resize-y rounded-md border border-[#E0DCD6] bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
       />

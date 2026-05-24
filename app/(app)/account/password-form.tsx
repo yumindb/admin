@@ -41,7 +41,7 @@ export function PasswordForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="new_password">新密碼(至少 6 碼)</Label>
+        <Label htmlFor="new_password">新密碼（至少 6 碼）</Label>
         <Input
           id="new_password"
           name="new_password"

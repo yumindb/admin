@@ -124,27 +124,27 @@ export function AddTempWorkItemDialog({
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          {/* 主角:名稱欄 + 大送出鈕。屋主臨時加項,現場 supervisor 直接打名字就好。 */}
+          {/* 主角：名稱欄 + 大送出鈕。屋主臨時加項，現場 supervisor 直接打名字就好。 */}
           <div>
             <p className="mb-2 text-sm font-medium text-primary">
-              屋主臨時加項?直接打名字就好,其他現場不用管。
+              屋主臨時加項嗎？打個名字就好，其他欄位辦公室之後幫您補。
             </p>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
-              placeholder="例:配電盤升級"
+              placeholder="例：配電盤升級"
               className="h-12 w-full rounded-md border-2 border-[#A07850]/40 bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </div>
 
-          {/* 配角:其他選填欄位包進 details 摺疊起來,降低視覺壓力 */}
+          {/* 配角：其他選填欄位包進 details 摺疊起來，降低視覺壓力 */}
           <details className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2]/40">
             <summary className="cursor-pointer list-none px-3 py-2 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-1">
                 <span aria-hidden>＋</span>
-                更多選項(單位 / 數量 / 單價 / 備註,辦公室之後可補)
+                更多選項（單位 / 數量 / 單價 / 備註，辦公室之後可補）
               </span>
             </summary>
             <div className="space-y-2.5 border-t border-dashed border-[#E0DCD6] px-3 py-3">
@@ -164,7 +164,7 @@ export function AddTempWorkItemDialog({
                     step="any"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    placeholder="例:1"
+                    placeholder="例：1"
                     className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
                   />
                 </Field>
@@ -183,7 +183,7 @@ export function AddTempWorkItemDialog({
                   type="text"
                   value={brandNote}
                   onChange={(e) => setBrandNote(e.target.value)}
-                  placeholder="例:屋主臨時要求 / 等業主決定材質"
+                  placeholder="例：屋主臨時要求 / 等業主決定材質"
                   className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
                 />
               </Field>

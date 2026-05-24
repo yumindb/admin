@@ -215,7 +215,7 @@ export async function updateWorkItemAction(
     if (row.item_type === "section") {
       return {
         ok: false,
-        error: "不允許編輯分類層（section）。請改名請走匯入流程。",
+        error: "分類層（section）無法直接編輯，請改透過匯入流程更新。",
       };
     }
 
@@ -409,7 +409,7 @@ export async function createExtraOrUnsignedAction(
       console.error("[createExtraOrUnsignedAction] insert failed", error);
       // POC 階段把真正的 DB 錯誤訊息直接吐給 client,方便 Phil 自己 debug
       // (正式版改回 wrapDbError 隱藏 internal details)
-      return { ok: false, error: `新增工項失敗:${error.message}` };
+      return { ok: false, error: `新增工項失敗：${error.message}` };
     }
 
     revalidatePath(`/cases/${data.case_id}`);
@@ -458,7 +458,7 @@ export async function markUnsignedAsSignedAction(
       return { ok: false, error: "只有未簽約項目可以標記為已簽約" };
     }
     if (row.unit_price === null || row.unit_price === undefined) {
-      return { ok: false, error: "請先填寫單價(報價)後再標記簽約" };
+      return { ok: false, error: "請先填寫單價（報價）後再標記簽約" };
     }
 
     const { error } = await supabase
@@ -567,7 +567,7 @@ export async function deleteWorkItemAction(
     if (danglingCount > 0) {
       return {
         ok: true,
-        warning: `已刪除。注意:有 ${danglingCount} 筆日誌記錄仍引用被刪除的工項,將顯示為「（已刪除）」,需後續清理。`,
+        warning: `已刪除。注意：有 ${danglingCount} 筆日誌記錄仍引用被刪除的工項，將顯示為「（已刪除）」，需後續清理。`,
       };
     }
     return { ok: true };

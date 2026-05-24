@@ -27,7 +27,7 @@ export async function getPdfDownloadUrlAction(
   let pdfPath = log.pdf_path as string | null;
   if (!pdfPath) {
     if (log.status !== "approved") {
-      return { ok: false, error: "日誌尚未核定通過,還沒有 PDF。" };
+      return { ok: false, error: "日誌尚未核定通過，還沒有 PDF。" };
     }
     const res = await generatePdfForLog(logId);
     if (!res.ok) return { ok: false, error: res.error };
@@ -65,7 +65,7 @@ export async function regeneratePdfAction(
     .maybeSingle();
   if (!log) return { ok: false, error: "找不到日誌" };
   if (log.status !== "approved")
-    return { ok: false, error: "尚未核定,無法產 PDF" };
+    return { ok: false, error: "尚未核定，無法產 PDF" };
 
   // 翻 generating(用 service-role,避免 supervisor 自己重產被 RLS 擋)
   await service

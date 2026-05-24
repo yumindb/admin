@@ -150,7 +150,7 @@ export function WorkItemsReportClient({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="輸入關鍵字(EMT、PVC、E19…)"
+              placeholder="輸入關鍵字（EMT、PVC、E19…）"
               className="h-10 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm focus:border-accent focus:outline-none"
             />
           </label>

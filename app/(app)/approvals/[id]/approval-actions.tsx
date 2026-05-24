@@ -83,7 +83,7 @@ export function ApprovalActions({
     }
     const dataUrl = sigRef.current?.toDataURL("image/png");
     if (!dataUrl) {
-      toast.error("簽名讀取失敗,請重試");
+      toast.error("簽名讀取失敗，請重試");
       return;
     }
     // 套用 remember 設定 — 勾選保留 60min,取消勾就清掉 cache
@@ -123,7 +123,7 @@ export function ApprovalActions({
   function handleReject() {
     const finalComment = buildRejectComment();
     if (!finalComment) {
-      toast.error("退回需要填原因");
+      toast.error("退回時請填寫原因");
       return;
     }
     startTransition(async () => {
@@ -198,7 +198,7 @@ export function ApprovalActions({
                 className="size-4 cursor-pointer accent-[#003153]"
               />
               <span>
-                記住簽名(60 分鐘內)
+                記住簽名（60 分鐘內）
                 {hasStoredSig && (
                   <span className="ml-1 text-xs text-[#4A7C59]">
                     ✓ 已套用上次
@@ -219,7 +219,7 @@ export function ApprovalActions({
             rows={2}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="備註(選填,例如:照片不錯、補充說明等)"
+            placeholder="備註（選填，例如：照片不錯、補充說明等）"
             className="mt-3"
           />
 
@@ -268,11 +268,11 @@ export function ApprovalActions({
             })}
           </div>
 
-          {/* 已選 chip 列在 textarea 上方,點即可移除 */}
+          {/* 已選 chip 列在 textarea 上方，點即可移除 */}
           {selectedChips.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-2 py-2">
               <span className="self-center text-xs text-muted-foreground">
-                已選原因:
+                已選原因：
               </span>
               {selectedChips.map((r) => (
                 <button

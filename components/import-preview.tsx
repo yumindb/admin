@@ -187,7 +187,7 @@ export function ImportPreview({ caseId }: { caseId: string }) {
             <div className="mb-3 text-base font-semibold text-primary md:text-lg">3. 確認匯入</div>
             <div className="mb-4">
               <NextStepHint tone="info">
-                重複匯入會合併,你在工項頁改過的內容不會被覆蓋。勾「略過」的列也不會寫入。
+                重複匯入會合併，你在工項頁改過的內容不會被覆蓋。勾「略過」的列也不會寫入。
               </NextStepHint>
             </div>
             {submitMsg && (

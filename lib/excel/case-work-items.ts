@@ -64,9 +64,9 @@ export function buildCaseWorkItemsXlsx(input: CaseWorkItemsXlsxInput): Buffer {
     (a.sort_path ?? "").localeCompare(b.sort_path ?? ""),
   );
 
-  const headerRow = [`案件:${caseName}${caseCode ? `（${caseCode}）` : ""}`];
+  const headerRow = [`案件：${caseName}${caseCode ? `（${caseCode}）` : ""}`];
   const titleRow = [
-    `匯出日期:${new Date().toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}`,
+    `匯出日期：${new Date().toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}`,
   ];
 
   const rows: (string | number)[][] = [headerRow, titleRow, [], HEADERS];
@@ -82,7 +82,7 @@ export function buildCaseWorkItemsXlsx(input: CaseWorkItemsXlsxInput): Buffer {
         : null;
 
     rows.push([
-      indent + (it.tender_code ?? ""),  // 項次(用 tender_code 當對外編號)
+      indent + (it.tender_code ?? ""),  // 項次（用 tender_code 當對外編號）
       indent + it.name,
       it.unit ?? "",
       it.quantity ?? "",

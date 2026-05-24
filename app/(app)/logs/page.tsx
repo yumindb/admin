@@ -86,11 +86,11 @@ export default async function LogsPage({
 
   const subtitle = isOfficeStaff
     ? scope === "mine"
-      ? "你個人送出的日誌"
+      ? "您個人送出的日誌"
       : "辦公室助理可查看全部日誌與簽核狀態"
     : scope === "mine"
-      ? "你個人送出的日誌,依案件分組"
-      : "全公司日誌,依案件分組";
+      ? "您個人送出的日誌，依案件分組"
+      : "全公司日誌，依案件分組";
 
   function tabHref(next: Scope): string {
     const params = new URLSearchParams();
@@ -108,7 +108,7 @@ export default async function LogsPage({
             {subtitle}
           </p>
         </div>
-        {/* 桌機:右上角藥丸形按鈕 */}
+        {/* 桌機：右上角藥丸形按鈕 */}
         {canCreateLog && (
           <Link
             href="/logs/new"
@@ -120,7 +120,7 @@ export default async function LogsPage({
         )}
       </div>
 
-      {/* 切換:所有日誌 / 我的日誌 */}
+      {/* 切換：所有日誌 / 我的日誌 */}
       <div
         role="tablist"
         aria-label="日誌範圍"
@@ -140,9 +140,9 @@ export default async function LogsPage({
 
       {caseFilterId && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm md:px-4 md:py-3">
-          <span className="text-muted-foreground">已篩選案件:</span>
+          <span className="text-muted-foreground">已篩選案件：</span>
           <span className="font-medium text-foreground">
-            {filteredCaseName ?? "(查無對應案件)"}
+            {filteredCaseName ?? "（查無對應案件）"}
           </span>
           <Link
             href={`/logs?scope=${scope}`}
@@ -351,7 +351,7 @@ function groupByCase(list: LogRow[]): CaseGroup[] {
     if (!g) {
       g = {
         caseId: key,
-        caseName: log.cases?.name ?? "(已刪除案件)",
+        caseName: log.cases?.name ?? "（已刪除案件）",
         caseCode: log.cases?.code ?? null,
         logs: [],
         latestDate: log.log_date,
@@ -415,11 +415,11 @@ function Empty({
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center md:py-20">
       <div className="mb-3 text-5xl text-[#E0DCD6]">📋</div>
       <p className="mb-1.5 text-base text-foreground">
-        {isMine ? "你還沒送出任何日誌" : "目前還沒有任何日誌"}
+        {isMine ? "您還沒送出任何日誌" : "目前還沒有任何日誌"}
       </p>
       <p className="mb-6 text-sm text-muted-foreground">
         {isMine
-          ? "選一個案件開新日誌,填工項數量、加照片、送出給老闆核定"
+          ? "選一個案件開新日誌，填工項數量、加照片、送出給老闆核定"
           : "工地主任送出日誌後會出現在這裡"}
       </p>
       {canCreateLog && (

@@ -254,7 +254,7 @@ export default async function CasesOverviewPage({
             案件總覽
           </h1>
           <p className="mt-1.5 text-base text-muted-foreground">
-            裕民工務目前管理的案件,可依公司／狀態篩選與排序
+            裕民工務目前管理的案件，可依公司／狀態篩選與排序
           </p>
         </div>
         {canCreateCase && (
@@ -272,15 +272,15 @@ export default async function CasesOverviewPage({
 
       {hitLimit && (
         <div className="mb-4 rounded-md border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-sm text-[#92400E]">
-          <strong>已達顯示上限:</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
-          (依開工日排序)。案件總數已超出,請通知開發者升級為真正的分頁。
+          <strong>已達顯示上限：</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
+          （依開工日排序）。案件總數已超出，請通知開發者升級為真正的分頁。
         </div>
       )}
 
       <div className="mb-4 flex items-center justify-end gap-3 text-sm">
         {showAll ? (
           <>
-            <span className="text-muted-foreground">顯示全部(含已結案)</span>
+            <span className="text-muted-foreground">顯示全部（含已結案）</span>
             <Link
               href="/cases"
               className="text-[#A07850] underline-offset-2 hover:underline"
@@ -295,7 +295,7 @@ export default async function CasesOverviewPage({
               href="/cases?all=1"
               className="text-[#A07850] underline-offset-2 hover:underline"
             >
-              顯示全部(含已結案)
+              顯示全部（含已結案）
             </Link>
           </>
         )}

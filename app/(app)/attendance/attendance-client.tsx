@@ -214,7 +214,7 @@ export function AttendanceClient({
   async function submit(eventType: "clock_in" | "clock_out") {
     if (geo.status !== "ok") return;
     if (noteRequired && !note.trim()) {
-      toast.error("未選案件時請填說明(例:在辦公室)");
+      toast.error("未選案件時請填說明（例：在辦公室）");
       return;
     }
 
@@ -243,7 +243,7 @@ export function AttendanceClient({
         const label = eventType === "clock_in" ? "上班打卡成功" : "下班打卡成功";
         const detail =
           res.within_geofence === false && res.distance_m !== null
-            ? `已標註:離工地 ${formatDistance(res.distance_m)},超出範圍`
+            ? `已標註：離工地 ${formatDistance(res.distance_m)}，超出範圍`
             : res.within_geofence === true && res.distance_m !== null
               ? `離工地 ${formatDistance(res.distance_m)}`
               : "";
@@ -284,8 +284,8 @@ export function AttendanceClient({
       <LocationStatusCard geo={geo} />
 
       {/* 2) 案件選擇 — 用 CasePicker 取代 native <select>
-              (原生 select 不支援搜尋、距離數字 tabular-nums 在不同瀏覽器跑掉,
-               UI 審查與工地主任都點過名要改) */}
+              （原生 select 不支援搜尋、距離數字 tabular-nums 在不同瀏覽器跑掉，
+               UI 審查與工地主任都點過名要改） */}
       <section className="rounded-md border border-[#E0DCD6] bg-card p-4">
         <div className="mb-2 flex items-baseline justify-between">
           <h2 className="text-sm font-medium text-primary">選擇案件</h2>
@@ -306,13 +306,13 @@ export function AttendanceClient({
           value={effectiveCaseId}
           onChange={(id) => {
             setSelectedCaseId(id);
-            setAutoPickedId(""); // 使用者一旦手動選,就不再被 recommended 覆蓋
+            setAutoPickedId(""); // 使用者一旦手動選，就不再被 recommended 覆蓋
           }}
           extraOptions={[
             {
               id: NO_CASE,
               label: "不在任何工地",
-              description: "例:在路上、回辦公室、加油站",
+              description: "例：在路上、回辦公室、加油站",
               icon: "🏢",
             },
           ]}
@@ -330,17 +330,17 @@ export function AttendanceClient({
           >
             {evalForSelected.withinGeofence
               ? `✓ 在工地範圍內（${formatDistance(evalForSelected.distanceM)}）`
-              : `⚠ 不在工地範圍內（${formatDistance(evalForSelected.distanceM)}）— 仍可打卡,辦公室會看到標註`}
+              : `⚠ 不在工地範圍內（${formatDistance(evalForSelected.distanceM)}）— 仍可打卡，辦公室會看到標註`}
           </div>
         )}
         {effectiveCaseId && !evalForSelected && !noCase && (
           <div className="mt-2 rounded-md border border-[#E0DCD6] bg-[#FBF8F4] px-3 py-2 text-sm text-muted-foreground">
-            此案件尚未設定座標,系統無法計算距離。請辦公室到「案件編輯」補座標。
+            此案件尚未設定座標，系統無法計算距離。請辦公室到「案件編輯」補座標。
           </div>
         )}
       </section>
 
-      {/* 3) 備註(no-case 必填) */}
+      {/* 3) 備註（no-case 必填） */}
       <section className="rounded-md border border-[#E0DCD6] bg-card p-4">
         <label className="mb-2 block text-sm font-medium text-primary">
           備註 {noteRequired && <span className="text-[#B91C1C]">*</span>}
@@ -349,11 +349,11 @@ export function AttendanceClient({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
-          placeholder={noteRequired ? "請說明(例:辦公室、移動到第二工地)" : "選填"}
+          placeholder={noteRequired ? "請說明（例：辦公室、移動到第二工地）" : "選填"}
         />
       </section>
 
-      {/* 4) 上下班按鈕 — 工地主任視角:button gray 沒原因會崩潰,
+      {/* 4) 上下班按鈕 — 工地主任視角：button gray 沒原因會崩潰，
               改成 label 直接告訴他「現在缺什麼才能打」 */}
       {(() => {
         // 依優先級顯示狀態(GPS 沒鎖 > 沒選案件 > 送出中 > 可送出)

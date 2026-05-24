@@ -35,8 +35,8 @@ export default async function ReportsHomePage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <ReportCard
           href="/reports/work-items"
-          title="工項累計(跨案)"
-          description="所有案件的工項施工進度,可篩選案件、工項名稱、完成度區間,並下載 Excel"
+          title="工項累計（跨案）"
+          description="所有案件的工項施工進度，可篩選案件、工項名稱、完成度區間，並下載 Excel"
           icon={<BarChart3 className="size-6" strokeWidth={1.75} />}
         />
         <ReportCard

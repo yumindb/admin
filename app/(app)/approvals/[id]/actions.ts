@@ -27,23 +27,23 @@ import type { ApprovalStage, UserRole } from "@/lib/types";
  */
 
 const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
-  site_supervisor: "review", // review 目前未啟用;改回三關時此值生效
+  site_supervisor: "review", // review 目前未啟用；改回三關時此值生效
   office_staff: "audit",
   owner: "approve",
   field_assistant: null,
 };
 
 const NEXT_STAGE: Record<ApprovalStage, ApprovalStage | null> = {
-  fill: "audit",           // 三關流:fill → 直接進 audit(略過 review)
-  review: "audit",         // 保留:若啟用四關時 review → audit
+  fill: "audit",           // 三關流：fill → 直接進 audit（略過 review）
+  review: "audit",         // 保留：若啟用四關時 review → audit
   audit: "approve",
   approve: null,           // owner approves → done
 };
 
 type ActPayload = {
   logId: string;
-  signatureUrl?: string;   // approveStageAction 必填(每關都要簽);rejectStageAction 不需要
-  comment?: string;        // 退回必填,通過可選
+  signatureUrl?: string;   // approveStageAction 必填（每關都要簽）；rejectStageAction 不需要
+  comment?: string;        // 退回必填，通過可選
 };
 
 async function getActor() {
@@ -86,7 +86,7 @@ export async function approveStageAction(payload: ActPayload) {
   if (allowedStage !== log.current_stage) {
     return {
       ok: false as const,
-      error: "你的角色不負責當前關卡",
+      error: "您的角色不負責當前關卡",
     };
   }
 
@@ -115,11 +115,11 @@ export async function approveStageAction(payload: ActPayload) {
       .eq("status", "submitted")
       .eq("current_stage", expectedStage)
       .select("id");
-    if (updErr) return { ok: false as const, error: "更新失敗:" + updErr.message };
+    if (updErr) return { ok: false as const, error: "更新失敗：" + updErr.message };
     if (!rows || rows.length === 0) {
       return {
         ok: false as const,
-        error: "日誌狀態已被他人變更,請重新整理",
+        error: "日誌狀態已被他人變更，請重新整理",
       };
     }
 
@@ -161,11 +161,11 @@ export async function approveStageAction(payload: ActPayload) {
       .eq("status", "submitted")
       .eq("current_stage", expectedStage)
       .select("id");
-    if (updErr) return { ok: false as const, error: "更新失敗:" + updErr.message };
+    if (updErr) return { ok: false as const, error: "更新失敗：" + updErr.message };
     if (!rows || rows.length === 0) {
       return {
         ok: false as const,
-        error: "日誌狀態已被他人變更,請重新整理",
+        error: "日誌狀態已被他人變更，請重新整理",
       };
     }
   }
@@ -210,7 +210,7 @@ export async function rejectStageAction(payload: ActPayload) {
 
   const allowedStage = STAGE_FOR_ROLE[role];
   if (allowedStage !== log.current_stage) {
-    return { ok: false as const, error: "你的角色不負責當前關卡" };
+    return { ok: false as const, error: "您的角色不負責當前關卡" };
   }
 
   // 寫入順序同 approveStageAction:先 conditional update → 成功才寫 approval 紀錄。
@@ -222,11 +222,11 @@ export async function rejectStageAction(payload: ActPayload) {
     .eq("status", "submitted")
     .eq("current_stage", expectedStage)
     .select("id");
-  if (updErr) return { ok: false as const, error: "更新失敗:" + updErr.message };
+  if (updErr) return { ok: false as const, error: "更新失敗：" + updErr.message };
   if (!rows || rows.length === 0) {
     return {
       ok: false as const,
-      error: "日誌狀態已被他人變更,請重新整理",
+      error: "日誌狀態已被他人變更，請重新整理",
     };
   }
 

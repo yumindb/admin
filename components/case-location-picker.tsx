@@ -74,7 +74,7 @@ export function CaseLocationPicker({
       if (urlOkTimer.current) clearTimeout(urlOkTimer.current);
       urlOkTimer.current = setTimeout(() => setUrlOk(false), 2500);
     } else {
-      setUrlError("無法解析此連結。請貼 Google Maps 完整網址(含 @ 座標)或直接貼 25.0337,121.5645 這種格式。");
+      setUrlError("無法解析此連結。請貼 Google Maps 完整網址（含 @ 座標）或直接貼 25.0337,121.5645 這種格式。");
       setUrlOk(false);
     }
   }, [urlInput]);
@@ -114,7 +114,7 @@ export function CaseLocationPicker({
     try {
       const results = await geocodeAddress(address, { limit: 5 });
       if (results.length === 0) {
-        setGeoError("找不到此地址。可貼 Google Maps 連結,或直接在地圖點選");
+        setGeoError("找不到此地址。可貼 Google Maps 連結，或直接在地圖點選");
         return;
       }
       if (results.length === 1) {
@@ -125,7 +125,7 @@ export function CaseLocationPicker({
         setGeoResults(results);
       }
     } catch (e) {
-      setGeoError("查詢失敗:" + (e as Error).message);
+      setGeoError("查詢失敗：" + (e as Error).message);
     } finally {
       setGeocoding(false);
     }
@@ -156,10 +156,10 @@ export function CaseLocationPicker({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        三種方式擇一:「從地址查詢」會用上方「施工地點」欄位的地址抓座標、貼 Google Maps 連結會自動解析、或直接在地圖上點選位置。打卡時系統會算「離工地多遠」，超過半徑會被標註但仍可送出。
+        三種方式擇一：「從地址查詢」會用上方「施工地點」欄位的地址抓座標、貼 Google Maps 連結會自動解析、或直接在地圖上點選位置。打卡時系統會算「離工地多遠」，超過半徑會被標註但仍可送出。
       </p>
 
-      {/* 從地址查詢(Nominatim) */}
+      {/* 從地址查詢（Nominatim） */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -181,7 +181,7 @@ export function CaseLocationPicker({
       {geoResults && geoResults.length > 0 && (
         <div className="rounded-md border border-[#E0DCD6] bg-white p-2">
           <div className="mb-1 px-2 text-xs text-muted-foreground">
-            找到 {geoResults.length} 個結果,請選擇:
+            找到 {geoResults.length} 個結果，請選擇：
           </div>
           <ul className="space-y-1">
             {geoResults.map((r, i) => (

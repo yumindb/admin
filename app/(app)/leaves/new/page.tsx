@@ -30,12 +30,12 @@ export default async function NewLeavePage() {
         新請假
       </h1>
       <p className="mb-5 text-base text-muted-foreground">
-        填完按送出,系統會自動依層級往上送簽。
+        填完按送出，系統會自動依層級往上送簽。
       </p>
 
       <div className="mb-5">
         <NextStepHint tone="info" title="簽核流程">
-          這份申請會送到:
+          這份申請會送到：
           {chain.map((r, i) => (
             <span key={r}>
               {i > 0 && " → "}
@@ -44,7 +44,7 @@ export default async function NewLeavePage() {
               </span>
             </span>
           ))}
-          。 每一關都通過才算核准;任一關退回,整份申請會結束(可重送新的一份)。
+          。 每一關都通過才算核准；任一關退回，整份申請會結束（可重送新的一份）。
         </NextStepHint>
       </div>
 

@@ -28,7 +28,7 @@ export type UnsignedRow = {
   headcount: number | null;
   location: string | null;
   requestedBy: string | null;
-  category: string | null;       // 點工 / 變更追加(只有 kind=unsigned 才有)
+  category: string | null;       // 點工 / 變更追加（只有 kind=unsigned 才有）
   quoteAmount: number | null;
   reason: string | null;
 };
@@ -232,7 +232,7 @@ export function UnsignedReportClient({
         </span>
         {totalQuote > 0 && (
           <span className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-1.5 text-foreground">
-            報價金額合計:
+            報價金額合計：
             <span className="ml-1.5 font-semibold tabular-nums text-primary">
               ${totalQuote.toLocaleString("en-US")}
             </span>

@@ -124,7 +124,7 @@ export function WorkItemsTreeSection({
     if (it.itemType === "section") {
       setFeedback({
         tone: "warn",
-        msg: "分類層不可直接編輯,請改透過匯入流程處理。",
+        msg: "分類層不可直接編輯，請改透過匯入流程處理。",
       });
       return;
     }
@@ -150,8 +150,8 @@ export function WorkItemsTreeSection({
     const label = it.tenderCode ? `${it.tenderCode}  ${it.name}` : it.name;
     const isSection = it.itemType === "section";
     const msg = isSection
-      ? `確定要刪除分類「${label}」嗎?\n\n此分類下的所有子工項與細項會一併刪除,此動作無法復原。`
-      : `確定要刪除「${label}」嗎?此動作無法復原。`;
+      ? `確定要刪除分類「${label}」嗎？\n\n此分類下的所有子工項與細項會一併刪除，此動作無法復原。`
+      : `確定要刪除「${label}」嗎？此動作無法復原。`;
     if (!confirm(msg)) return;
 
     startDelete(async () => {

@@ -27,14 +27,14 @@ export type PickerItem = {
   tenderCode: string | null;
   name: string;
   unit: string | null;
-  totalQuantity: number | null;  // 標單原數量(供參考)
+  totalQuantity: number | null;  // 標單原數量（供參考）
 };
 
 // PickerValue 跟 DB 的 DailyLogWorkItem shape 一致(work_item_id snake_case),
 // 寫入時不需轉換
 export type PickerValue = {
   work_item_id: string;
-  qty: number;                              // 絕對量(percent mode 時是 0-1 的 fraction)
+  qty: number;                              // 絕對量（percent mode 時是 0-1 的 fraction）
   qty_mode?: "absolute" | "percent";        // 預設 absolute
   note?: string;
 };
@@ -271,7 +271,7 @@ export function WorkItemsPicker({
   if (!items.length) {
     return (
       <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-4 py-10 text-center text-base text-muted-foreground">
-        此案件還沒匯入工項,請先請辦公室助理匯入
+        此案件還沒匯入工項，請先請辦公室助理匯入
       </div>
     );
   }
@@ -322,7 +322,7 @@ export function WorkItemsPicker({
         </div>
       )}
 
-      {/* 瀏覽器 — 搜尋框常駐;「瀏覽全部」用 details 折疊。
+      {/* 瀏覽器 — 搜尋框常駐；「瀏覽全部」用 details 折疊。
           已選 ≥1 後預設收起，但搜尋框永遠在頂部不需要先點才能找工項。 */}
       <div className="rounded-lg border border-[#E0DCD6] bg-card">
         <div className="px-3 py-3">
@@ -352,7 +352,7 @@ export function WorkItemsPicker({
             </span>
           </summary>
 
-          {/* 手機:資料夾抽屜式 — 一次只看一層,深度不擠 */}
+          {/* 手機：資料夾抽屜式 — 一次只看一層，深度不擠 */}
           <div className="md:hidden">
             <MobileBrowseView
               items={items}
@@ -364,7 +364,7 @@ export function WorkItemsPicker({
             />
           </div>
 
-          {/* 桌機:樹狀展開 — 寬度足夠多層展開不會擠 */}
+          {/* 桌機：樹狀展開 — 寬度足夠多層展開不會擠 */}
           <div className="hidden divide-y divide-[#E0DCD6] md:block">
             {visibleRoots.length === 0 ? (
               <div className="px-4 py-8 text-center text-base text-muted-foreground">
@@ -515,7 +515,7 @@ function SelectedItemCard({
         </div>
       )}
       <div className="p-3">
-      {/* 第一列:工項名 + 移除 */}
+      {/* 第一列：工項名 + 移除 */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {parentPath.length > 0 && (
@@ -556,9 +556,9 @@ function SelectedItemCard({
         </button>
       </div>
 
-      {/* 第二列:數量 + 模式 segmented control */}
+      {/* 第二列：數量 + 模式 segmented control */}
       <div className="mt-2.5 flex items-center justify-between gap-2">
-        {/* 戴手套手指誤觸 -/+ 的機率很高,所以 stepper 加大到 44px (Apple HIG) + gap-2 */}
+        {/* 戴手套手指誤觸 -/+ 的機率很高，所以 stepper 加大到 44px (Apple HIG) + gap-2 */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -630,7 +630,7 @@ function ModeSegment({
       aria-label="輸入模式"
       title={
         locked
-          ? `已鎖定為${isPct ? "百分比" : "實際數量"}模式(歷史日誌已使用此模式)`
+          ? `已鎖定為${isPct ? "百分比" : "實際數量"}模式（歷史日誌已使用此模式）`
           : "點選切換輸入模式"
       }
     >

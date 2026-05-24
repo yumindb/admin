@@ -278,13 +278,13 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>裕民工務 — 施工日誌</Text>
           <View style={styles.headerMeta}>
-            <Text style={styles.headerMetaItem}>表報編號:{reportNumber}</Text>
+            <Text style={styles.headerMetaItem}>表報編號：{reportNumber}</Text>
             <Text style={styles.headerMetaItem}>{dateLabel}</Text>
             <Text style={styles.headerMetaItem}>
               天氣:{formatWeatherSummary(log.weather)}
             </Text>
             {isBackfill && (
-              <Text style={styles.headerMetaItem}>(補件)</Text>
+              <Text style={styles.headerMetaItem}>（補件）</Text>
             )}
           </View>
         </View>
@@ -343,7 +343,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
           </>
         )}
 
-        {/* 已勾選的合約工項(依大項分組) */}
+        {/* 已勾選的合約工項（依大項分組） */}
         {data.workItemGroups.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>本日施作工項（合約內）</Text>
@@ -532,7 +532,7 @@ function GroupedItemsTable({ groups }: { groups: PdfWorkItemGroup[] }) {
                 {wi.tenderCode ?? "—"}
               </Text>
               <Text style={[styles.td, { width: `${cols[1].w * 100}%` }]}>
-                {note ? `${wi.name}\n附註: ${note}` : wi.name}
+                {note ? `${wi.name}\n附註： ${note}` : wi.name}
               </Text>
               <Text style={[styles.td, { width: `${cols[2].w * 100}%` }]}>
                 {wi.unit ?? "—"}
@@ -578,10 +578,10 @@ function SimpleTable({
 }
 
 const STAGE_LABEL: Record<string, string> = {
-  fill: "填表(工地主任)",
-  review: "複核(工地主任)",
-  audit: "審核(辦公室助理)",
-  approve: "核定(老闆)",
+  fill: "填表（工地主任）",
+  review: "複核（工地主任）",
+  audit: "審核（辦公室助理）",
+  approve: "核定（老闆）",
 };
 const DECISION_LABEL: Record<string, string> = {
   approved: "通過",

@@ -205,7 +205,7 @@ export async function confirmImportAction(payload: ConfirmPayload) {
       if (insErr) {
         return {
           ok: false,
-          error: `新增工項失敗(第 ${i + 1}-${i + chunk.length} 列):${insErr.message}`,
+          error: `新增工項失敗（第 ${i + 1}-${i + chunk.length} 列）：${insErr.message}`,
         };
       }
     }

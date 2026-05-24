@@ -121,7 +121,7 @@ export default async function AttendanceReportPage({
     event_type: e.event_type as "clock_in" | "clock_out",
     user_name: userNameById.get(e.user_id as string) ?? "—",
     case_label: e.case_id
-      ? caseLabelById.get(e.case_id as string) ?? "(未知案件)"
+      ? caseLabelById.get(e.case_id as string) ?? "（未知案件）"
       : null,
     lat: e.lat as number,
     lng: e.lng as number,

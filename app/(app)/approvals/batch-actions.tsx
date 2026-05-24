@@ -120,7 +120,7 @@ export function BatchApprovalsList({
           className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-muted-foreground">快速篩選:</span>
+          <span className="text-muted-foreground">快速篩選：</span>
           {(
             [
               ["all", "全部"],
@@ -169,7 +169,7 @@ export function BatchApprovalsList({
           已選 {selected.size} / {filteredLogs.length}
           {filteredLogs.length !== logs.length && (
             <span className="ml-1 text-muted-foreground">
-              (共 {logs.length})
+              （共 {logs.length}）
             </span>
           )}
         </span>
@@ -220,7 +220,7 @@ export function BatchApprovalsList({
                       {l.cases?.code ?? "未編號"}
                     </div>
                     <h3 className="text-lg font-semibold text-primary md:text-xl">
-                      {l.cases?.name ?? "(已刪除案件)"}
+                      {l.cases?.name ?? "（已刪除案件）"}
                     </h3>
                   </div>
                   <div className="text-right text-sm text-muted-foreground">
@@ -333,7 +333,7 @@ function BatchApprovalModal({
     }
     const dataUrl = sigRef.current?.toDataURL("image/png");
     if (!dataUrl) {
-      toast.error("簽名讀取失敗,請重試");
+      toast.error("簽名讀取失敗，請重試");
       return;
     }
 
@@ -390,7 +390,7 @@ function BatchApprovalModal({
         {!result ? (
           <>
             <p className="mb-2 text-sm text-muted-foreground">
-              簽一次,套用到 {logIds.length} 份。每份各自寫一筆紀錄共用同張簽名。
+              簽一次，套用到 {logIds.length} 份。每份各自寫一筆紀錄共用同張簽名。
             </p>
 
             <div
@@ -420,7 +420,7 @@ function BatchApprovalModal({
                   onChange={(e) => setRemember(e.target.checked)}
                   className="size-4 cursor-pointer accent-[#003153]"
                 />
-                <span>下次簽核也用這個簽名(60 分鐘內)</span>
+                <span>下次簽核也用這個簽名（60 分鐘內）</span>
               </label>
               <button
                 type="button"
@@ -436,7 +436,7 @@ function BatchApprovalModal({
               rows={2}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="備註(選填,所有勾選日誌共用)"
+              placeholder="備註（選填，所有勾選日誌共用）"
               className="mt-3"
             />
 
@@ -513,7 +513,7 @@ function BatchResultView({
             ))}
           </ul>
           <p className="mt-2 text-xs text-muted-foreground">
-            提示:狀態被他人變更通常是因為其他簽核者剛好同步處理。請重新整理列表後再試。
+            提示：狀態被他人變更通常是因為其他簽核者剛好同步處理。請重新整理列表後再試。
           </p>
         </div>
       )}

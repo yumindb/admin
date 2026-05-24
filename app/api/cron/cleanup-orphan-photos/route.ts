@@ -87,9 +87,9 @@ export async function GET(request: Request) {
       }
       if (!files || files.length === 0) break;
       for (const f of files) {
-        if (f.id === null) continue; // 子資料夾,目前沒用到
+        if (f.id === null) continue; // 子資料夾，目前沒用到
         const created = f.created_at ? new Date(f.created_at).getTime() : Date.now();
-        if (created > cutoff) continue; // 太新,先放過
+        if (created > cutoff) continue; // 太新，先放過
         oldFilePaths.push(`${folder}/${f.name}`);
       }
       if (files.length < PAGE) break;

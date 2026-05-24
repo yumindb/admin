@@ -126,7 +126,7 @@ export default async function EditLogPage({
     location: c.location as string | null,
     expectedEnd: c.expected_end as string | null,
     workItems: groupedContract.get(c.id as string) ?? [],
-    extraWorkItems: [], // 追加合約已不在日誌 picker 出現,保留結構
+    extraWorkItems: [], // 追加合約已不在日誌 picker 出現，保留結構
     unsignedWorkItems: groupedUnsigned.get(c.id as string) ?? [],
   }));
 
@@ -224,7 +224,7 @@ export default async function EditLogPage({
     if (r) {
       const approver = Array.isArray(r.approver) ? r.approver[0] : r.approver;
       latestRejection = {
-        comment: r.comment ?? "(沒有填寫原因)",
+        comment: r.comment ?? "（沒有填寫原因）",
         at: r.created_at,
         approverName: approver?.full_name ?? "審核人",
       };
@@ -313,7 +313,7 @@ export default async function EditLogPage({
       )}
       {editMode === "post-submission" && (
         <p className="mb-7 text-sm text-muted-foreground">
-          此日誌已送出({l.status === "rejected" ? "已退回" : "簽核中"}),這次的編輯會記錄誰在何時改了哪些欄位。若內容有變,簽核流程會自動退回到辦公室助理階段重新審核(不需要重新簽名)。已核定的日誌不開放編輯。
+          此日誌已送出（{l.status === "rejected" ? "已退回" : "簽核中"}），這次的編輯會記錄誰在何時改了哪些欄位。若內容有變，簽核流程會自動退回到辦公室助理階段重新審核（不需要重新簽名）。已核定的日誌不開放編輯。
         </p>
       )}
       {editMode === "classic" && <div className="mb-7" />}

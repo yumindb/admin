@@ -242,7 +242,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         failedCount > 1 ? `${failedCount} 張照片上傳失敗` : "照片上傳失敗",
         {
           description: isOffline
-            ? "目前訊號不穩,連上網路後再加一次照片"
+            ? "目前訊號不穩，連上網路後再加一次照片"
             : firstError,
         },
       );
@@ -305,7 +305,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
       return;
     }
     if (!note.trim() && photos.length === 0) {
-      toast.error("至少寫幾個字或加一張照片");
+      toast.error("請至少寫幾個字或加一張照片");
       return;
     }
 
@@ -358,7 +358,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         rows={5}
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        placeholder="今天現場有什麼狀況?(選填)&#10;例:屋主要多打一道牆 / 1F 廁所地磚要換款"
+        placeholder="今天現場有什麼狀況？（選填）&#10;例：屋主要多打一道牆 / 1F 廁所地磚要換款"
         className="block w-full resize-y rounded-lg border-2 border-[#E0DCD6] bg-white px-4 py-4 text-lg leading-relaxed outline-none focus-visible:border-accent"
       />
 
@@ -415,7 +415,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
               <input
                 value={p.caption}
                 onChange={(e) => setCaption(idx, e.target.value)}
-                placeholder="(選填) 這張照片想說什麼?"
+                placeholder="（選填） 這張照片想說什麼？"
                 className="block w-full border-t-2 border-[#E0DCD6] bg-white px-4 py-3 text-base outline-none focus-visible:border-accent"
               />
             </li>
@@ -425,7 +425,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
 
       {!reportId && autosaved && (
         <p className="text-center text-xs text-muted-foreground">
-          ✓ 已自動暫存到此手機,下次回來會還原
+          ✓ 已自動暫存到此手機，下次回來會還原
         </p>
       )}
 
@@ -474,7 +474,7 @@ function PendingReportsCard({
     <section className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-[#92400E]">
-          離線回報待送出 ({pending.length} 筆)
+          離線回報待送出 （{pending.length} 筆）
           {flushing && <span className="ml-2 text-xs">送出中…</span>}
         </h3>
         <button
@@ -500,7 +500,7 @@ function PendingReportsCard({
               · {time} 建立{photosLabel}
               {p.attempts > 0 && (
                 <span className="ml-1">
-                  (試了 {p.attempts}/{MAX_REPORT_ATTEMPTS} 次{p.last_error ? `:${p.last_error}` : ""})
+                  （試了 {p.attempts}/{MAX_REPORT_ATTEMPTS} 次{p.last_error ? `:${p.last_error}` : ""}）
                 </span>
               )}
             </li>
@@ -509,7 +509,7 @@ function PendingReportsCard({
       </ul>
       {failed.length > 0 && (
         <p className="mt-2 text-xs text-[#B91C1C]">
-          ⚠ 有 {failed.length} 筆已重試 {MAX_REPORT_ATTEMPTS} 次失敗,請聯絡辦公室手動補登。
+          ⚠ 有 {failed.length} 筆已重試 {MAX_REPORT_ATTEMPTS} 次失敗，請聯絡辦公室手動補登。
         </p>
       )}
     </section>

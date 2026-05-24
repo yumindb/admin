@@ -28,7 +28,7 @@ const SubmitSchema = z.object({
   leave_type: z.enum(LEAVE_TYPES),
   start_at: z.string().min(1, "請選請假起始時間"),
   end_at: z.string().min(1, "請選請假結束時間"),
-  reason: z.string().trim().min(2, "請填請假事由(至少 2 個字)").max(500),
+  reason: z.string().trim().min(2, "請填請假事由（至少 2 個字）").max(500),
 });
 
 export type SubmitResult =
@@ -48,7 +48,7 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
   ]);
 
   if (!canApplyLeave(me.role)) {
-    return { ok: false, error: "你的角色沒有可簽核的上層,無法送請假" };
+    return { ok: false, error: "您的角色沒有可簽核的上層，無法送請假" };
   }
 
   const raw = {
@@ -77,7 +77,7 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
     return { ok: false, error: "結束時間必須晚於起始時間" };
   }
   if (total > 24 * 30) {
-    return { ok: false, error: "單次請假不能超過 30 天" };
+    return { ok: false, error: "單次請假最多 30 天，請拆成多筆送出" };
   }
 
   const chain = getApprovalChain(me.role);
@@ -101,7 +101,7 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
     .single();
 
   if (error || !data) {
-    return { ok: false, error: "送出失敗:" + (error?.message ?? "未知錯誤") };
+    return { ok: false, error: "送出失敗：" + (error?.message ?? "未知錯誤") };
   }
 
   revalidatePath("/leaves");
@@ -115,7 +115,7 @@ const ApproveSchema = z.object({
 
 const RejectSchema = z.object({
   requestId: z.string().uuid(),
-  comment: z.string().trim().min(2, "退回需要寫原因(至少 2 個字)").max(500),
+  comment: z.string().trim().min(2, "退回需要寫原因（至少 2 個字）").max(500),
 });
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -155,7 +155,7 @@ export async function approveLeaveAction(input: {
       me.id,
     )
   ) {
-    return { ok: false, error: "目前不是你的簽核關卡" };
+    return { ok: false, error: "目前不是您的簽核關卡" };
   }
 
   const { error: insErr } = await supabase.from("leave_approvals").insert({
@@ -166,7 +166,7 @@ export async function approveLeaveAction(input: {
     comment: parsed.data.comment || null,
   });
   if (insErr) {
-    return { ok: false, error: "寫入簽核紀錄失敗:" + insErr.message };
+    return { ok: false, error: "寫入簽核紀錄失敗：" + insErr.message };
   }
 
   const chain = (req.approval_chain as UserRole[]) ?? [];
@@ -184,7 +184,7 @@ export async function approveLeaveAction(input: {
     .update(update)
     .eq("id", req.id);
   if (updErr) {
-    return { ok: false, error: "更新狀態失敗:" + updErr.message };
+    return { ok: false, error: "更新狀態失敗：" + updErr.message };
   }
 
   revalidatePath("/leaves");
@@ -225,7 +225,7 @@ export async function rejectLeaveAction(input: {
       me.id,
     )
   ) {
-    return { ok: false, error: "目前不是你的簽核關卡" };
+    return { ok: false, error: "目前不是您的簽核關卡" };
   }
 
   const { error: insErr } = await supabase.from("leave_approvals").insert({
@@ -236,7 +236,7 @@ export async function rejectLeaveAction(input: {
     comment: parsed.data.comment,
   });
   if (insErr) {
-    return { ok: false, error: "寫入簽核紀錄失敗:" + insErr.message };
+    return { ok: false, error: "寫入簽核紀錄失敗：" + insErr.message };
   }
 
   const { error: updErr } = await supabase
@@ -248,7 +248,7 @@ export async function rejectLeaveAction(input: {
     })
     .eq("id", req.id);
   if (updErr) {
-    return { ok: false, error: "更新狀態失敗:" + updErr.message };
+    return { ok: false, error: "更新狀態失敗：" + updErr.message };
   }
 
   revalidatePath("/leaves");
@@ -274,10 +274,10 @@ export async function cancelLeaveAction(input: {
     return { ok: false, error: "找不到請假" };
   }
   if (req.applicant_id !== me.id) {
-    return { ok: false, error: "只能取消自己的請假" };
+    return { ok: false, error: "只能取消自己送出的請假" };
   }
   if (req.status !== "pending") {
-    return { ok: false, error: "已完成的請假不能取消" };
+    return { ok: false, error: "已完成的請假無法取消" };
   }
 
   const { error: updErr } = await supabase
@@ -289,7 +289,7 @@ export async function cancelLeaveAction(input: {
     })
     .eq("id", req.id);
   if (updErr) {
-    return { ok: false, error: "取消失敗:" + updErr.message };
+    return { ok: false, error: "取消失敗：" + updErr.message };
   }
 
   revalidatePath("/leaves");

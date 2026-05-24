@@ -118,7 +118,7 @@ export default async function MyCasesPage() {
           我的案場
         </h1>
         <p className="mt-1.5 text-base text-muted-foreground">
-          最近 14 天你打卡或回報過的案場,依最近接觸時間排序。
+          最近 14 天你打卡或回報過的案場，依最近接觸時間排序。
         </p>
       </div>
 
@@ -128,7 +128,7 @@ export default async function MyCasesPage() {
             最近 14 天還沒有打卡或回報紀錄
           </p>
           <p className="mb-5 text-sm text-muted-foreground">
-            到工地後先打卡,系統就會記住你接觸過哪些案場。
+            到工地後先打卡，系統就會記住你接觸過哪些案場。
           </p>
           <Link
             href="/attendance"

@@ -69,7 +69,7 @@ export function OfficeReportTools({
     if (okCount === photos.length) {
       setFeedback(`已下載 ${okCount} 張照片`);
     } else {
-      setFeedback(`已下載 ${okCount} / ${photos.length} 張(部分失敗)`);
+      setFeedback(`已下載 ${okCount} / ${photos.length} 張（部分失敗）`);
     }
   }
 
@@ -80,7 +80,7 @@ export function OfficeReportTools({
       fd.set("reportId", reportId);
       const result = await archiveFieldReportAction(fd);
       if (!result.ok) {
-        setFeedback(`封存失敗:${result.error ?? "unknown"}`);
+        setFeedback(`封存失敗：${result.error ?? "unknown"}`);
         return;
       }
       setFeedback("已封存");
@@ -89,7 +89,7 @@ export function OfficeReportTools({
   }
 
   function handleDelete() {
-    if (!confirm("確定刪除此回報?照片與文字都會清掉,無法復原。\n建議先按「下載全部」備份。")) return;
+    if (!confirm("確定刪除此回報？照片與文字都會清掉，無法復原。\n建議先按「下載全部」備份。")) return;
     startTransition(() => {
       const fd = new FormData();
       fd.set("reportId", reportId);

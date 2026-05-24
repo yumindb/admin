@@ -46,13 +46,13 @@ export async function exportAttendanceXlsx(
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
     .order("created_at", { ascending: false })
-    .limit(5000); // 硬上限防爆,3 個月一般人 ~ 200 筆,公司全體一個月也不會破 5000
+    .limit(5000); // 硬上限防爆，3 個月一般人 ~ 200 筆，公司全體一個月也不會破 5000
 
   if (filters.caseId) q = q.eq("case_id", filters.caseId);
   if (filters.userId) q = q.eq("user_id", filters.userId);
 
   const { data: events, error } = await q;
-  if (error) return { ok: false, error: "讀取失敗:" + error.message };
+  if (error) return { ok: false, error: "讀取失敗：" + error.message };
 
   // join user + case 名字
   const userIds = Array.from(new Set((events ?? []).map((e) => e.user_id as string)));
@@ -94,7 +94,7 @@ export async function exportAttendanceXlsx(
       created_at: e.created_at as string,
       user_name: u?.name ?? "—",
       user_role: u?.role ?? "—",
-      case_label: cid ? caseById.get(cid) ?? "(未知案件)" : "(無案件 / 移動中)",
+      case_label: cid ? caseById.get(cid) ?? "（未知案件）" : "（無案件 / 移動中）",
       event_type: e.event_type as "clock_in" | "clock_out",
       lat: e.lat as number,
       lng: e.lng as number,

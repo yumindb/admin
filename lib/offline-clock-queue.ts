@@ -19,7 +19,7 @@ const DB_VERSION = 1;
 const STORE = "pending_clocks";
 
 export type PendingClock = {
-  id: string;              // local uuid;不是 server id
+  id: string;              // local uuid；不是 server id
   event_type: "clock_in" | "clock_out";
   case_id: string | null;
   lat: number;

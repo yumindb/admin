@@ -56,7 +56,7 @@ export function CaseFormFields({
             id="code"
             name="code"
             defaultValue={defaults.code ?? ""}
-            placeholder="例:YM-2026-001"
+            placeholder="例：YM-2026-001"
           />
         </Field>
         <Field label="開工日期" htmlFor="started_at">

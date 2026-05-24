@@ -183,7 +183,7 @@ export function parseTenderMatrix(matrix: unknown[][]): ParseResult {
           rowIndex,
           type: "section",
           tenderCode: code,
-          name: specName || "(未命名分類)",
+          name: specName || "（未命名分類）",
           unit: null,
           quantity: null,
           unitPrice: null,
@@ -199,7 +199,7 @@ export function parseTenderMatrix(matrix: unknown[][]): ParseResult {
           rowIndex,
           type: "item",
           tenderCode: code,
-          name: specName || "(未命名項目)",
+          name: specName || "（未命名項目）",
           unit: unit || null,
           quantity: qty,
           unitPrice,
@@ -222,7 +222,7 @@ export function parseTenderMatrix(matrix: unknown[][]): ParseResult {
         rowIndex,
         type: "spec",
         tenderCode: null,
-        name: specName || "(規格未命名)",
+        name: specName || "（規格未命名）",
         unit: unit || null,
         quantity: qty,
         unitPrice,
@@ -500,7 +500,7 @@ export function parseQuoteSheet(matrix: unknown[][]): ParseResult {
 
   let currentSection: string | null = null;
   let sectionSerial = 0;
-  let stopped = false; // 撞到「以下空白／小計／…」就停,後面整段不再當資料
+  let stopped = false; // 撞到「以下空白／小計／…」就停，後面整段不再當資料
   // 報價單終止字樣
   const QUOTE_END = /^(以\s*下\s*空\s*白|小\s*計|稅\s*金|合\s*計|總\s*計|備\s*註)/;
 
@@ -598,7 +598,7 @@ export function parseQuoteSheet(matrix: unknown[][]): ParseResult {
       rowIndex,
       type: "item",
       tenderCode: code || null,
-      name: name || "(未命名項目)",
+      name: name || "（未命名項目）",
       unit: unit || null,
       quantity: qty,
       unitPrice,

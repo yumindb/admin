@@ -21,7 +21,7 @@ const Schema = z
     path: ["confirm_password"],
   })
   .refine((d) => d.current_password !== d.new_password, {
-    message: "新密碼不能跟舊密碼一樣",
+    message: "新密碼不能與舊密碼相同，請改用其他密碼",
     path: ["new_password"],
   });
 
@@ -54,7 +54,7 @@ export async function changePasswordAction(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user || !user.email) {
-    return { ok: false, error: "未登入或缺少 Email,請重新登入" };
+    return { ok: false, error: "未登入或缺少 Email，請重新登入" };
   }
 
   // 重新驗證目前密碼 — Supabase 沒有獨立的 verifyPassword API,我們在「另一個」
@@ -66,7 +66,7 @@ export async function changePasswordAction(
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) {
-    return { ok: false, error: "伺服器設定錯誤(Supabase env 缺失)" };
+    return { ok: false, error: "伺服器設定錯誤（Supabase env 缺失）" };
   }
   const verifier = createSupabaseClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -83,7 +83,7 @@ export async function changePasswordAction(
   // 走主 SSR client 才會更新到正確的 session。
   const upd = await supabase.auth.updateUser({ password: new_password });
   if (upd.error) {
-    return { ok: false, error: "更新失敗:" + upd.error.message };
+    return { ok: false, error: "更新失敗：" + upd.error.message };
   }
 
   revalidatePath("/account");

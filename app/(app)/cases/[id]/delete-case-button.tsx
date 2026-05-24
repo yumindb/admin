@@ -18,8 +18,8 @@ export function DeleteCaseButton({
   function onClick() {
     const msg =
       workItemCount > 0
-        ? `確定要刪除「${caseName}」嗎？\n\n此案件有 ${workItemCount} 筆工項與所有匯入記錄會一併刪除,此動作無法復原。`
-        : `確定要刪除「${caseName}」嗎?此動作無法復原。`;
+        ? `確定要刪除「${caseName}」嗎？\n\n此案件有 ${workItemCount} 筆工項與所有匯入記錄會一併刪除，此動作無法復原。`
+        : `確定要刪除「${caseName}」嗎？此動作無法復原。`;
     if (!confirm(msg)) return;
     startTransition(async () => {
       const fd = new FormData();

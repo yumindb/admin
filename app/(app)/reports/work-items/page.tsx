@@ -115,14 +115,14 @@ export default async function WorkItemsReportPage({
       <Header />
       {hitLimit && (
         <div className="mb-4 rounded-md border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-sm text-[#92400E]">
-          <strong>已達顯示上限:</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
-          (依開工日排序)。案件總數已超出,請通知開發者升級為真正的分頁。
+          <strong>已達顯示上限：</strong>目前只顯示前 {CASE_HARD_LIMIT} 筆案件
+          （依開工日排序）。案件總數已超出，請通知開發者升級為真正的分頁。
         </div>
       )}
       <div className="mb-4 flex items-center justify-end gap-3 text-sm">
         {showAll ? (
           <>
-            <span className="text-muted-foreground">顯示全部(含已結案)</span>
+            <span className="text-muted-foreground">顯示全部（含已結案）</span>
             <Link
               href="/reports/work-items"
               className="text-[#A07850] underline-offset-2 hover:underline"
@@ -137,7 +137,7 @@ export default async function WorkItemsReportPage({
               href="/reports/work-items?all=1"
               className="text-[#A07850] underline-offset-2 hover:underline"
             >
-              顯示全部(含已結案)
+              顯示全部（含已結案）
             </Link>
           </>
         )}
@@ -163,13 +163,13 @@ function Header() {
           報表
         </Link>
         <span className="mx-1.5">／</span>
-        <span>工項累計(跨案)</span>
+        <span>工項累計（跨案）</span>
       </nav>
       <h1 className="text-2xl font-semibold text-primary md:text-3xl">
-        工項累計(跨案)
+        工項累計（跨案）
       </h1>
       <p className="mt-1.5 text-base text-muted-foreground">
-        篩選案件、工項名稱、完成度區間,並下載 Excel 給管理層或業主
+        篩選案件、工項名稱、完成度區間，並下載 Excel 給管理層或業主
       </p>
     </div>
   );

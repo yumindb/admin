@@ -63,9 +63,9 @@ export type CaseOption = {
   company: string;
   location: string | null;
   expectedEnd: string | null;
-  workItems: PickerItem[];          // 合約內(item/spec/manual,含 section parent)
-  extraWorkItems: PickerItem[];     // 合約外(case_work_items.item_type='extra';扁平)
-  unsignedWorkItems: PickerItem[];  // 未簽約(case_work_items.item_type='unsigned';扁平)
+  workItems: PickerItem[];          // 合約內（item/spec/manual，含 section parent）
+  extraWorkItems: PickerItem[];     // 合約外（case_work_items.item_type='extra'；扁平）
+  unsignedWorkItems: PickerItem[];  // 未簽約（case_work_items.item_type='unsigned'；扁平）
 };
 
 export type PendingFieldReport = {
@@ -380,7 +380,7 @@ export function NewLogForm({
         key: "trade",
         label: "工別",
         required: true,
-        placeholder: "例:泥作",
+        placeholder: "例：泥作",
         suggestions: COMMON_TRADES,
       },
       { key: "today", label: "本日人數", type: "number", inputMode: "numeric" },
@@ -410,7 +410,7 @@ export function NewLogForm({
         key: "name",
         label: "機具名稱",
         required: true,
-        placeholder: "例:切割機",
+        placeholder: "例：切割機",
         suggestions: COMMON_MACHINES,
       },
       {
@@ -515,7 +515,7 @@ export function NewLogForm({
     try {
       // 名稱加「(追加)」後綴 — 跟原工項做識別,辦公室助理事後較容易看懂。
       // 同名重複追加(同案多次超量)時,server 端不擋,各自獨立一筆。
-      const newName = `${item.name} (追加)`;
+      const newName = `${item.name} （追加）`;
       // 帶過去的 quantity:若原工項是 percent mode,沒有具體單位數量,
       // 預估值帶超出比例(0-1) × 原契約量(若有);否則就帶 overflow 絕對值。
       let estQuantity: number | null = null;
@@ -532,7 +532,7 @@ export function NewLogForm({
       fd.set("unit", item.unit ?? "");
       fd.set("quantity", estQuantity != null ? String(estQuantity) : "");
       fd.set("unit_price", "");
-      fd.set("brand_note", `自動建立:由「${item.name}」超量轉入,等候辦公室補報價`);
+      fd.set("brand_note", `自動建立：由「${item.name}」超量轉入，等候辦公室補報價`);
       const { createExtraOrUnsignedAction } = await import(
         "@/app/(app)/cases/[id]/work-items-actions"
       );
@@ -789,7 +789,7 @@ export function NewLogForm({
       setFailedUploads((prev) =>
         prev.map((f) => (f.id === id ? { ...f, error: res.error } : f)),
       );
-      toast.error("仍然失敗", { description: res.error });
+      toast.error("再次上傳失敗", { description: res.error });
     }
   }
 
@@ -834,7 +834,7 @@ export function NewLogForm({
     const totalPicked =
       picked.length + pickedExtra.length + pickedUnsigned.length;
     if (intent === "submit" && totalPicked === 0) {
-      toast.error("送出前至少要選 1 個工項(合約內 / 合約外 / 未簽約 任一)");
+      toast.error("送出前請至少勾選 1 個工項（合約內 / 合約外 / 未簽約 任一）");
       return;
     }
 
@@ -846,7 +846,7 @@ export function NewLogForm({
       }
       const dataUrl = sigRef.current?.toDataURL("image/png");
       if (!dataUrl) {
-        toast.error("簽名讀取失敗,請重試");
+        toast.error("簽名讀取失敗，請重試");
         return;
       }
       // 記住簽名 60 分鐘:工地主任退回後修還能套用、複核也共用
@@ -955,7 +955,7 @@ export function NewLogForm({
       onSubmit={(e) => e.preventDefault()}
       className="space-y-4 md:space-y-6"
     >
-      {/* 表頭 — 手機:壓成一張小卡;桌機:完整 grid */}
+      {/* 表頭 — 手機：壓成一張小卡；桌機：完整 grid */}
       <div className="rounded-md border border-[#E0DCD6] bg-card px-4 py-3 md:hidden">
         <div className="flex items-baseline justify-between gap-2 text-sm">
           <span className="text-xs text-muted-foreground">表報編號</span>
@@ -973,7 +973,7 @@ export function NewLogForm({
           <span>· 填表 {currentUserName}</span>
         </div>
       </div>
-      {/* 桌機:緊湊 2 行資訊條,不再 8 張卡片佔半個畫面 */}
+      {/* 桌機：緊湊 2 行資訊條，不再 8 張卡片佔半個畫面 */}
       <div className="hidden rounded-lg border border-[#E0DCD6] bg-card px-5 py-4 md:block">
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1.5">
           <HeaderField label="表報編號" value={reportNumber} mono />
@@ -1029,10 +1029,10 @@ export function NewLogForm({
             <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
           </summary>
           <p className="mt-1 mb-4 text-sm text-[#92400E]/80">
-            只列出與本日誌日期相符的回報。勾選後選文字要併到哪一節,再按「合併到此日誌」。照片帶 caption 一起進照片區,被合併的回報會標為「已併入」不再出現在這。
+            只列出與本日誌日期相符的回報。勾選後選文字要併到哪一節，再按「合併到此日誌」。照片帶 caption 一起進照片區，被合併的回報會標為「已併入」不再出現在這。
             {otherDateReportsCount > 0 && (
               <span className="ml-1 text-[#92400E]">
-                (此案件還有 {otherDateReportsCount} 筆其他日期的回報未顯示)
+                （此案件還有 {otherDateReportsCount} 筆其他日期的回報未顯示）
               </span>
             )}
           </p>
@@ -1109,7 +1109,7 @@ export function NewLogForm({
                           aria-label="文字併到哪一節"
                           className="flex flex-wrap items-center gap-1.5 text-xs"
                         >
-                          <span className="text-[#92400E]">文字併到:</span>
+                          <span className="text-[#92400E]">文字併到：</span>
                           {MERGE_DEST_OPTIONS.map((opt) => {
                             const disabled = opt.requiresText && !hasText;
                             const active = dest === opt.value;
@@ -1121,7 +1121,7 @@ export function NewLogForm({
                                 aria-checked={active}
                                 aria-disabled={disabled || undefined}
                                 disabled={disabled}
-                                title={disabled ? "此回報無文字,只能合併照片" : undefined}
+                                title={disabled ? "此回報無文字，只能合併照片" : undefined}
                                 onClick={() => {
                                   if (!disabled) setDestForReport(r.id, opt.value);
                                 }}
@@ -1205,10 +1205,10 @@ export function NewLogForm({
             placeholder="0"
           />
           <p className="text-xs text-muted-foreground">
-            累計出工人次:
+            累計出工人次：
             <span className="ml-1 font-medium text-primary">{accumulatedTotalNum}</span>
             <span className="ml-2 text-muted-foreground/80">
-              （此案件之前 {priorManpower} 人次 + 本日 {todayTotalNum || 0} 人,自動加總）
+              （此案件之前 {priorManpower} 人次 + 本日 {todayTotalNum || 0} 人，自動加總）
             </span>
           </p>
         </div>
@@ -1266,12 +1266,12 @@ export function NewLogForm({
         />
       </Section>
 
-      {/* 四、未簽約(unsigned) — picker + 新增臨時項;報價由辦公室之後打包成追加合約。
-          (migration-2.16:原本第四節「合約外」改由辦公室助理在案件總覽以「追加合約」管理,
-           不再出現在主任的日誌 picker。) */}
+      {/* 四、未簽約（unsigned） — picker + 新增臨時項；報價由辦公室之後打包成追加合約。
+          (migration-2.16：原本第四節「合約外」改由辦公室助理在案件總覽以「追加合約」管理，
+           不再出現在主任的日誌 picker。） */}
       <Section
         title={`四、未簽約施工內容${pickedUnsigned.length > 0 ? ` (${pickedUnsigned.length})` : ""}`}
-        hint="尚未報價/打包成追加合約,但現場有施工。報價由辦公室助理事後補,可一次選多筆建立追加合約。"
+        hint="尚未報價/打包成追加合約，但現場有施工。報價由辦公室助理事後補，可一次選多筆建立追加合約。"
       >
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾未簽約項目</p>
@@ -1315,7 +1315,7 @@ export function NewLogForm({
       )}
 
       {/* 主任輸入超過契約量時的引導 dialog —
-          確認後自動建一筆同名「未簽約」工項並把超出量帶過去,讓報價流程接手。 */}
+          確認後自動建一筆同名「未簽約」工項並把超出量帶過去，讓報價流程接手。 */}
       {overflowAttempt && (
         <OverflowSplitDialog
           attempt={overflowAttempt}
@@ -1325,11 +1325,11 @@ export function NewLogForm({
         />
       )}
 
-      {/* 舊資料相容:legacy jsonb editor — 只在編輯既有日誌且帶有舊資料時才顯示 */}
+      {/* 舊資料相容：legacy jsonb editor — 只在編輯既有日誌且帶有舊資料時才顯示 */}
       {(extras.length > 0 || unsigned.length > 0) && (
         <Section
           title="（舊資料）合約外 / 未簽約 — 來自升等前的日誌格式"
-          hint="這些是日誌升級前用 free-form 表填的內容,僅作 read-only 保留,新項目請改用上方 picker 填寫。"
+          hint="這些是日誌升級前用 free-form 表填的內容，僅作 read-only 保留，新項目請改用上方 picker 填寫。"
         >
           {extras.length > 0 && (
             <div className="mb-4">
@@ -1393,8 +1393,8 @@ export function NewLogForm({
           </div>
         )}
 
-        {/* 失敗的照片留在這裡 — 工地主任現場訊號不穩,讓他可以針對單張重試
-            (avoids 整批失敗就全部重來)。重試成功會自動移到下方成功 list。 */}
+        {/* 失敗的照片留在這裡 — 工地主任現場訊號不穩，讓他可以針對單張重試
+            （avoids 整批失敗就全部重來）。重試成功會自動移到下方成功 list。 */}
         {failedUploads.length > 0 && (
           <div className="mt-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] p-3">
             <div className="mb-2 text-xs font-medium text-[#B91C1C]">
@@ -1443,8 +1443,8 @@ export function NewLogForm({
                 key={p.path}
                 className="overflow-hidden rounded-md border border-[#E0DCD6] bg-white"
               >
-                {/* 手機:固定 160px 高、object-contain 不裁切(跟現場回報一樣) */}
-                {/* 桌機:維持 1:1 grid 整齊感,object-cover 填滿 */}
+                {/* 手機：固定 160px 高、object-contain 不裁切（跟現場回報一樣） */}
+                {/* 桌機：維持 1:1 grid 整齊感，object-cover 填滿 */}
                 <div className="relative h-40 bg-[#F5F1EC] md:aspect-square md:h-auto">
                   <button
                     type="button"
@@ -1472,7 +1472,7 @@ export function NewLogForm({
                   type="text"
                   value={p.caption}
                   onChange={(e) => setPhotoCaption(p.path, e.target.value)}
-                  placeholder="說明（選填,例:三樓鋼樑焊接）"
+                  placeholder="說明（選填，例：三樓鋼樑焊接）"
                   className="block w-full border-t border-[#F0EBE4] bg-white px-2 py-1.5 text-xs outline-none placeholder:text-[#9C9088] focus-visible:bg-[#FAF7F2]"
                 />
               </div>
@@ -1524,12 +1524,12 @@ export function NewLogForm({
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="例:下午下大雨停工 / 客戶要求改…"
+          placeholder="例：下午下大雨停工 / 客戶要求改…"
         />
       </Section>
 
       {editMode === "classic" && (
-        <Section title="填表人簽名" hint={`填表人:${currentUserName}。送出核定前請在下方手寫簽名;只儲存草稿可不簽。`}>
+        <Section title="填表人簽名" hint={`填表人：${currentUserName}。送出核定前請在下方手寫簽名；只儲存草稿可不簽。`}>
           <div
             className="rounded-md border border-[#E0DCD6] bg-white"
             style={{ touchAction: "none" }}
@@ -1558,7 +1558,7 @@ export function NewLogForm({
                 className="size-4 cursor-pointer accent-[#003153]"
               />
               <span>
-                記住簽名(60 分鐘內)
+                記住簽名（60 分鐘內）
                 {hasStoredSig && (
                   <span className="ml-1 text-xs text-[#4A7C59]">
                     ✓ 已套用上次
@@ -1579,17 +1579,17 @@ export function NewLogForm({
 
       {!logId && autosaved && (
         <p className="text-center text-xs text-muted-foreground">
-          ✓ 已自動暫存到此瀏覽器,下次回來會還原
+          ✓ 已自動暫存到此瀏覽器，下次回來會還原
         </p>
       )}
 
       <NextStepHint tone="info">
         {editMode === "post-submission"
-          ? "這份日誌已送出。你的編輯會記錄一筆軌跡(誰、何時、改了哪些欄位)。若內容有變,流程會自動退回到辦公室助理階段重新審核,不需要重新簽名。"
-          : "「儲存草稿」可以晚點再回來填,只有你看得到。「送出核定」會通知老闆,送出後若要改要等被退回或請主管退回。"}
+          ? "這份日誌已送出。您的編輯會記錄一筆軌跡（誰、何時、改了哪些欄位）。若內容有變，流程會自動退回到辦公室助理階段重新審核，不需要重新簽名。"
+          : "「儲存草稿」可以晚點再回來填，只有您看得到。「送出核定」會通知老闆，送出後若要改要等被退回或請主管退回。"}
       </NextStepHint>
 
-      {/* 動作 — 手機 sticky 緊貼底部 tab bar 上緣;桌機自然落地 */}
+      {/* 動作 — 手機 sticky 緊貼底部 tab bar 上緣；桌機自然落地 */}
       <div
         className="sticky -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E0DCD6] bg-background px-4 py-4 md:static md:bottom-auto md:mx-0 md:rounded-md md:border md:bg-card md:px-5"
         style={{ bottom: "calc(67px + env(safe-area-inset-bottom))" }}
@@ -1663,7 +1663,7 @@ export function NewLogForm({
               </h2>
             </div>
             <div className="px-5 py-4 text-sm leading-relaxed text-foreground">
-              日誌已在簽核流程中。儲存後若內容有變,流程會自動退回到辦公室助理階段,由助理重新審核再交給老闆。是否仍要儲存？
+              日誌已在簽核流程中。儲存後若內容有變，流程會自動退回到辦公室助理階段，由助理重新審核再交給老闆。是否仍要儲存？
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
               <Button
@@ -1765,7 +1765,7 @@ function CasePicker({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`搜尋案件編號或名稱(共 ${cases.length} 個)`}
+              placeholder={`搜尋案件編號或名稱（共 ${cases.length} 個）`}
               className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           )}
@@ -2025,17 +2025,17 @@ function WeatherPicker({
 }
 
 const EXTRA_COLS: ColumnDef<DailyLogExtraItem>[] = [
-  { key: "name", label: "施工項目", required: true, placeholder: "例:浴室牆面打除" },
-  { key: "unit", label: "單位", placeholder: "例:㎡ / 式" },
+  { key: "name", label: "施工項目", required: true, placeholder: "例：浴室牆面打除" },
+  { key: "unit", label: "單位", placeholder: "例：㎡ / 式" },
   { key: "qty", label: "數量", type: "number" },
   { key: "headcount", label: "人數", type: "number", inputMode: "numeric" },
-  { key: "location", label: "位置", placeholder: "例:1F 廁所" },
-  { key: "requested_by", label: "甲方交辦人員", placeholder: "例:王主任" },
-  { key: "reason", label: "事由", placeholder: "例:屋主臨時要求改格局" },
+  { key: "location", label: "位置", placeholder: "例：1F 廁所" },
+  { key: "requested_by", label: "甲方交辦人員", placeholder: "例：王主任" },
+  { key: "reason", label: "事由", placeholder: "例：屋主臨時要求改格局" },
 ];
 
 const UNSIGNED_COLS: ColumnDef<DailyLogUnsignedItem>[] = [
-  { key: "name", label: "施工項目", required: true, placeholder: "例:配電盤升級" },
+  { key: "name", label: "施工項目", required: true, placeholder: "例：配電盤升級" },
   { key: "unit", label: "單位" },
   { key: "qty", label: "數量", type: "number" },
   { key: "headcount", label: "人數", type: "number", inputMode: "numeric" },
@@ -2045,8 +2045,8 @@ const UNSIGNED_COLS: ColumnDef<DailyLogUnsignedItem>[] = [
     type: "select",
     options: ["點工", "變更追加"],
   },
-  { key: "quote_amount", label: "報價金額(元)", type: "number" },
-  { key: "reason", label: "尚未追加 / 報價事由", placeholder: "例:等業主決定材質" },
+  { key: "quote_amount", label: "報價金額（元）", type: "number" },
+  { key: "reason", label: "尚未追加 / 報價事由", placeholder: "例：等業主決定材質" },
 ];
 
 const EMPTY_SUBCONTRACTOR: DailyLogSubcontractor = { trade: "" };
@@ -2099,7 +2099,7 @@ function OverflowSplitDialog({
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            建立追加工項 = 超出量自動寫到一筆「{item.name} (追加)」,辦公室之後補報價。
+            建立追加工項 = 超出量自動寫到一筆「{item.name} （追加）」，辦公室之後補報價。
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
@@ -2109,7 +2109,7 @@ function OverflowSplitDialog({
             disabled={isPending}
             className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
           >
-            手滑了,只填 {capLabel}
+            手滑了，只填 {capLabel}
           </button>
           <button
             type="button"
