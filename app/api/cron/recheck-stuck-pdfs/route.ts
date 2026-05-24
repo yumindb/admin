@@ -1,22 +1,21 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { cleanupOldLogs } from "@/lib/retention";
 
-// 短跑 — 只做一次 UPDATE,不會超過 5 秒。
+// 兩個工作合併:PDF flip 數秒,retention 通常數秒(三張小表 delete)。
 export const maxDuration = 30;
 
 /**
- * 把卡在 pdf_status='generating' 太久(>10 分鐘)的日誌翻成 'failed',
- * 讓 UI 顯示「重新產生」按鈕,使用者不會被永遠的 spinner 卡住。
+ * 夜間 housekeeping(2 個工作 — 為了不超過 Vercel Hobby plan 的 2-cron 上限,
+ * 共用同一個 endpoint 一次跑完):
  *
- * 為什麼會卡:
- *   approveStageAction 用 after() 在背景產 PDF;Vercel function 預設 timeout
- *   60 秒,如果 PDF 因照片太多或外部依賴慢於 timeout,process 被殺,
- *   pdf_status 留在 'generating' 永遠不會被翻 done/failed。
+ *   1. 把卡在 pdf_status='generating' 太久(>10 分鐘)的日誌翻成 'failed'
+ *   2. 清理過期的 login_attempts / daily_log_revisions / audit_logs(見 lib/retention)
  *
- * 觸發:每小時整點(見 vercel.json)。
+ * 觸發:每天 UTC 16:00(台北 00:00),見 vercel.json。
  *
  * 為什麼用 service-role:
- *   要跨所有使用者翻狀態,RLS 擋的就是這種跨人寫入。
+ *   要跨所有使用者翻狀態 / 刪 audit 資料(audit_logs 沒開 DELETE policy)。
  *   API endpoint 用 CRON_SECRET 守門,只能由 Vercel Cron 觸發。
  */
 
@@ -45,30 +44,44 @@ export async function GET(request: Request) {
   }
 
   const stuckIds = (stuck ?? []).map((r) => r.id as string);
-  if (stuckIds.length === 0) {
-    return NextResponse.json({ ok: true, flipped: 0 });
-  }
+  let flippedCount = 0;
+  if (stuckIds.length > 0) {
+    const { error: updErr } = await supabase
+      .from("daily_logs")
+      .update({
+        pdf_status: "failed",
+        pdf_error: "PDF 產生超過 10 分鐘無回應，背景任務可能已中斷，請點重新產生。",
+      })
+      .in("id", stuckIds);
 
-  // 翻成 failed,讓 UI 顯示「重新產生」按鈕
-  const { error: updErr } = await supabase
-    .from("daily_logs")
-    .update({
-      pdf_status: "failed",
-      pdf_error: "PDF 產生超過 10 分鐘無回應，背景任務可能已中斷，請點重新產生。",
-    })
-    .in("id", stuckIds);
-
-  if (updErr) {
-    console.error("[recheck-stuck-pdfs] update failed:", updErr.message);
-    return NextResponse.json(
-      { ok: false, error: updErr.message },
-      { status: 500 },
+    if (updErr) {
+      console.error("[recheck-stuck-pdfs] update failed:", updErr.message);
+      return NextResponse.json(
+        { ok: false, error: updErr.message },
+        { status: 500 },
+      );
+    }
+    flippedCount = stuckIds.length;
+    console.warn(
+      `[recheck-stuck-pdfs] flipped ${flippedCount} stuck PDF(s) to failed:`,
+      stuckIds,
     );
   }
 
-  console.warn(
-    `[recheck-stuck-pdfs] flipped ${stuckIds.length} stuck PDF(s) to failed:`,
-    stuckIds,
-  );
-  return NextResponse.json({ ok: true, flipped: stuckIds.length, ids: stuckIds });
+  // 第二件事:retention 清理(login_attempts / daily_log_revisions / audit_logs)
+  const retention = await cleanupOldLogs(supabase);
+  const retentionError = retention.find((r) => r.error !== null);
+  if (retentionError) {
+    console.error(
+      `[recheck-stuck-pdfs] retention cleanup failed for ${retentionError.table}:`,
+      retentionError.error,
+    );
+  }
+
+  return NextResponse.json({
+    ok: !retentionError,
+    flipped: flippedCount,
+    ids: stuckIds,
+    retention,
+  });
 }
