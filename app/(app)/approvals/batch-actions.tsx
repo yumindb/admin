@@ -7,7 +7,11 @@ import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { batchApproveAction } from "./[id]/actions";
+import {
+  batchApproveAction,
+  forceRejectStuckLogAction,
+  forceDeleteStuckLogAction,
+} from "./[id]/actions";
 import { uploadSignatureAction } from "../logs/[id]/photo-actions";
 import { formatWeatherSummary } from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
@@ -16,7 +20,11 @@ import {
   readRememberedSig,
   writeRememberedSig,
 } from "@/lib/remembered-signature";
-import type { ApprovalStage, DailyLog } from "@/lib/types";
+import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
+
+// 卡住日誌門檻(配 actions.ts FORCE_REJECT_MIN_DAYS / FORCE_DELETE_MIN_DAYS)
+const STUCK_WARN_DAYS = 7;
+const STUCK_DELETABLE_DAYS = 30;
 
 type LogRow = DailyLog & {
   cases: { name: string; code: string | null } | null;
@@ -33,21 +41,27 @@ const VERB: Record<ApprovalStage, string> = {
 // 「記住本次簽名」的 localStorage 已抽到 lib/remembered-signature.ts,
 // approval-actions / new-log-form 都共用同一個 60-min cache。
 
-type QuickFilter = "all" | "no_photos" | "no_items" | "waiting_2d";
+type QuickFilter = "all" | "no_photos" | "no_items" | "stuck_7d";
 
 export function BatchApprovalsList({
   logs,
   stage,
+  role,
 }: {
   logs: LogRow[];
   stage: ApprovalStage;
+  role: UserRole;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [showModal, setShowModal] = useState(false);
+  // 強制處理 modal:點到哪份日誌就跳出
+  const [forceTarget, setForceTarget] = useState<LogRow | null>(null);
   // 辦公室助理視角:5+ 份時要能快速找「該補件的」
   const [search, setSearch] = useState("");
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
+
+  const canForceAction = role === "office_staff" || role === "owner";
 
   // 套搜尋(案件名 / 案號 / 主任)
   const q = search.trim().toLowerCase();
@@ -62,10 +76,10 @@ export function BatchApprovalsList({
     }
     if (quickFilter === "no_photos" && (l.photos?.length ?? 0) > 0) return false;
     if (quickFilter === "no_items" && (l.work_items?.length ?? 0) > 0) return false;
-    if (quickFilter === "waiting_2d") {
+    if (quickFilter === "stuck_7d") {
       if (!l.submitted_at) return false;
       const ageMs = now - new Date(l.submitted_at).getTime();
-      if (ageMs < 2 * 24 * 60 * 60 * 1000) return false;
+      if (ageMs < STUCK_WARN_DAYS * 24 * 60 * 60 * 1000) return false;
     }
     return true;
   });
@@ -102,9 +116,9 @@ export function BatchApprovalsList({
     all: logs.length,
     no_photos: logs.filter((l) => (l.photos?.length ?? 0) === 0).length,
     no_items: logs.filter((l) => (l.work_items?.length ?? 0) === 0).length,
-    waiting_2d: logs.filter((l) => {
+    stuck_7d: logs.filter((l) => {
       const d = daysSinceSubmit(l);
-      return d !== null && d >= 2;
+      return d !== null && d >= STUCK_WARN_DAYS;
     }).length,
   };
 
@@ -126,7 +140,7 @@ export function BatchApprovalsList({
               ["all", "全部"],
               ["no_photos", "無照片"],
               ["no_items", "無工項"],
-              ["waiting_2d", "等 ≥ 2 天"],
+              ["stuck_7d", `卡 ≥ ${STUCK_WARN_DAYS} 天`],
             ] as [QuickFilter, string][]
           ).map(([key, label]) => {
             const active = quickFilter === key;
@@ -243,11 +257,19 @@ export function BatchApprovalsList({
                   {(() => {
                     const d = daysSinceSubmit(l);
                     if (d === null || d < 1) return null;
-                    const isUrgent = d >= 2;
+                    const stuck = d >= STUCK_WARN_DAYS;
+                    const urgent = d >= 2;
+                    if (stuck) {
+                      return (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#B91C1C] bg-[#B91C1C] px-2.5 py-0.5 text-xs font-semibold text-white">
+                          🔥 卡 {d} 天
+                        </span>
+                      );
+                    }
                     return (
                       <span
                         className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${
-                          isUrgent
+                          urgent
                             ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
                             : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"
                         }`}
@@ -258,10 +280,41 @@ export function BatchApprovalsList({
                   })()}
                 </div>
               </Link>
+              {(() => {
+                const d = daysSinceSubmit(l);
+                if (!canForceAction || d === null || d < STUCK_WARN_DAYS) return null;
+                return (
+                  <div className="border-t border-[#FCA5A5] bg-[#FEF2F2] px-5 py-2 md:px-6">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setForceTarget(l);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#B91C1C] hover:underline"
+                    >
+                      🔥 卡 {d} 天 — 強制處理（退回 / 刪除）
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
       </div>
+
+      {forceTarget && (
+        <ForceActionModal
+          log={forceTarget}
+          stuckDays={daysSinceSubmit(forceTarget) ?? 0}
+          onClose={() => setForceTarget(null)}
+          onDone={() => {
+            setForceTarget(null);
+            router.refresh();
+          }}
+        />
+      )}
 
       {showModal && (
         <BatchApprovalModal
@@ -525,6 +578,207 @@ function BatchResultView({
         >
           關閉
         </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 卡住日誌強制處理 modal:
+ *   - 卡 ≥ 7 天:可「強制退回填表人」(寫原因,日誌回到 draft 讓填表人重整 / 刪除)
+ *   - 卡 ≥ 30 天:另開「直接刪除」(極端情況,audit trigger 留證)
+ * 兩個動作都要求二次確認,避免誤刪。
+ */
+function ForceActionModal({
+  log,
+  stuckDays,
+  onClose,
+  onDone,
+}: {
+  log: LogRow;
+  stuckDays: number;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<"reject" | "delete">("reject");
+  const [reason, setReason] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const canDelete = stuckDays >= STUCK_DELETABLE_DAYS;
+  const caseLabel = log.cases?.name ?? "（未命名案件）";
+  const dateLabel = formatDateTW(log.log_date);
+
+  function submit() {
+    startTransition(async () => {
+      if (mode === "reject") {
+        const r = await forceRejectStuckLogAction({
+          logId: log.id,
+          comment: reason.trim(),
+        });
+        if (!r.ok) {
+          toast.error(r.error);
+          return;
+        }
+        toast.success("已強制退回填表人");
+        onDone();
+      } else {
+        if (confirmText.trim() !== "刪除") {
+          toast.error("請輸入「刪除」二字確認");
+          return;
+        }
+        const r = await forceDeleteStuckLogAction({ logId: log.id });
+        if (!r.ok) {
+          toast.error(r.error);
+          return;
+        }
+        toast.success("已刪除日誌（已留 audit 紀錄）");
+        onDone();
+      }
+    });
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="強制處理卡住日誌"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isPending) onClose();
+      }}
+    >
+      <div className="w-full max-w-lg rounded-t-lg bg-white p-5 shadow-xl md:rounded-lg md:p-6">
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <h2 className="text-lg font-semibold text-primary md:text-xl">
+            強制處理（卡 {stuckDays} 天）
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+            aria-label="關閉"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mb-4 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm">
+          <div className="font-medium text-primary">{caseLabel}</div>
+          <div className="text-muted-foreground">
+            {dateLabel} · {log.profiles?.full_name ?? "未知填表人"}
+          </div>
+        </div>
+
+        <div
+          role="tablist"
+          aria-label="處理方式"
+          className="mb-4 inline-flex w-full rounded-md border border-[#E0DCD6] bg-card p-1"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "reject"}
+            onClick={() => setMode("reject")}
+            className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium ${
+              mode === "reject"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-[#F5F1EC]"
+            }`}
+          >
+            退回填表人
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "delete"}
+            onClick={() => canDelete && setMode("delete")}
+            disabled={!canDelete}
+            title={
+              canDelete
+                ? "整份刪除(留 audit 紀錄)"
+                : `卡 ≥ ${STUCK_DELETABLE_DAYS} 天才能刪除`
+            }
+            className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium ${
+              mode === "delete"
+                ? "bg-[#B91C1C] text-white shadow-sm"
+                : "text-muted-foreground hover:bg-[#F5F1EC]"
+            } ${!canDelete ? "cursor-not-allowed opacity-50" : ""}`}
+          >
+            刪除整份
+          </button>
+        </div>
+
+        {mode === "reject" ? (
+          <>
+            <p className="mb-2 text-sm text-muted-foreground">
+              日誌會退回成「草稿」狀態，填表人可以重整或自行刪除。會留一筆退回紀錄。
+            </p>
+            <Textarea
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="退回原因（必填，例：超過 7 天未處理，請填表人確認後重送）"
+              className="mb-4"
+            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={onClose}
+                className="border-[#E0DCD6]"
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                onClick={submit}
+                disabled={isPending || !reason.trim()}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                {isPending ? "處理中…" : "強制退回"}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mb-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2.5 text-sm text-[#B91C1C]">
+              ⚠ 此動作會 <strong>永久刪除整份日誌</strong>（含照片、簽名、簽核紀錄）。
+              系統會在 audit_logs 留下完整紀錄（誰、何時、刪了什麼）。
+              一般情況請選「退回填表人」。
+            </div>
+            <p className="mb-2 text-sm text-muted-foreground">
+              請輸入「<strong>刪除</strong>」二字確認：
+            </p>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="刪除"
+              className="mb-4 h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-[#B91C1C] focus-visible:ring-2 focus-visible:ring-[#FCA5A5]"
+            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={onClose}
+                className="border-[#E0DCD6]"
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                onClick={submit}
+                disabled={isPending || confirmText.trim() !== "刪除"}
+                className="bg-[#B91C1C] text-white hover:bg-[#991B1B]"
+              >
+                {isPending ? "刪除中…" : "確認刪除"}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

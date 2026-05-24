@@ -315,6 +315,126 @@ export async function batchApproveAction(payload: {
   return { ok: okList, failed };
 }
 
+// ---------- 卡住日誌強制處理 (見 migration-2.24) ----------
+// 卡 ≥ 7 天 → 老闆 / 辦公室助理可「強制退回填表人」(規避 role-stage 對應)
+// 卡 ≥ 30 天 → 老闆 / 辦公室助理可「直接刪除整份日誌」(audit trigger 留證)
+const FORCE_REJECT_MIN_DAYS = 7;
+const FORCE_DELETE_MIN_DAYS = 30;
+
+function stuckDays(submittedAt: string | null): number | null {
+  if (!submittedAt) return null;
+  const ms = Date.now() - new Date(submittedAt).getTime();
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * 強制退回卡住的日誌(老闆 / 辦公室助理 only,卡 ≥ 7 天才開放)。
+ * 不檢查 role 是否對應當前 stage,直接退到 'rejected'。
+ * 寫一筆 log_approvals 記錄(stage 用日誌當前 stage,comment 前綴強制標記)。
+ */
+export async function forceRejectStuckLogAction(payload: {
+  logId: string;
+  comment: string;
+}) {
+  const { supabase, user, role } = await getActor();
+  if (!user || !role) return { ok: false as const, error: "未登入" };
+  if (role !== "office_staff" && role !== "owner") {
+    return { ok: false as const, error: "只有辦公室助理或老闆可強制處理" };
+  }
+  const reason = payload.comment?.trim();
+  if (!reason) return { ok: false as const, error: "請填強制退回原因" };
+
+  const { data: log } = await supabase
+    .from("daily_logs")
+    .select("status, current_stage, submitted_at")
+    .eq("id", payload.logId)
+    .maybeSingle();
+  if (!log) return { ok: false as const, error: "找不到日誌" };
+  if (log.status !== "submitted" || !log.current_stage) {
+    return { ok: false as const, error: "此日誌不在簽核中" };
+  }
+  const days = stuckDays(log.submitted_at);
+  if (days === null || days < FORCE_REJECT_MIN_DAYS) {
+    return {
+      ok: false as const,
+      error: `日誌卡住未滿 ${FORCE_REJECT_MIN_DAYS} 天,請先請對應角色處理`,
+    };
+  }
+
+  const expectedStage = log.current_stage;
+  const { data: rows, error: updErr } = await supabase
+    .from("daily_logs")
+    .update({ status: "rejected", current_stage: null })
+    .eq("id", payload.logId)
+    .eq("status", "submitted")
+    .eq("current_stage", expectedStage)
+    .select("id");
+  if (updErr) return { ok: false as const, error: "更新失敗:" + updErr.message };
+  if (!rows || rows.length === 0) {
+    return { ok: false as const, error: "日誌狀態已被他人變更,請重新整理" };
+  }
+
+  const { error: insErr } = await supabase.from("log_approvals").insert({
+    log_id: payload.logId,
+    stage: expectedStage,
+    approver_id: user.id,
+    decision: "rejected",
+    comment: `[強制退回·卡 ${days} 天] ${reason}`,
+    signature_url: null,
+  });
+  if (insErr) {
+    console.error(
+      "[forceRejectStuckLogAction] approval insert failed AFTER log rejected:",
+      { logId: payload.logId, err: insErr.message },
+    );
+  }
+
+  revalidatePath("/approvals");
+  revalidatePath(`/logs/${payload.logId}`);
+  return { ok: true as const };
+}
+
+/**
+ * 強制刪除卡住的日誌(老闆 / 辦公室助理 only,卡 ≥ 30 天才開放)。
+ * audit trigger 會自動寫 audit_logs(before_values 含整筆 daily_log JSON)。
+ * cascade delete:log_approvals / daily_log_revisions 一併刪除。
+ * 照片 / PDF 不另刪 — 走每日 cleanup-orphan-photos cron 自動清。
+ */
+export async function forceDeleteStuckLogAction(payload: { logId: string }) {
+  const { supabase, user, role } = await getActor();
+  if (!user || !role) return { ok: false as const, error: "未登入" };
+  if (role !== "office_staff" && role !== "owner") {
+    return { ok: false as const, error: "只有辦公室助理或老闆可強制刪除" };
+  }
+
+  const { data: log } = await supabase
+    .from("daily_logs")
+    .select("status, current_stage, submitted_at")
+    .eq("id", payload.logId)
+    .maybeSingle();
+  if (!log) return { ok: false as const, error: "找不到日誌" };
+  if (log.status !== "submitted" || !log.current_stage) {
+    return { ok: false as const, error: "此日誌不在簽核中" };
+  }
+  const days = stuckDays(log.submitted_at);
+  if (days === null || days < FORCE_DELETE_MIN_DAYS) {
+    return {
+      ok: false as const,
+      error: `日誌卡住未滿 ${FORCE_DELETE_MIN_DAYS} 天,請先試「強制退回」`,
+    };
+  }
+
+  const { error: delErr } = await supabase
+    .from("daily_logs")
+    .delete()
+    .eq("id", payload.logId);
+  if (delErr) return { ok: false as const, error: "刪除失敗:" + delErr.message };
+
+  revalidatePath("/approvals");
+  revalidatePath("/logs");
+  return { ok: true as const };
+}
+
 /**
  * 簽完一份後跳到下一份「同 stage 由我負責」的待簽核。
  * 沒下一份就回 /approvals 列表。

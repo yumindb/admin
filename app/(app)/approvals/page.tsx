@@ -118,7 +118,7 @@ export default async function ApprovalsPage() {
           )}
         </div>
       ) : (
-        <BatchApprovalsList logs={list} stage={stage} />
+        <BatchApprovalsList logs={list} stage={stage} role={role!} />
       )}
     </div>
   );
