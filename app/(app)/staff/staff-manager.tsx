@@ -105,8 +105,11 @@ export function StaffManager({
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [companyFilter, setCompanyFilter] = useState<string>("all");
+  // 辦公室助理視角:三家公司加起來幾十人，沒搜尋只能滾。
+  // 支援姓名 / 帳號 / 電話模糊搜尋。
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // 動態撈 distinct company(避免 hardcode);保留出現順序
+  // 動態撈 distinct company（避免 hardcode）；保留出現順序
   const allStaffRaw = ROLES.flatMap((r) => staffByRole[r.key] ?? []);
   const companies = (() => {
     const seen = new Set<string>();
@@ -121,12 +124,21 @@ export function StaffManager({
     return out;
   })();
 
-  // 套 company filter:重組 staffByRole 與 allStaff
+  // 套 company filter + 搜尋:重組 staffByRole 與 allStaff
+  const q = searchQuery.trim().toLowerCase();
   const matchCompany = (s: StaffRow) =>
     companyFilter === "all" ? true : (s.company ?? "") === companyFilter;
+  const matchSearch = (s: StaffRow) => {
+    if (!q) return true;
+    const hay = [s.full_name, s.username, s.email, s.phone]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(q);
+  };
   const filteredStaffByRole = Object.fromEntries(
     (Object.entries(staffByRole) as [UserRole, StaffRow[]][]).map(
-      ([k, list]) => [k, (list ?? []).filter(matchCompany)],
+      ([k, list]) => [k, (list ?? []).filter((s) => matchCompany(s) && matchSearch(s))],
     ),
   ) as Record<UserRole, StaffRow[]>;
 
@@ -171,6 +183,35 @@ export function StaffManager({
         <NextStepHint tone="muted">
           停用後該員無法登入，歷史簽核記錄保留。改密碼後請當面／LINE 告知本人。
         </NextStepHint>
+      </div>
+
+      {/* 搜尋：姓名 / 帳號 / 電話 — 三家公司幾十人時用得到 */}
+      <div className="mb-3 rounded-lg border border-[#E0DCD6] bg-card px-4 py-2.5">
+        <label className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">搜尋</span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="姓名、帳號或電話"
+            className="h-10 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="rounded-md border border-[#E0DCD6] bg-white px-2.5 py-1 text-xs text-muted-foreground hover:border-accent hover:text-accent"
+              aria-label="清除搜尋"
+            >
+              清除
+            </button>
+          )}
+        </label>
+        {q && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            搜尋「{searchQuery}」找到 {totalStaff} 人
+          </p>
+        )}
       </div>
 
       {/* 公司 tab（動態；空時隱藏） */}

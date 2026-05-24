@@ -107,7 +107,7 @@ export default async function ApprovalDetailPage({
   for (const [id, n] of ancestry) {
     wiMap.set(id, { id, name: n.name, unit: n.unit, tender_code: n.tender_code });
   }
-  // 拆三組(同 logs/[id]/page.tsx)
+  // 拆三組（同 logs/[id]/page.tsx）
   const contractWorkItems: DailyLogWorkItem[] = [];
   const extraWorkItems: DailyLogWorkItem[] = [];
   const unsignedWorkItems: DailyLogWorkItem[] = [];
@@ -122,6 +122,46 @@ export default async function ApprovalDetailPage({
     (w) => w.work_item_id,
     ancestry
   );
+
+  // 辦公室助理視角：審核時想知道「主任本日漏掉哪些合約內工項」。
+  // 撈此案件所有「葉節點 + 合約內」工項，與本份日誌已填的對照，列出未填的。
+  // 不算 section 層級（那只是分類，不是工項）。
+  type CaseLeafItem = {
+    id: string;
+    name: string;
+    unit: string | null;
+    tender_code: string | null;
+  };
+  let missingContractItems: CaseLeafItem[] = [];
+  if (l.case_id) {
+    const { data: allCaseItems } = await supabase
+      .from("case_work_items")
+      .select("id, name, unit, tender_code, item_type, skipped")
+      .eq("case_id", l.case_id)
+      .eq("skipped", false)
+      .in("item_type", ["item", "spec", "manual"]);
+    const filledIds = new Set(contractWorkItems.map((w) => w.work_item_id));
+    missingContractItems = ((allCaseItems ?? []) as Array<{
+      id: string;
+      name: string;
+      unit: string | null;
+      tender_code: string | null;
+      item_type: string;
+    }>)
+      .filter((it) => !filledIds.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        name: it.name,
+        unit: it.unit,
+        tender_code: it.tender_code,
+      }));
+  }
+  const totalLeafItemsCount =
+    contractWorkItems.length + missingContractItems.length;
+  const filledRatio =
+    totalLeafItemsCount > 0
+      ? contractWorkItems.length / totalLeafItemsCount
+      : null;
   const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
   const rawLogPhotos = normalizeLogPhotos(l.photos);
   const photoSignedMap = await getSignedUrls(
@@ -256,6 +296,56 @@ export default async function ApprovalDetailPage({
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* 辦公室助理視角:審核時想知道主任本日漏掉哪些合約內工項。
+            不一定每天都要全填(自然不會),但提供一目了然的對照能加快判斷。 */}
+        {missingContractItems.length > 0 && (
+          <details className="mt-3 rounded-md border border-[#E0DCD6] bg-[#FAF7F2]">
+            <summary className="cursor-pointer list-none px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>▸</span>
+                本案還有
+                <span className="font-medium text-foreground">
+                  {missingContractItems.length}
+                </span>
+                個合約內工項，本日未填
+                {filledRatio !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    （本日填了 {contractWorkItems.length} / {totalLeafItemsCount}，
+                    {Math.round(filledRatio * 100)}%）
+                  </span>
+                )}
+              </span>
+            </summary>
+            <ul className="divide-y divide-[#E0DCD6] border-t border-[#E0DCD6]">
+              {missingContractItems.slice(0, 50).map((it) => (
+                <li
+                  key={it.id}
+                  className="flex items-center justify-between gap-3 px-4 py-2 text-sm"
+                >
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    {it.tender_code && (
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                        {it.tender_code}
+                      </span>
+                    )}
+                    <span className="truncate">{it.name}</span>
+                  </span>
+                  {it.unit && (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {it.unit}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {missingContractItems.length > 50 && (
+                <li className="px-4 py-2 text-xs text-muted-foreground">
+                  …共 {missingContractItems.length} 項，僅顯示前 50。
+                </li>
+              )}
+            </ul>
+          </details>
         )}
       </SignSection>
 

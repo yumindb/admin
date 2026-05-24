@@ -20,6 +20,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, FilePlus2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   WorkItemEditModal,
   type WorkItemEditTarget,
@@ -67,6 +68,8 @@ export function ExtraUnsignedSection({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bundleDialogOpen, setBundleDialogOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // 站內刪除確認 modal 取代 window.confirm
+  const [deleteTarget, setDeleteTarget] = useState<ExtraUnsignedRow | null>(null);
 
   const title = kind === "extra" ? "合約外項目（已簽約追加）" : "未簽約施工內容";
   const emptyHint =
@@ -114,17 +117,22 @@ export function ExtraUnsignedSection({
   }
 
   function handleDelete(row: ExtraUnsignedRow) {
-    if (!confirm(`確定刪除「${row.name}」嗎？此動作無法復原。`)) return;
+    setDeleteTarget(row);
+  }
+
+  function doDelete(row: ExtraUnsignedRow) {
     startTransition(async () => {
       const fd = new FormData();
       fd.set("work_item_id", row.id);
       const result = await deleteWorkItemAction(fd);
       if (!result.ok) {
         toast.error(result.error);
+        setDeleteTarget(null);
         return;
       }
       if (result.warning) toast.warning(result.warning);
       else toast.success("已刪除");
+      setDeleteTarget(null);
     });
   }
 
@@ -384,6 +392,19 @@ export function ExtraUnsignedSection({
         />
       )}
 
+      {/* 站內刪除確認 modal — 取代原本的 window.confirm */}
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          title={`刪除「${deleteTarget.name}」?`}
+          description="此動作無法復原。歷史日誌如有引用此工項,進度紀錄仍會保留。"
+          confirmText="確認刪除"
+          danger
+          pending={isPending}
+          onConfirm={() => doDelete(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

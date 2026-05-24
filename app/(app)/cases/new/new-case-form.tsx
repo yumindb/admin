@@ -265,7 +265,7 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
       : "建立案件";
 
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-6 pb-24 md:pb-0">
       {/* 1) 上傳標單／報價單區 */}
       <section className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FBF8F4] p-4 md:p-5">
         <div className="mb-1 flex items-center justify-between">
@@ -374,17 +374,45 @@ export function NewCaseForm({ suggestedCode = "" }: { suggestedCode?: string }) 
         </NextStepHint>
       )}
 
-      <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
-        <Button asChild variant="ghost" type="button">
-          <Link href="/cases">取消</Link>
-        </Button>
-        <Button
-          type="submit"
-          disabled={isPending}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          {submitLabel}
-        </Button>
+      {/* sticky 送出列 — 辦公室助理視角:標單匯入 100+ 筆工項時要捲老遠才按到。
+          手機 + 桌機都 sticky 在視窗底,計數即時顯示讓使用者知道按下去會發生什麼。 */}
+      <div
+        className="sticky bottom-0 -mx-4 border-t border-[#E0DCD6] bg-card/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-muted-foreground">
+            {totalImportCount > 0 ? (
+              <>
+                將寫入
+                <span className="mx-1 font-medium tabular-nums text-foreground">
+                  {totalImportCount}
+                </span>
+                項工項
+                {willImportCount > 0 && manualValidCount > 0 && (
+                  <span className="ml-1">
+                    （標單 {willImportCount} + 手動 {manualValidCount}）
+                  </span>
+                )}
+              </>
+            ) : (
+              "尚未加入工項，可只建立案件後再到案件頁補匯入"
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" type="button">
+              <Link href="/cases">取消</Link>
+            </Button>
+            <Button
+              type="submit"
+              size="xl"
+              disabled={isPending}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {submitLabel}
+            </Button>
+          </div>
+        </div>
       </div>
     </form>
   );

@@ -15,6 +15,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil, Unlink, ChevronDown, Pencil as PencilIcon, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   WorkItemEditModal,
   type WorkItemEditTarget,
@@ -66,6 +67,12 @@ export function ExtraContractsSection({
   // 編輯合約 modal
   const [contractEditing, setContractEditing] = useState<ContractWithItems | null>(null);
   const [isPending, startTransition] = useTransition();
+  // 確認對話框狀態（取代原本的 window.confirm）
+  const [confirmTarget, setConfirmTarget] = useState<
+    | { kind: "delete-item"; item: ContractItem }
+    | { kind: "unbundle"; contract: ContractWithItems }
+    | null
+  >(null);
 
   function openItemEdit(item: ContractItem) {
     setItemModalTarget({
@@ -80,8 +87,7 @@ export function ExtraContractsSection({
     setItemModalOpen(true);
   }
 
-  function handleItemDelete(item: ContractItem) {
-    if (!confirm(`確定刪除「${item.name}」？此動作無法復原。`)) return;
+  function doDeleteItem(item: ContractItem) {
     startTransition(async () => {
       const fd = new FormData();
       fd.set("work_item_id", item.id);
@@ -93,16 +99,11 @@ export function ExtraContractsSection({
       } else {
         toast.success("已刪除");
       }
+      setConfirmTarget(null);
     });
   }
 
-  function handleUnbundle(c: ContractWithItems) {
-    if (
-      !confirm(
-        `確定拆解「${c.name}」？\n\n合約內 ${c.items.length} 筆工項會退回「未簽約」，合約本身會刪除。歷史日誌的進度仍會保留。`,
-      )
-    )
-      return;
+  function doUnbundle(c: ContractWithItems) {
     startTransition(async () => {
       const fd = new FormData();
       fd.set("contract_id", c.id);
@@ -112,6 +113,7 @@ export function ExtraContractsSection({
       } else {
         toast.success("已拆解", { description: "工項已退回未簽約區" });
       }
+      setConfirmTarget(null);
     });
   }
 
@@ -153,9 +155,9 @@ export function ExtraContractsSection({
               progress={progress}
               editable={editable}
               onEdit={() => setContractEditing(c)}
-              onUnbundle={() => handleUnbundle(c)}
+              onUnbundle={() => setConfirmTarget({ kind: "unbundle", contract: c })}
               onItemEdit={openItemEdit}
-              onItemDelete={handleItemDelete}
+              onItemDelete={(item) => setConfirmTarget({ kind: "delete-item", item })}
               isPending={isPending}
             />
           ))}
@@ -180,6 +182,50 @@ export function ExtraContractsSection({
           contract={contractEditing}
           onClose={() => setContractEditing(null)}
           onSaved={() => setContractEditing(null)}
+        />
+      )}
+
+      {/* 站內確認對話框：取代原本的 window.confirm。
+          顯示影響範圍清單,讓辦公室助理有「拆解前先確認資料量」的視覺安心感。 */}
+      {confirmTarget?.kind === "delete-item" && (
+        <ConfirmDialog
+          open
+          title={`刪除「${confirmTarget.item.name}」?`}
+          description="此動作無法復原。歷史日誌如有引用此工項,進度紀錄仍會保留。"
+          confirmText="確認刪除"
+          danger
+          pending={isPending}
+          onConfirm={() => doDeleteItem(confirmTarget.item)}
+          onCancel={() => setConfirmTarget(null)}
+        />
+      )}
+      {confirmTarget?.kind === "unbundle" && (
+        <ConfirmDialog
+          open
+          title={`拆解追加合約「${confirmTarget.contract.name}」?`}
+          description="合約本身會刪除,合約內工項會退回到「未簽約」區。歷史日誌的進度仍會保留。"
+          details={[
+            {
+              label: "合約內工項",
+              value: `${confirmTarget.contract.items.length} 筆`,
+            },
+            {
+              label: "合約金額",
+              value:
+                confirmTarget.contract.bundlePrice !== null
+                  ? `${confirmTarget.contract.bundlePrice.toLocaleString("zh-TW")} 元`
+                  : "未報價",
+            },
+            {
+              label: "簽約日期",
+              value: confirmTarget.contract.signedAt ?? "未簽",
+            },
+          ]}
+          confirmText="確認拆解"
+          danger
+          pending={isPending}
+          onConfirm={() => doUnbundle(confirmTarget.contract)}
+          onCancel={() => setConfirmTarget(null)}
         />
       )}
     </div>
