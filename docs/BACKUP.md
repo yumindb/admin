@@ -39,6 +39,17 @@ Settings → Secrets and variables → Actions:
 
 Optional repo variable: `R2_BUCKET` (defaults to `yumin-admin-backup`).
 
+## Failure notification
+
+If the backup workflow fails, an email is sent to `yumindb@gmail.com` and `evelyn.evagor@gmail.com` with a link to the failed run. Uses Gmail SMTP via the `dawidd6/action-send-mail` action.
+
+Required secrets:
+
+- `NOTIFY_EMAIL_USER` — Gmail address used as sender (e.g. `evelyn.evagor@gmail.com`)
+- `NOTIFY_EMAIL_APP_PASSWORD` — 16-character Gmail App Password (NOT the account password). Generate at https://myaccount.google.com/apppasswords (requires 2-Step Verification enabled on the sender account)
+
+If these secrets are missing, the notification step skips silently — the backup itself still runs and still shows red in the Actions tab.
+
 ## Restore drill
 
 ### Restore database to a fresh Supabase project
