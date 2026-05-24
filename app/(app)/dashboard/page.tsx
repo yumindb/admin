@@ -182,19 +182,24 @@ export default async function DashboardPage() {
   );
   const missingClockIn = supervisors.filter((s) => !clockedInToday.has(s.id));
 
-  // 4. 合約外 + 未簽約累計金額 (撈 extra_contracts 跟 unsigned case_work_items)
+  // 4. 本月新增合約外 + 未簽約金額(更 actionable — 累計沒辦法看出趨勢)
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthStartIso = monthStart.toISOString();
+
   const [{ data: contracts }, { data: unsignedItems }] = await Promise.all([
     supabase
       .from("extra_contracts")
-      .select("bundle_price, id, case_id"),
+      .select("bundle_price, id, case_id, created_at")
+      .gte("created_at", monthStartIso),
     supabase
       .from("case_work_items")
-      .select("id, case_id, item_type, quantity, unit_price")
-      .eq("item_type", "unsigned"),
+      .select("id, case_id, item_type, quantity, unit_price, created_at")
+      .eq("item_type", "unsigned")
+      .gte("created_at", monthStartIso),
   ]);
 
-  // 算 extra_contracts:bundle_price 為主,null 時用該合約下 case_work_items 的 totalPrice 加總
-  // 為簡化,先用 bundle_price 加總,null 略過(較少)
   let contractSum = 0;
   for (const c of contracts ?? []) {
     if (c.bundle_price !== null && c.bundle_price !== undefined) {
@@ -207,7 +212,112 @@ export default async function DashboardPage() {
     const price = (u.unit_price as number | null) ?? 0;
     unsignedSum += qty * price;
   }
-  const totalExtraSum = contractSum + unsignedSum;
+  const monthExtraSum = contractSum + unsignedSum;
+
+  // 5.「需要您出手」異常偵測 — Phil 視角:不是每件都要簽,是要看「卡住的」
+  //   - 退回後超過 2 天還沒重送的日誌(supervisor 卡住沒處理)
+  //   - active 案件超過 5 天沒新日誌(可能停工 / 沒人管)
+  const twoDaysAgo = new Date();
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+  const fiveDaysAgo = new Date();
+  fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+  const [{ data: stuckRejected }, { data: recentLogsByCase }] = await Promise.all([
+    supabase
+      .from("daily_logs")
+      .select(
+        "id, case_id, log_date, updated_at, cases(name, code), profiles!daily_logs_supervisor_id_fkey(full_name)",
+      )
+      .eq("status", "rejected")
+      .lte("updated_at", twoDaysAgo.toISOString())
+      .order("updated_at", { ascending: true })
+      .limit(20),
+    // 抓所有 active 案件最近的日誌 — 之後用 client-side 算「最後一筆距今幾天」
+    cases.length > 0
+      ? supabase
+          .from("daily_logs")
+          .select("case_id, log_date")
+          .in(
+            "case_id",
+            cases.filter((c) => c.status === "active").map((c) => c.id),
+          )
+          .order("log_date", { ascending: false })
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const lastLogDateByCase = new Map<string, string>();
+  for (const r of (recentLogsByCase ?? []) as Array<{
+    case_id: string;
+    log_date: string;
+  }>) {
+    if (!lastLogDateByCase.has(r.case_id)) {
+      lastLogDateByCase.set(r.case_id, r.log_date);
+    }
+  }
+  const staleCases: Array<{
+    id: string;
+    code: string | null;
+    name: string;
+    daysSinceLog: number;
+  }> = [];
+  for (const c of cases) {
+    if (c.status !== "active") continue;
+    const last = lastLogDateByCase.get(c.id);
+    let daysSinceLog: number;
+    if (!last) {
+      // 從未填過日誌:若 started_at > 5 天前才算 stale
+      if (!c.started_at) continue;
+      daysSinceLog = Math.floor(
+        (now - new Date(c.started_at).getTime()) / (24 * 60 * 60 * 1000),
+      );
+    } else {
+      daysSinceLog = Math.floor(
+        (now - new Date(last).getTime()) / (24 * 60 * 60 * 1000),
+      );
+    }
+    if (daysSinceLog >= 5) {
+      staleCases.push({
+        id: c.id,
+        code: c.code,
+        name: c.name,
+        daysSinceLog,
+      });
+    }
+  }
+  staleCases.sort((a, b) => b.daysSinceLog - a.daysSinceLog);
+
+  type AlertItem = {
+    kind: "rejected" | "stale";
+    title: string;
+    detail: string;
+    href: string;
+  };
+  const alerts: AlertItem[] = [];
+  for (const r of (stuckRejected ?? []) as unknown as Array<{
+    id: string;
+    log_date: string;
+    updated_at: string;
+    cases: { name: string; code: string | null } | null;
+    profiles: { full_name: string } | null;
+  }>) {
+    const days = Math.floor(
+      (now - new Date(r.updated_at).getTime()) / (24 * 60 * 60 * 1000),
+    );
+    alerts.push({
+      kind: "rejected",
+      title: `${r.cases?.code ?? ""}${r.cases?.code ? "｜" : ""}${r.cases?.name ?? "（已刪除）"}`,
+      detail: `${r.profiles?.full_name ?? "主任"} 的 ${r.log_date} 日誌已退回 ${days} 天，尚未重送`,
+      href: `/logs/${r.id}`,
+    });
+  }
+  for (const c of staleCases.slice(0, 10)) {
+    alerts.push({
+      kind: "stale",
+      title: `${c.code ?? ""}${c.code ? "｜" : ""}${c.name}`,
+      detail: `已 ${c.daysSinceLog} 天沒有新日誌`,
+      href: `/cases/${c.id}`,
+    });
+  }
 
   const isOwner = actor.role === "owner";
   const pendingPath = isOwner ? "/approvals" : "/approvals";
@@ -222,6 +332,46 @@ export default async function DashboardPage() {
           全公司今天的紅綠燈，有紅燈再點進去處理
         </p>
       </div>
+
+      {/* 「需要您出手」異常 banner — Phil 視角:不是每件都要簽,而是要看
+          「真正卡住的」。退回後 ≥ 2 天 + 案件 ≥ 5 天沒日誌 兩種訊號合併。 */}
+      {alerts.length > 0 && (
+        <section className="mb-5 rounded-lg border border-[#FCA5A5] bg-[#FEF2F2] p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span aria-hidden className="inline-block size-2.5 rounded-full bg-[#B91C1C]" />
+            <h2 className="text-base font-semibold text-[#B91C1C]">
+              需要您出手（{alerts.length}）
+            </h2>
+          </div>
+          <ul className="divide-y divide-[#FCA5A5]/40">
+            {alerts.slice(0, 10).map((a, i) => (
+              <li key={i}>
+                <Link
+                  href={a.href}
+                  className="block py-2 transition-colors hover:bg-[#FEE2E2] -mx-2 px-2 rounded"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-medium text-foreground">
+                      {a.title}
+                    </span>
+                    <span className="shrink-0 text-xs text-[#B91C1C]">
+                      {a.kind === "rejected" ? "退回未重送" : "案件停滯"}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {a.detail}
+                  </div>
+                </Link>
+              </li>
+            ))}
+            {alerts.length > 10 && (
+              <li className="pt-2 text-xs text-muted-foreground">
+                …共 {alerts.length} 件，僅顯示前 10
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* 卡 1：待核定 / 待審 */}
@@ -279,25 +429,25 @@ export default async function DashboardPage() {
           }
           cta={
             supervisors.length > 0
-              ? { href: "/reports/attendance", label: "看出勤" }
+              ? { href: "/reports/today-attendance", label: "看紅綠燈" }
               : undefined
           }
         />
 
-        {/* 卡 4：合約外 + 未簽約累計金額 */}
+        {/* 卡 4：本月新增合約外 + 未簽約金額（actionable signal — 累計沒意義） */}
         <DashCard
-          tone={totalExtraSum > 0 ? "amber" : "green"}
-          title="合約外 + 未簽約金額"
-          value={totalExtraSum > 0 ? totalExtraSum.toLocaleString("zh-TW") : "0"}
+          tone={monthExtraSum > 0 ? "amber" : "green"}
+          title="本月新增合約外金額"
+          value={monthExtraSum > 0 ? monthExtraSum.toLocaleString("zh-TW") : "0"}
           unit="元"
           hint={
-            totalExtraSum === 0
-              ? "目前沒有合約外項目"
+            monthExtraSum === 0
+              ? "本月還沒有新增的合約外項目"
               : `追加合約 ${contractSum.toLocaleString("zh-TW")} + 未簽約 ${unsignedSum.toLocaleString("zh-TW")}`
           }
           cta={
-            totalExtraSum > 0
-              ? { href: "/cases", label: "看案件" }
+            monthExtraSum > 0
+              ? { href: "/reports/unsigned", label: "看明細" }
               : undefined
           }
         />

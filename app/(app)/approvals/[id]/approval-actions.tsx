@@ -9,6 +9,7 @@ import {
   approveStageAction,
   rejectStageAction,
   nextPendingRedirect,
+  getPendingCount,
 } from "./actions";
 import { uploadSignatureAction } from "../../logs/[id]/photo-actions";
 import {
@@ -115,7 +116,12 @@ export function ApprovalActions({
         toast.error(res.error);
         return;
       }
-      toast.success(`已${VERB[stage]}`, { description: "跳下一份…" });
+      // 加進度計數 — Phil 想知道「+1 / 還剩 N 份」
+      const remaining = await getPendingCount(logId);
+      toast.success(`已${VERB[stage]}`, {
+        description:
+          remaining > 0 ? `還剩 ${remaining} 份，跳下一份…` : "全部簽完了，辛苦您了",
+      });
       await nextPendingRedirect(logId);
     });
   }
@@ -132,7 +138,11 @@ export function ApprovalActions({
         toast.error(res.error);
         return;
       }
-      toast.success("已退回", { description: "跳下一份…" });
+      const remaining = await getPendingCount(logId);
+      toast.success("已退回", {
+        description:
+          remaining > 0 ? `還剩 ${remaining} 份，跳下一份…` : "全部處理完了",
+      });
       await nextPendingRedirect(logId);
     });
   }

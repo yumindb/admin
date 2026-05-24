@@ -338,3 +338,25 @@ export async function nextPendingRedirect(currentLogId: string) {
   }
   redirect("/approvals");
 }
+
+/**
+ * 取得當前角色「還剩多少份待簽」— 給 client 端 toast 顯示「已簽 + 還剩 N 份」用。
+ * 不重定向。傳入 currentLogId 會排除掉那筆。
+ */
+export async function getPendingCount(currentLogId?: string): Promise<number> {
+  const { supabase, user, role } = await getActor();
+  if (!user || !role) return 0;
+  const allowedStage = STAGE_FOR_ROLE[role];
+  if (!allowedStage) return 0;
+
+  let q = supabase
+    .from("daily_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "submitted")
+    .eq("current_stage", allowedStage);
+  // supervisor 看自己;owner / office_staff 看全公司
+  if (role === "site_supervisor") q = q.eq("supervisor_id", user.id);
+  if (currentLogId) q = q.neq("id", currentLogId);
+  const { count } = await q;
+  return count ?? 0;
+}

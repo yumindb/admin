@@ -13,7 +13,13 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { formatDateTW } from "@/lib/datetime";
-import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
+import {
+  isCaseBehind,
+  caseHealth,
+  CASE_HEALTH_LABEL,
+  type CaseStats,
+  type CaseHealth,
+} from "@/lib/case-progress";
 import { getCompanyShort } from "@/lib/companies";
 import type { Case, CaseStatus, LogPhoto } from "@/lib/types";
 
@@ -365,8 +371,22 @@ function CompanyPill({
   );
 }
 
+// Health chip 樣式 — 對齊 dashboard / today-attendance 的紅綠燈調色
+const HEALTH_CLS: Record<CaseHealth, string> = {
+  red: "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]",
+  amber: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
+  green: "border-[#A7F3D0] bg-[#ECFDF5] text-[#15803D]",
+};
+const HEALTH_DOT: Record<CaseHealth, string> = {
+  red: "bg-[#B91C1C]",
+  amber: "bg-[#D97706]",
+  green: "bg-[#4A7C59]",
+};
+
 function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
   const s = STATUS_LABEL[c.status];
+  // active 案件才算健康度;暫停 / 結案維持原狀態 chip
+  const health: CaseHealth | null = c.status === "active" ? caseHealth(stats) : null;
   return (
     <div className="group rounded-lg border border-[#E0DCD6] bg-card p-5 transition-colors hover:border-accent">
       <Link href={`/cases/${c.id}`} className="block">
@@ -379,11 +399,22 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
               {c.code ?? "未編號"}
             </span>
           </div>
-          <span
-            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
-          >
-            {s.label}
-          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {health && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${HEALTH_CLS[health]}`}
+                title={`案件健康度：${CASE_HEALTH_LABEL[health]}`}
+              >
+                <span aria-hidden className={`inline-block size-1.5 rounded-full ${HEALTH_DOT[health]}`} />
+                {CASE_HEALTH_LABEL[health]}
+              </span>
+            )}
+            <span
+              className={`rounded-full border px-2.5 py-0.5 text-xs ${s.cls}`}
+            >
+              {s.label}
+            </span>
+          </div>
         </div>
         <h3 className="text-lg font-semibold text-primary group-hover:text-accent md:text-xl">
           {c.name}
