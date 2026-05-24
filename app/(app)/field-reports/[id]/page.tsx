@@ -191,6 +191,14 @@ export default async function FieldReportDetailPage({
           </NextStepHint>
         </div>
       )}
+      {r.status === "archived" && isAuthor && (
+        <div className="mb-6">
+          <NextStepHint tone="info" title="這筆回報已封存">
+            辦公室助理已經處理過這筆回報，所以鎖起來不能再改。如果還有
+            新狀況，請直接「新增回報」開一筆新的。
+          </NextStepHint>
+        </div>
+      )}
       {r.status === "pending" && isAuthor && (
         <div className="mb-6">
           <NextStepHint tone="info">

@@ -243,14 +243,17 @@ export function AttendanceClient({
         const label = eventType === "clock_in" ? "上班打卡成功" : "下班打卡成功";
         const detail =
           res.within_geofence === false && res.distance_m !== null
-            ? `已標註：離工地 ${formatDistance(res.distance_m)}，超出範圍`
-            : res.within_geofence === true && res.distance_m !== null
-              ? `離工地 ${formatDistance(res.distance_m)}`
+            ? `已標註：離工地約 ${formatDistance(res.distance_m)}，超出範圍`
+            : res.within_geofence === true
+              ? "在工地範圍內"
               : "";
         // 下班打卡 + 有選真實案件 + 可寫日誌 → 加「順手填日誌」action,
         // 工地主任 5 點趕填的痛點之一就是少這一步流程銜接
         const showFillLogAction =
           eventType === "clock_out" && canWriteLog && !noCase && effectiveCaseId;
+        // 上班打卡 + 有選真實案件 → 加「順手拍張照」action(現場人員視角)
+        const showQuickPhotoAction =
+          eventType === "clock_in" && !noCase && effectiveCaseId;
         toast.success(label, {
           ...(detail ? { description: detail } : {}),
           ...(showFillLogAction
@@ -262,7 +265,16 @@ export function AttendanceClient({
                     router.push(`/logs/new?case=${effectiveCaseId}`),
                 },
               }
-            : {}),
+            : showQuickPhotoAction
+              ? {
+                  duration: 8000,
+                  action: {
+                    label: "順手拍張照",
+                    onClick: () =>
+                      router.push(`/field-reports/new?case=${effectiveCaseId}`),
+                  },
+                }
+              : {}),
         });
         setNote("");
         router.refresh();
@@ -329,8 +341,8 @@ export function AttendanceClient({
             }`}
           >
             {evalForSelected.withinGeofence
-              ? `✓ 在工地範圍內（${formatDistance(evalForSelected.distanceM)}）`
-              : `⚠ 不在工地範圍內（${formatDistance(evalForSelected.distanceM)}）— 仍可打卡，辦公室會看到標註`}
+              ? "✓ 在工地範圍內"
+              : `⚠ 不在工地範圍內（離工地約 ${formatDistance(evalForSelected.distanceM)}）— 仍可打卡，辦公室會看到標註`}
           </div>
         )}
         {effectiveCaseId && !evalForSelected && !noCase && (
@@ -470,13 +482,18 @@ function LocationStatusCard({ geo }: { geo: ReturnType<typeof useGeolocation> })
       <div className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] p-4 text-sm text-[#B91C1C]">
         <div className="font-medium">無法取得位置</div>
         <p className="mt-1">{geo.message}</p>
-        <button
-          type="button"
-          onClick={geo.refresh}
-          className="mt-2 text-xs text-[#B91C1C] underline-offset-2 hover:underline"
-        >
-          重新定位
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={geo.refresh}
+            className="inline-flex h-9 items-center rounded-md border border-[#FCA5A5] bg-white px-3 text-xs font-medium text-[#B91C1C] hover:bg-[#FEE2E2]"
+          >
+            重新定位
+          </button>
+          <span className="text-xs text-[#B91C1C]/80">
+            一直定位不到嗎？請聯絡辦公室助理協助手動補登打卡。
+          </span>
+        </div>
       </div>
     );
   }

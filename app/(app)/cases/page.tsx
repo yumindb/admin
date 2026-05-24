@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeLogPhotos } from "@/lib/daily-log";
 import { getSignedUrls } from "@/lib/supabase/storage";
@@ -39,6 +40,11 @@ export default async function CasesOverviewPage({
 
   const supabase = await createClient();
   const actor = await tryGetActor();
+  // 現場人員視角:RLS 會把查詢結果清成空,看到空白頁很困惑。
+  // 把他們導到 /my-cases — 那邊用打卡 / 回報歷史做 ground truth。
+  if (actor?.role === "field_assistant") {
+    redirect("/my-cases");
+  }
   const canCreateCase =
     actor?.role === "office_staff" || actor?.role === "owner";
 

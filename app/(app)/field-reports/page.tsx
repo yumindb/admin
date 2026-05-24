@@ -200,36 +200,39 @@ export default async function FieldReportsPage({
         </p>
       )}
 
-      {/* 案件搜尋(辦公室助理 / 老闆 / 主任視角才有用 — 現場人員一般只看自己) */}
-      {!isFieldAssistant && (
-        <form
-          method="get"
-          action="/field-reports"
-          className="mb-3 flex flex-wrap items-center gap-2"
+      {/* 案件搜尋:現場人員想找「我上週寫過的同一面牆」也用得到,所有角色都顯示。
+          field_assistant 仍然只看自己的回報(query 上方已用 author_id filter)。 */}
+      <form
+        method="get"
+        action="/field-reports"
+        className="mb-3 flex flex-wrap items-center gap-2"
+      >
+        <input
+          type="search"
+          name="case_q"
+          defaultValue={caseQ}
+          placeholder={
+            isFieldAssistant
+              ? "按案件名稱 / 案號找我寫過的回報"
+              : "按案件名稱 / 案號搜尋"
+          }
+          className="h-10 min-w-0 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+        />
+        <button
+          type="submit"
+          className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
-          <input
-            type="search"
-            name="case_q"
-            defaultValue={caseQ}
-            placeholder="按案件名稱 / 案號搜尋"
-            className="h-10 min-w-0 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-          />
-          <button
-            type="submit"
-            className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          搜尋
+        </button>
+        {isSearching && (
+          <Link
+            href="/field-reports"
+            className="h-10 inline-flex items-center rounded-md border border-[#E0DCD6] px-3 text-sm text-muted-foreground hover:border-accent"
           >
-            搜尋
-          </button>
-          {isSearching && (
-            <Link
-              href="/field-reports"
-              className="h-10 inline-flex items-center rounded-md border border-[#E0DCD6] px-3 text-sm text-muted-foreground hover:border-accent"
-            >
-              清除
-            </Link>
-          )}
-        </form>
-      )}
+            清除
+          </Link>
+        )}
+      </form>
 
       {/* 日期範圍 quick pills(case 搜尋時隱藏 — 看該案完整歷史較有用) */}
       {!isSearching && (
