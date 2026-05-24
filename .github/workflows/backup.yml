@@ -181,3 +181,78 @@ jobs:
 
             ——
             此信由 GitHub Actions 自動發出，請勿回覆。
+
+      - name: Check if today is weekly report day (Mon, Taipei)
+        if: success()
+        id: weekly_check
+        run: |
+          DOW=$(TZ=Asia/Taipei date +%u)  # 1=Mon ... 7=Sun
+          if [ "$DOW" = "1" ]; then
+            echo "send=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "send=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Taipei day-of-week: $DOW (send=${DOW:+...})"
+
+      - name: Collect weekly report stats
+        if: success() && steps.weekly_check.outputs.send == 'true'
+        id: weekly_stats
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
+        run: |
+          set -o pipefail
+          LATEST_DB=$(rclone lsf "r2:${R2_BUCKET}/db/" --include 'db_*.sql.gz' | sort | tail -1)
+          DB_COUNT=$(rclone lsf "r2:${R2_BUCKET}/db/" --include 'db_*.sql.gz' | wc -l)
+          SIZE_LINE=$(rclone size "r2:${R2_BUCKET}" | grep -i 'Total size' || echo 'Total size: unknown')
+          # Count how many of the last 7 days have a backup present
+          LAST7_PRESENT=0
+          for i in 0 1 2 3 4 5 6; do
+            DATE=$(TZ=Asia/Taipei date -d "$i days ago" +%Y%m%d)
+            if rclone lsf "r2:${R2_BUCKET}/db/" --include "db_${DATE}_*.sql.gz" | grep -q .; then
+              LAST7_PRESENT=$((LAST7_PRESENT + 1))
+            fi
+          done
+          echo "latest_db=$LATEST_DB" >> "$GITHUB_OUTPUT"
+          echo "db_count=$DB_COUNT" >> "$GITHUB_OUTPUT"
+          echo "size_line=$SIZE_LINE" >> "$GITHUB_OUTPUT"
+          echo "last7_present=$LAST7_PRESENT" >> "$GITHUB_OUTPUT"
+
+      - name: Send weekly heartbeat email
+        if: success() && steps.weekly_check.outputs.send == 'true'
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.NOTIFY_EMAIL_USER }}
+          password: ${{ secrets.NOTIFY_EMAIL_APP_PASSWORD }}
+          subject: "✅【裕民備份週報】${{ steps.ts.outputs.date }} — 過去一週備份正常"
+          from: "裕民備份監控 <${{ secrets.NOTIFY_EMAIL_USER }}>"
+          to: yumindb@gmail.com, evelyn.evagor@gmail.com
+          body: |
+            ✅ 裕民工務 admin 系統 — 每週備份狀態報告
+
+            報告日期：${{ steps.ts.outputs.date }}（每週一上午自動寄出）
+
+            ── 過去 7 天備份完成率 ──
+            ${{ steps.weekly_stats.outputs.last7_present }} / 7 天（含今日）
+            （若小於 7，代表某天沒跑成功；但因為您沒收到 🚨 信，通常是當天 GitHub Actions 暫時延遲，會在隔天追上）
+
+            ── 最新備份檔案 ──
+            ${{ steps.weekly_stats.outputs.latest_db }}
+
+            ── R2 雲端儲存空間 ──
+            ${{ steps.weekly_stats.outputs.size_line }}
+            資料庫快照保留份數：${{ steps.weekly_stats.outputs.db_count }} 份（保留 90 天，超過自動清除）
+
+            ── 說明 ──
+            若本週任何一次備份失敗，您會收到主旨開頭為 🚨 的緊急信。
+            此封信代表系統健康、今日（${{ steps.ts.outputs.date }}）備份成功完成。
+            您可以安心進入新的一週 💪
+
+            👉 查看完整 workflow 紀錄：
+            https://github.com/${{ github.repository }}/actions/workflows/backup.yml
+
+            ——
+            此信由 GitHub Actions 每週一自動發出，請勿回覆。

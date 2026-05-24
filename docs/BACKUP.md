@@ -39,16 +39,29 @@ Settings → Secrets and variables → Actions:
 
 Optional repo variable: `R2_BUCKET` (defaults to `yumin-admin-backup`).
 
-## Failure notification
+## Email notifications
 
-If the backup workflow fails, an email is sent to `yumindb@gmail.com` and `evelyn.evagor@gmail.com` with a link to the failed run. Uses Gmail SMTP via the `dawidd6/action-send-mail` action.
+Two emails are sent to `yumindb@gmail.com` and `evelyn.evagor@gmail.com` via Gmail SMTP (`dawidd6/action-send-mail`):
+
+1. **🚨 Failure alert** — fires on any failed run (any day). High priority. Subject: `🚨【裕民備份失敗】yyyy-mm-dd 請立即確認 🚨`.
+2. **✅ Weekly heartbeat** — fires every **Monday** (Asia/Taipei) IF that day's backup succeeded. Reports last-7-day backup completion rate, latest dump filename, and R2 usage. Subject: `✅【裕民備份週報】yyyy-mm-dd — 過去一週備份正常`.
+
+Combined behaviour:
+
+| Day | Backup result | Email sent |
+|---|---|---|
+| Mon–Sun | ✅ success | nothing (quiet) |
+| Mon | ✅ success | weekly heartbeat |
+| Any day | ❌ failure | 🚨 failure alert |
 
 Required secrets:
 
 - `NOTIFY_EMAIL_USER` — Gmail address used as sender (e.g. `evelyn.evagor@gmail.com`)
 - `NOTIFY_EMAIL_APP_PASSWORD` — 16-character Gmail App Password (NOT the account password). Generate at https://myaccount.google.com/apppasswords (requires 2-Step Verification enabled on the sender account)
 
-If these secrets are missing, the notification step skips silently — the backup itself still runs and still shows red in the Actions tab.
+If these secrets are missing, the notification steps skip silently — the backup itself still runs and still shows red in the Actions tab.
+
+To change the heartbeat day, edit the `DOW=$(...)` check in `.github/workflows/backup.yml` (1 = Mon, 7 = Sun).
 
 ## Restore drill
 
