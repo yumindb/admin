@@ -341,8 +341,17 @@ export function NewLogForm({
   // 已含新項,但 client 的 unsignedAdded state 仍帶同一筆 id → 不去重會雙胞胎
   // (migration-2.16:extra picker 已下架,extraAdded / extraItemsExtra 不再用,但保留 state
   //  以維持 handleOverflow 觸發 createExtraOrUnsignedAction 的相容性 — 也因此 no-op)
+  //
+  // 業主反饋:未簽約工項的數量本來就只是辦公室初估,現場 +1 不該被擋。
+  // 因此在 picker 入口統一把 totalQuantity 設為 null:
+  //   - absolute 模式 → 無上限,可一直 +
+  //   - percent 模式 → picker 內建仍夾在 1.0 (100%),不受影響
   const unsignedItemsExtra = useMemo(
-    () => dedupById([...(selectedCase?.unsignedWorkItems ?? []), ...unsignedAdded]),
+    () =>
+      dedupById([
+        ...(selectedCase?.unsignedWorkItems ?? []),
+        ...unsignedAdded,
+      ]).map((it) => ({ ...it, totalQuantity: null })),
     [selectedCase, unsignedAdded],
   );
 
