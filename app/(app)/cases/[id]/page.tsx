@@ -13,6 +13,7 @@ import { tryGetActor } from "@/lib/auth/require-role";
 import { getCompanyShort } from "@/lib/companies";
 import { undoImportAction } from "./import/actions";
 import { DeleteCaseButton } from "./delete-case-button";
+import { CloseCaseButton } from "./close-case-button";
 import {
   WorkItemsXlsxButton,
   MonthlyReportXlsxButton,
@@ -464,7 +465,19 @@ export default async function CaseDetailPage({
 
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <div className="text-sm text-muted-foreground">{c.code ?? "未編號"}</div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            {c.code ?? "未編號"}
+            {c.status === "closed" && (
+              <span className="rounded-full border border-[#E0DCD6] bg-[#F3F4F6] px-2 py-0.5 text-xs text-[#6B7280]">
+                已結案
+              </span>
+            )}
+            {c.status === "paused" && (
+              <span className="rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-xs text-[#92400E]">
+                暫停中
+              </span>
+            )}
+          </div>
           <h1 className="mt-1.5 text-2xl font-semibold text-primary md:text-3xl">{c.name}</h1>
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 text-base text-muted-foreground">
             <span>
@@ -508,6 +521,7 @@ export default async function CaseDetailPage({
                   <span className="hidden sm:inline">編輯</span>
                 </Link>
               </Button>
+              <CloseCaseButton caseId={c.id} caseName={c.name} status={c.status} />
               <DeleteCaseButton
                 caseId={c.id}
                 caseName={c.name}
