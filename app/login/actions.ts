@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { usernameSchema, usernameToEmail } from "@/lib/auth/username";
@@ -37,10 +38,30 @@ async function isLockedOut(email: string): Promise<{ locked: boolean; remainingM
 
 async function recordAttempt(email: string, success: boolean) {
   const service = createServiceClient();
-  await service.from("login_attempts").insert({
+
+  // 裝置資訊給 /reports/logins 管理頁看;取不到就 null,不影響登入。
+  let userAgent: string | null = null;
+  let ip: string | null = null;
+  try {
+    const h = await headers();
+    userAgent = h.get("user-agent")?.slice(0, 300) ?? null;
+    // Vercel 的 x-forwarded-for 第一段是真實 client IP
+    ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? h.get("x-real-ip") ?? null;
+  } catch {
+    // headers() 在少數 context 不可用 — 純紀錄用途,靜默略過
+  }
+
+  const { error } = await service.from("login_attempts").insert({
     email: email.toLowerCase(),
     success,
+    user_agent: userAgent,
+    ip,
   });
+  // migration-2.25 還沒跑時新欄位會讓 insert 失敗 — 退回基本欄位,
+  // 保住速率限制所需的資料,不擋登入。
+  if (error) {
+    await service.from("login_attempts").insert({ email: email.toLowerCase(), success });
+  }
 }
 
 export async function loginAction(

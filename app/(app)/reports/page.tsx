@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   BarChart3,
   FileWarning,
+  KeyRound,
   ListChecks,
   ShieldCheck,
   MapPin,
@@ -70,6 +71,14 @@ export default async function ReportsHomePage() {
           description="本週日誌從填表到核定的工時、哪一關卡最久 — 協助辨識瓶頸"
           icon={<ShieldCheck className="size-6" strokeWidth={1.75} />}
         />
+        {(actor.role === "office_staff" || actor.role === "owner") && (
+          <ReportCard
+            href="/reports/logins"
+            title="登入紀錄"
+            description="誰在什麼時候、用什麼裝置登入系統。連續失敗會標紅提醒"
+            icon={<KeyRound className="size-6" strokeWidth={1.75} />}
+          />
+        )}
       </div>
     </div>
   );
