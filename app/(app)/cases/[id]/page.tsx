@@ -21,6 +21,7 @@ import { NextStepHint } from "@/components/next-step-hint";
 import { CaseQrCodeButton } from "@/components/case-qr-code-button";
 import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
 import { AttendanceTimeline, type TimelineEvent } from "@/components/attendance-timeline";
+import { CaseTimeline, type CaseTimelineEvent } from "@/components/case-timeline";
 import {
   ExtraUnsignedSection,
   type ExtraUnsignedRow,
@@ -71,6 +72,8 @@ export default async function CaseDetailPage({
     { data: logs },
     { data: contracts },
     { data: attendanceRows },
+    { data: approvalRows },
+    { data: reportRows },
   ] = await Promise.all([
     supabase.from("cases").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -107,6 +110,23 @@ export default async function CaseDetailPage({
       .gte("created_at", since14d)
       .order("created_at", { ascending: false })
       .limit(200),
+    // 大事記:此案日誌的簽核事件(含退回;rejected 日誌不在上面 logs query 內,
+    // 所以用 !inner join 直接以 case_id 過濾)
+    supabase
+      .from("log_approvals")
+      .select(
+        "id, log_id, stage, decision, comment, created_at, approver:profiles!approver_id(full_name), daily_logs!inner(case_id, log_date)",
+      )
+      .eq("daily_logs.case_id", id)
+      .order("created_at", { ascending: false })
+      .limit(60),
+    // 大事記:現場回報
+    supabase
+      .from("field_reports")
+      .select("id, note, status, created_at, author:profiles!author_id(full_name)")
+      .eq("case_id", id)
+      .order("created_at", { ascending: false })
+      .limit(30),
   ]);
 
   if (caseErr || !caseRow) notFound();
@@ -255,6 +275,129 @@ export default async function CaseDetailPage({
     contractSignedAt: it.contract_signed_at,
     contractNote: it.contract_note,
   }));
+
+  // ── 案件大事記:日誌簽核 + 追加合約 + 未簽約項 + 現場回報 + 標單匯入 合併排序 ──
+  type ApprovalEventRow = {
+    id: string;
+    log_id: string;
+    stage: "fill" | "review" | "audit" | "approve";
+    decision: "approved" | "rejected";
+    comment: string | null;
+    created_at: string;
+    approver: { full_name: string | null } | { full_name: string | null }[] | null;
+    daily_logs: { case_id: string; log_date: string } | { case_id: string; log_date: string }[] | null;
+  };
+  type ReportEventRow = {
+    id: string;
+    note: string | null;
+    status: string;
+    created_at: string;
+    author: { full_name: string | null } | { full_name: string | null }[] | null;
+  };
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+
+  const STAGE_ACT: Record<string, string> = {
+    fill: "送出日誌",
+    review: "複核通過",
+    audit: "審核通過",
+    approve: "核定完成",
+  };
+  const timeline: CaseTimelineEvent[] = [];
+
+  for (const a of (approvalRows ?? []) as unknown as ApprovalEventRow[]) {
+    const who = one(a.approver)?.full_name ?? "";
+    const logDate = one(a.daily_logs)?.log_date;
+    const dateLabel = logDate ? `${formatDateTW(logDate)} 的日誌` : "日誌";
+    if (a.decision === "approved") {
+      timeline.push({
+        id: `ap-${a.id}`,
+        at: a.created_at,
+        badge: "日誌",
+        tone: a.stage === "approve" ? "success" : "default",
+        label: `${who ? who + " " : ""}${STAGE_ACT[a.stage] ?? a.stage}`,
+        detail: dateLabel,
+        href: `/logs/${a.log_id}`,
+      });
+    } else {
+      timeline.push({
+        id: `ap-${a.id}`,
+        at: a.created_at,
+        badge: "日誌",
+        tone: "danger",
+        label: `${who ? who + " " : ""}退回${dateLabel}`,
+        detail: a.comment,
+        href: `/logs/${a.log_id}`,
+      });
+    }
+  }
+
+  for (const ct of contractList) {
+    timeline.push({
+      id: `ec-${ct.id}`,
+      at: ct.created_at,
+      badge: "追加合約",
+      tone: "accent",
+      label: `建立追加合約「${ct.name}」`,
+      detail: ct.bundle_price != null ? `${Number(ct.bundle_price).toLocaleString("zh-TW")} 元` : null,
+    });
+  }
+
+  for (const it of items) {
+    if (it.item_type === "unsigned" && it.created_at) {
+      timeline.push({
+        id: `wi-${it.id}`,
+        at: it.created_at,
+        badge: "未簽約",
+        tone: "accent",
+        label: `新增未簽約項「${it.name}」`,
+      });
+    }
+    if (it.item_type === "extra" && it.contract_signed_at) {
+      timeline.push({
+        id: `wis-${it.id}`,
+        at: it.contract_signed_at,
+        badge: "未簽約",
+        tone: "success",
+        label: `「${it.name}」已簽約，轉入合約外`,
+        detail: it.contract_note,
+      });
+    }
+  }
+
+  for (const r of (reportRows ?? []) as unknown as ReportEventRow[]) {
+    const note = (r.note ?? "").trim();
+    timeline.push({
+      id: `fr-${r.id}`,
+      at: r.created_at,
+      badge: "回報",
+      tone: "default",
+      label: `${one(r.author)?.full_name ?? "現場人員"} 新增現場回報`,
+      detail: note ? (note.length > 30 ? note.slice(0, 30) + "…" : note) : null,
+      href: `/field-reports/${r.id}`,
+    });
+  }
+
+  for (const imp of importsList) {
+    timeline.push({
+      id: `ti-${imp.id}`,
+      at: imp.created_at,
+      badge: "標單",
+      tone: "default",
+      label: `匯入標單「${imp.file_name}」`,
+      detail: `寫入 ${imp.imported_count} 項`,
+    });
+  }
+
+  timeline.push({
+    id: `case-${c.id}`,
+    at: c.created_at,
+    badge: "案件",
+    tone: "accent",
+    label: "案件建立",
+  });
+
+  timeline.sort((a, b) => (a.at < b.at ? 1 : -1));
+  const timelineCapped = timeline.slice(0, 50);
 
   // 舊資料相容:從舊日誌 jsonb 蒐集合約外/未簽約(只有舊資料才會有)
   const legacyExtraRows: LegacyExtraRow[] = [];
@@ -498,6 +641,20 @@ export default async function CaseDetailPage({
         </Link>
       </div>
       <AttendanceTimeline events={timelineEvents} showUser showCase={false} emptyText="近 14 天無打卡紀錄" />
+
+      {/* 案件大事記 — 日誌簽核 / 追加合約 / 未簽約項 / 回報 / 匯入 合併時間軸 */}
+      <div className="mt-10 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">
+          案件大事記
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            最近 {timelineCapped.length} 筆
+          </span>
+        </h2>
+      </div>
+      <CaseTimeline
+        events={timelineCapped}
+        emptyText="還沒有活動 — 匯入標單或填第一份日誌後，這裡會開始累積"
+      />
 
       {/* 跨日誌彙整：照片 */}
       <div className="mt-10 mb-4 flex items-center justify-between">
