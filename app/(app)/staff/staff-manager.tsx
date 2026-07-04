@@ -84,6 +84,23 @@ const ROLES: RoleMeta[] = [
 
 const ROLE_BY_KEY = new Map(ROLES.map((r) => [r.key, r]));
 
+/** 最後登入時間 → 給人看的相對標籤。詳細逐筆紀錄在 /reports/logins。 */
+function lastLoginLabel(iso: string | null): string {
+  if (!iso) return "從未登入";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "—";
+  const days = Math.floor((Date.now() - then) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return "今天";
+  if (days === 1) return "昨天";
+  if (days < 30) return `${days} 天前`;
+  return new Date(iso).toLocaleDateString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
 type ModalMode =
   | { kind: "create" }
   | { kind: "edit"; staff: StaffRow }
@@ -516,6 +533,7 @@ function StaffTable({
               <th className="px-4 py-3 font-medium">電話</th>
               <th className="px-4 py-3 font-medium">角色</th>
               <th className="px-4 py-3 font-medium">狀態</th>
+              <th className="px-4 py-3 font-medium">最後登入</th>
               {canManage && (
                 <th className="px-4 py-3 text-right font-medium">操作</th>
               )}
@@ -612,6 +630,9 @@ function StaffTableRow({
         >
           {staff.is_active ? "啟用中" : "已停用"}
         </span>
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+        {lastLoginLabel(staff.last_sign_in_at)}
       </td>
       {canManage && (
         <td className="px-4 py-3">
@@ -789,6 +810,9 @@ function StaffCard({
               {staff.phone}
             </div>
           )}
+          <div className="mt-0.5 text-sm text-muted-foreground">
+            最後登入：{lastLoginLabel(staff.last_sign_in_at)}
+          </div>
         </div>
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${

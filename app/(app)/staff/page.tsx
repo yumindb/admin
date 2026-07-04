@@ -4,7 +4,11 @@ import { emailToUsername } from "@/lib/auth/username";
 import type { Profile, UserRole } from "@/lib/types";
 import { StaffManager } from "./staff-manager";
 
-export type StaffRow = Profile & { email: string | null; username: string | null };
+export type StaffRow = Profile & {
+  email: string | null;
+  username: string | null;
+  last_sign_in_at: string | null;
+};
 
 const ROLE_ORDER: UserRole[] = [
   "owner",
@@ -41,8 +45,10 @@ export default async function StaffPage() {
   ]);
 
   const emailById = new Map<string, string | null>();
+  const lastSignInById = new Map<string, string | null>();
   for (const u of usersList?.users ?? []) {
     emailById.set(u.id, u.email ?? null);
+    lastSignInById.set(u.id, u.last_sign_in_at ?? null);
   }
 
   // is_active 容錯：migration-2.6 跑之前欄位不存在 → 視為啟用中，避免整排顯示「已停用」
@@ -53,6 +59,7 @@ export default async function StaffPage() {
       is_active: p.is_active ?? true,
       email,
       username: emailToUsername(email),
+      last_sign_in_at: lastSignInById.get(p.id) ?? null,
     };
   });
 
