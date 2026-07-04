@@ -51,10 +51,10 @@ export default async function DashboardPage() {
       .eq("status", "submitted")
       .eq("current_stage", actor.role === "owner" ? "approve" : "audit")
       .order("submitted_at", { ascending: true }),
-    // 2) 進度落後計算需要 cases + 工項 + 日誌
+    // 2) 進度落後 + 到期提醒計算需要 cases + 工項 + 日誌
     supabase
       .from("cases")
-      .select("id, code, name, started_at, status")
+      .select("id, code, name, started_at, expected_end, status")
       .in("status", ["active", "paused"])
       .order("created_at", { ascending: false })
       .limit(200),
@@ -90,8 +90,19 @@ export default async function DashboardPage() {
   // 為了不撈 200 個案件的所有日誌(會慢),只撈 active 案件 + 已過 60 天的
   const cases = (activeCases.data ?? []) as Pick<
     Case,
-    "id" | "code" | "name" | "started_at" | "status"
+    "id" | "code" | "name" | "started_at" | "expected_end" | "status"
   >[];
+
+  // 到期提醒:預計完工日(expected_end)已過 = 逾期;7 天內到 = 即將到期。
+  // 用台北時區的日期字串比對(expected_end 是 date 欄位,避免 UTC 差 8 小時的邊界)
+  const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+  const in7Key = new Date(now + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Taipei",
+  });
+  const overdueCases = cases.filter((c) => c.expected_end && c.expected_end < todayKey);
+  const dueSoonCases = cases.filter(
+    (c) => c.expected_end && c.expected_end >= todayKey && c.expected_end <= in7Key,
+  );
   const sixtyDaysAgo = new Date();
   sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
   const oldCases = cases.filter((c) => {
@@ -409,6 +420,38 @@ export default async function DashboardPage() {
           cta={
             behindCases.length > 0
               ? { href: "/cases?filter=behind", label: "查看案件" }
+              : undefined
+          }
+        />
+
+        {/* 卡 2.5：到期提醒 — expected_end 已過或 7 天內到 */}
+        <DashCard
+          tone={overdueCases.length > 0 ? "red" : dueSoonCases.length > 0 ? "amber" : "green"}
+          title="到期案件"
+          value={String(overdueCases.length + dueSoonCases.length)}
+          unit="個"
+          hint={
+            overdueCases.length === 0 && dueSoonCases.length === 0
+              ? "沒有逾期或 7 天內到期的案件"
+              : [
+                  ...overdueCases
+                    .slice(0, 3)
+                    .map(
+                      (c) =>
+                        `${c.code ?? ""}${c.code ? "｜" : ""}${c.name}（逾期，原定 ${formatDateTW(c.expected_end)}）`,
+                    ),
+                  ...dueSoonCases
+                    .slice(0, Math.max(0, 3 - overdueCases.length))
+                    .map(
+                      (c) =>
+                        `${c.code ?? ""}${c.code ? "｜" : ""}${c.name}（${formatDateTW(c.expected_end)} 到期）`,
+                    ),
+                ].join("、") +
+                (overdueCases.length + dueSoonCases.length > 3 ? "…" : "")
+          }
+          cta={
+            overdueCases.length + dueSoonCases.length > 0
+              ? { href: "/reports/cases-overview", label: "看案件總覽" }
               : undefined
           }
         />
