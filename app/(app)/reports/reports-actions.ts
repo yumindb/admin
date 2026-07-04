@@ -38,7 +38,7 @@ export async function getCrossCaseSummaryXlsxAction(
   const supabase = await createClient();
 
   // 撈 cases — 先撈所有,再依角色 filter
-  let casesQuery = supabase.from("cases").select("*");
+  const casesQuery = supabase.from("cases").select("*");
   const { data: allCases, error: caseErr } = await casesQuery;
   if (caseErr)
     return { ok: false, error: wrapDbError(caseErr, "讀取案件失敗").message };

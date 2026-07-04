@@ -84,8 +84,8 @@ export function groupWorkItemsByAncestor<T>(
  *
  * `client` 接 Supabase client(typed 太重,這裡用 any 避免 instantiation 過深)。
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchWorkItemAncestry(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any,
   leafIds: string[]
 ): Promise<Map<string, WorkItemNode>> {

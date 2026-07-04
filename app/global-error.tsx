@@ -103,6 +103,9 @@ export default function GlobalError({
             >
               重試
             </button>
+            {/* global-error 取代整個 root layout,App Router context 不存在,
+                不能用 next/link — 這裡的原生 <a> 是官方建議寫法 */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               style={{
