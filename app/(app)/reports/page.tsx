@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   BarChart3,
   FileWarning,
+  History,
   KeyRound,
   ListChecks,
   ShieldCheck,
@@ -72,12 +73,20 @@ export default async function ReportsHomePage() {
           icon={<ShieldCheck className="size-6" strokeWidth={1.75} />}
         />
         {(actor.role === "office_staff" || actor.role === "owner") && (
-          <ReportCard
-            href="/reports/logins"
-            title="登入紀錄"
-            description="誰在什麼時候、用什麼裝置登入系統。連續失敗會標紅提醒"
-            icon={<KeyRound className="size-6" strokeWidth={1.75} />}
-          />
+          <>
+            <ReportCard
+              href="/reports/logins"
+              title="登入紀錄"
+              description="誰在什麼時候、用什麼裝置登入系統。連續失敗會標紅提醒"
+              icon={<KeyRound className="size-6" strokeWidth={1.75} />}
+            />
+            <ReportCard
+              href="/reports/audit"
+              title="操作紀錄"
+              description="人員、工項單價、追加合約的修改與刪除留底 — 誰改了什麼一目了然"
+              icon={<History className="size-6" strokeWidth={1.75} />}
+            />
+          </>
         )}
       </div>
     </div>
