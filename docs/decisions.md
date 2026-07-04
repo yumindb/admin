@@ -611,3 +611,75 @@ case_work_items
 - BackgroundSync API 處理「tab 關閉時也能送」
 - 配合「離線送日誌」一起做(scope 較大)
 
+---
+
+## Phase 2.25 — 地址 geocoding + CasePicker 距離排序 (2026-05-17)
+
+- 案件 form 貼「地址」也能取得座標（`lib/geocode.ts`），不一定要貼 Google Maps URL 或點地圖。
+- 打卡頁 CasePicker 依「目前位置 → 各案件座標」距離排序，最近的工地排最前。
+- 無 migration（沿用 2.20 的 cases.lat/lng）。細節見 commit cbca055。
+
+---
+
+## 2026-05-21 ~ 05-24 批次 — 備份、請假、帳號登入、儀表板、營運硬化
+
+> 32 commits（a9e2c05 → f789020）。本節記錄非顯而易見的決策；完整清單看 git log 該區間。
+
+### 一、每日備份 → Cloudflare R2（`.github/workflows/backup.yml`）
+
+- **為什麼放 GitHub Actions 不放 Vercel cron**：Hobby plan cron 限制（見下）+ pg_dump 需要完整環境。
+- 每天 02:00 台北（UTC 18:00）：pg_dump 全 public schema → gzip → R2；三個 storage bucket（daily-photos / signatures / daily-log-pdfs）rclone 同步；db 備份保留 90 天自動清理。
+- **pg_dump 版本必須 17**：GitHub runner 預設 16.14，server 是 17.6，版本不合會失敗 — workflow 強制把 pg17 binaries 放 PATH 開頭（commit 67ce89b）。
+- **Supabase S3 相容層要 `no_check_bucket`**（rclone），否則 listing 失敗（commit 6ad8217）。
+- 失敗通知 email（Gmail SMTP，收件 yumindb@gmail.com + evelyn.evagor@gmail.com；GitHub Secrets `NOTIFY_EMAIL_USER` / `NOTIFY_EMAIL_APP_PASSWORD`）。
+- **週一 heartbeat email**：備份成功且當天是週一才寄，內容含過去 7 天完成率 + R2 用量 — 「沒收到 🚨 就是健康」需要一封定期的正面確認，否則沉默 = 壞掉也沒人知道。
+- 細節與還原步驟見 `docs/BACKUP.md`。
+
+### 二、帳號（username）登入取代 email（commit 676de1f）
+
+- 工人記不住 email；帳號規則 `/^[a-z0-9]{2,30}$/`。
+- **實作是轉換層不是 schema 改動**：Supabase Auth 仍存 `<username>@yumin.local`；`lib/auth/username.ts` 提供 `usernameToEmail` / `emailToUsername`（顯示時反轉，非 @yumin.local 後綴則原樣顯示）。未來要改真 email 只需拔掉轉換層。
+
+### 三、請假（migration-2.23；`/leaves`）
+
+- **簽核鏈依申請人 role 自動決定**（`lib/leave.ts`）：
+  field_assistant → supervisor → office_staff → owner；supervisor → office_staff → owner；office_staff → owner；**owner 不能申請**（最高關）。
+- 狀態機：pending（current_step 逐關推進）→ approved / rejected / cancelled（申請人 pending 期間可撤回）。退回不能改單重送，要開新單。
+- RLS：申請人本人 + office_staff + owner 可見；supervisor 只看自己的 + 自己在簽核鏈上的。不開 DELETE。
+
+### 四、Dashboard + 營運報表（commits 0952af6, 8e6af09）
+
+- `/dashboard`（owner / office_staff）四卡：待核定（含等最久天數）、進度落後案場（<30% 且開工 >60 天）、今日未打卡主任、本月追加金額。上方紅色異常 banner：退回 >2 天未重送、active 案件 >5 天無新日誌。
+- 案場健康燈（`lib/case-progress.ts`）：紅 = 進度落後 或 合約外/未簽約 ≥5 筆；黃 = 有合約外項目 或 近 5 天無日誌；綠 = 其他。
+- `/reports/today-attendance` 紅黃綠出勤（紅 = 今日沒打卡；黃 = 缺上/下班或超出範圍；綠 = 完整且在範圍內）。
+- `/reports/sign-delays`：用 log_approvals.created_at 串 timeline 算各關處理時長 + Top 10 等最久。
+
+### 五、卡住日誌強制處理（migration-2.24；commit 0267898）
+
+- owner / office_staff 可對卡住日誌繞過正常關卡：**≥7 天可強制退回、≥30 天可強制刪除**（門檻是 code 常數）。
+- 強制退回寫進 log_approvals（comment 帶「[強制退回·卡 N 天] 原因」）；強制刪除靠 **migration-2.24 的 daily_logs DELETE audit trigger** 把 before_values 留進 audit_logs — 刪除必留證據。
+- 照片/PDF 不同步刪，交給每日 cleanup-orphan-photos cron。
+
+### 六、資料留存（retention）cron（commit 7e62578）
+
+- `lib/retention.ts`：login_attempts 30 天、daily_log_revisions 365 天、audit_logs 365 天。
+- **掛在既有 `/api/cron/recheck-stuck-pdfs` route 內執行**，因為 Vercel Hobby 只給 2 個 cron — 新排程工作優先併入既有 route，不要加 vercel.json cron（會 silent deploy failure）。
+- audit_logs 沒有 DELETE policy（使用者不可竄改），清理用 service-role。
+
+### 七、離線與手機體驗
+
+- `/field-reports/new` 加 localStorage 草稿（400ms debounce）+ IndexedDB 離線佇列（`lib/offline-report-queue.ts`，同打卡佇列的前景 flush 模式：mount / online event / 手動重試）。
+- 未簽約工項 picker 上限解除（commit 5326c81）：**業主要求追加工項不設上限但 % 照算**。之前 client 設 totalQuantity=null 會在 refresh 後被 server 端撈回的預估量蓋掉 — 修法是在 new-log-form 入口把未簽約 PickerItem 的 totalQuantity 一律 null。
+- 全站表單回饋改 sonner toast（inline banner 會被 router.refresh 沖掉）；觸控目標全面 ≥44px。
+
+### 八、文案規範（commit 9044f58，87 檔 700+ 處）
+
+- 中文 UI 一律**全形標點**（，：（）），排除 regex / URL / 比例 / 純英文字串。
+- 語氣：客氣、說明後果、用「您」。新寫 UI 字串照此規範。
+
+### 九、其他
+
+- 「現場助理」正名為「**現場人員**」（field_assistant，commit bf99b4a）。
+- field_assistant 進 `/cases` 直接 redirect `/my-cases`（RLS 會讓他看到空列表，很困惑）。
+- 簽核簽名可重用（批簽一張簽名共用）。
+
