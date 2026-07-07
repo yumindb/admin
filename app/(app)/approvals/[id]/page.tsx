@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { formatDateTW } from "@/lib/datetime";
 import { ApprovalActions } from "./approval-actions";
 import { SignSection } from "./sign-section";
@@ -134,12 +135,17 @@ export default async function ApprovalDetailPage({
   };
   let missingContractItems: CaseLeafItem[] = [];
   if (l.case_id) {
-    const { data: allCaseItems } = await supabase
-      .from("case_work_items")
-      .select("id, name, unit, tender_code, item_type, skipped")
-      .eq("case_id", l.case_id)
-      .eq("skipped", false)
-      .in("item_type", ["item", "spec", "manual"]);
+    // fetchAllRows:配電盤案 1100+ 可填工項,超 PostgREST 1000 筆上限
+    const { data: allCaseItems } = await fetchAllRows((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("id, name, unit, tender_code, item_type, skipped")
+        .eq("case_id", l.case_id)
+        .eq("skipped", false)
+        .in("item_type", ["item", "spec", "manual"])
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
     const filledIds = new Set(contractWorkItems.map((w) => w.work_item_id));
     missingContractItems = ((allCaseItems ?? []) as Array<{
       id: string;

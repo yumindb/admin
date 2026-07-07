@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { normalizeLogPhotos } from "@/lib/daily-log";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { Button } from "@/components/ui/button";
@@ -72,21 +73,29 @@ export default async function CasesOverviewPage({
   const hitLimit = (cases ?? []).length >= CASE_HARD_LIMIT;
 
   // 2) 工項 / 日誌只撈這些 case 的(進度需要全期日誌才能算累計完成量,不限時間)
+  //    fetchAllRows:單一真實標單就 1200+ 工項,直接查會被 PostgREST 1000 筆上限截斷
   const [{ data: workItems }, { data: logs }] = caseIds.length
     ? await Promise.all([
-        supabase
-          .from("case_work_items")
-          .select("id, case_id, item_type, quantity")
-          .in("case_id", caseIds),
-        supabase
-          .from("daily_logs")
-          .select(
-            "case_id, status, work_items, extra_items, unsigned_items, photos, log_date",
-          )
-          .in("case_id", caseIds)
-          .in("status", ["submitted", "approved"])
-          .order("log_date", { ascending: false })
-          .order("created_at", { ascending: false }),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("case_work_items")
+            .select("id, case_id, item_type, quantity")
+            .in("case_id", caseIds)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("daily_logs")
+            .select(
+              "id, case_id, status, work_items, extra_items, unsigned_items, photos, log_date",
+            )
+            .in("case_id", caseIds)
+            .in("status", ["submitted", "approved"])
+            .order("log_date", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
       ])
     : [{ data: [] }, { data: [] }];
 
@@ -207,7 +216,8 @@ export default async function CasesOverviewPage({
   const pctSumByCase = new Map<string, number>();
   const pctCountByCase = new Map<string, number>();
   for (const it of allItems) {
-    if (it.item_type !== "item" && it.item_type !== "spec") continue;
+    // manual 也算進度 — 無標單小案只有 manual 工項,漏掉它進度永遠是「—」
+    if (it.item_type !== "item" && it.item_type !== "spec" && it.item_type !== "manual") continue;
     const total = it.quantity ?? 0;
     const done = doneQtyByItem.get(it.id) ?? 0;
     const pct =

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { tryGetActor } from "@/lib/auth/require-role";
 import type {
   Case,
@@ -75,16 +76,25 @@ export default async function CasesOverviewReportPage({
   }
 
   const caseIds = cases.map((c) => c.id);
+  // fetchAllRows:跨案工項/日誌會超 PostgREST 1000 筆上限
   const [{ data: workItems }, { data: logs }] = await Promise.all([
-    supabase
-      .from("case_work_items")
-      .select("id, case_id, item_type, quantity")
-      .in("case_id", caseIds),
-    supabase
-      .from("daily_logs")
-      .select("case_id, work_items, log_date, status")
-      .in("case_id", caseIds)
-      .in("status", ["submitted", "approved"]),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("id, case_id, item_type, quantity")
+        .in("case_id", caseIds)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("daily_logs")
+        .select("id, case_id, work_items, log_date, status")
+        .in("case_id", caseIds)
+        .in("status", ["submitted", "approved"])
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   const items = (workItems ?? []) as Pick<
@@ -124,7 +134,8 @@ export default async function CasesOverviewReportPage({
   const pctSum = new Map<string, number>();
   const pctCount = new Map<string, number>();
   for (const it of items) {
-    if (it.item_type !== "item" && it.item_type !== "spec") continue;
+    // manual 也算進度(無標單小案只有 manual 工項)
+    if (it.item_type !== "item" && it.item_type !== "spec" && it.item_type !== "manual") continue;
     const total = it.quantity ?? 0;
     const done = doneByItem.get(it.id) ?? 0;
     const pct = total > 0 ? Math.min(1, done / total) : done > 0 ? 1 : 0;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { NewLogForm, type CaseOption, type PendingFieldReport } from "./new-log-form";
 import type { PickerItem } from "@/components/work-items-picker";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
@@ -41,15 +42,20 @@ export default async function NewLogPage({
     .order("created_at", { ascending: false });
 
   const caseIds = (cases ?? []).map((c) => c.id);
+  // fetchAllRows:真實標單單案 1200+ 工項,跨案加總必超 PostgREST 1000 筆上限
   const { data: workItems } = caseIds.length
-    ? await supabase
-        .from("case_work_items")
-        .select(
-          "id, case_id, parent_id, depth, item_type, tender_code, name, unit, quantity, sort_path"
-        )
-        .in("case_id", caseIds)
-        .eq("skipped", false)
-        .order("sort_path", { ascending: true })
+    ? await fetchAllRows((from, to) =>
+        supabase
+          .from("case_work_items")
+          .select(
+            "id, case_id, parent_id, depth, item_type, tender_code, name, unit, quantity, sort_path"
+          )
+          .in("case_id", caseIds)
+          .eq("skipped", false)
+          .order("sort_path", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
     : { data: [] };
 
   // 把每案的 case_work_items 拆兩組:合約內(section/item/spec/manual)、未簽約(unsigned)
@@ -104,10 +110,14 @@ export default async function NewLogPage({
   // 1. case_id + log_date → 算「該案件當天第幾份」(所有狀態都算,避免序號跳號)
   // 2. submitted/approved 的 work_items → 算各工項「已累計」+ 鎖定 qty_mode
   const { data: existingLogs } = caseIds.length
-    ? await supabase
-        .from("daily_logs")
-        .select("id, case_id, log_date, created_at, work_items, manpower, status")
-        .in("case_id", caseIds)
+    ? await fetchAllRows((from, to) =>
+        supabase
+          .from("daily_logs")
+          .select("id, case_id, log_date, created_at, work_items, manpower, status")
+          .in("case_id", caseIds)
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
     : { data: [] };
 
   const dayLogCounts: Record<string, Record<string, number>> = {};

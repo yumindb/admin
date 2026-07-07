@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { formatDateTW } from "@/lib/datetime";
 import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
@@ -113,16 +114,25 @@ export default async function DashboardPage() {
   const behindCases: { id: string; code: string | null; name: string; pct: number }[] = [];
   if (oldCases.length > 0) {
     const oldCaseIds = oldCases.map((c) => c.id);
+    // fetchAllRows:真實標單案 1200+ 工項會超 PostgREST 1000 筆上限
     const [{ data: workItems }, { data: logs }] = await Promise.all([
-      supabase
-        .from("case_work_items")
-        .select("id, case_id, item_type, quantity")
-        .in("case_id", oldCaseIds),
-      supabase
-        .from("daily_logs")
-        .select("case_id, status, work_items, log_date")
-        .in("case_id", oldCaseIds)
-        .in("status", ["submitted", "approved"]),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("case_work_items")
+          .select("id, case_id, item_type, quantity")
+          .in("case_id", oldCaseIds)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      fetchAllRows((from, to) =>
+        supabase
+          .from("daily_logs")
+          .select("id, case_id, status, work_items, log_date")
+          .in("case_id", oldCaseIds)
+          .in("status", ["submitted", "approved"])
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
     ]);
     const items = (workItems ?? []) as Pick<
       CaseWorkItem,
@@ -145,7 +155,8 @@ export default async function DashboardPage() {
     const pctSumByCase = new Map<string, number>();
     const pctCountByCase = new Map<string, number>();
     for (const it of items) {
-      if (it.item_type !== "item" && it.item_type !== "spec") continue;
+      // manual 也算進度(與案件列表一致;無標單小案只有 manual 工項)
+      if (it.item_type !== "item" && it.item_type !== "spec" && it.item_type !== "manual") continue;
       const total = it.quantity ?? 0;
       const done = doneByItem.get(it.id) ?? 0;
       const pct = total > 0 ? Math.min(1, done / total) : done > 0 ? 1 : 0;
@@ -245,14 +256,18 @@ export default async function DashboardPage() {
       .limit(20),
     // 抓所有 active 案件最近的日誌 — 之後用 client-side 算「最後一筆距今幾天」
     cases.length > 0
-      ? supabase
-          .from("daily_logs")
-          .select("case_id, log_date")
-          .in(
-            "case_id",
-            cases.filter((c) => c.status === "active").map((c) => c.id),
-          )
-          .order("log_date", { ascending: false })
+      ? fetchAllRows((from, to) =>
+          supabase
+            .from("daily_logs")
+            .select("id, case_id, log_date")
+            .in(
+              "case_id",
+              cases.filter((c) => c.status === "active").map((c) => c.id),
+            )
+            .order("log_date", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to),
+        )
       : Promise.resolve({ data: [] }),
   ]);
 

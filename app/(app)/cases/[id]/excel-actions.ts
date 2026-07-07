@@ -14,6 +14,7 @@
  * site_supervisor 取自己以外案件會撈不到資料而 throw。
  */
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { requireRole } from "@/lib/auth/require-role";
 import { wrapDbError } from "@/lib/db/wrap-error";
 import { buildCaseWorkItemsXlsx } from "@/lib/excel/case-work-items";
@@ -63,22 +64,31 @@ export async function getCaseWorkItemsXlsxAction(
   await requireRole(["office_staff", "owner", "site_supervisor"]);
   const supabase = await createClient();
 
+  // fetchAllRows:1000+ 工項案件的 Excel 匯出不能被 PostgREST 上限截斷
   const [
     { data: caseRow, error: caseErr },
     { data: workItems, error: wiErr },
     { data: logs, error: logErr },
   ] = await Promise.all([
     supabase.from("cases").select("*").eq("id", caseId).maybeSingle(),
-    supabase
-      .from("case_work_items")
-      .select("*")
-      .eq("case_id", caseId)
-      .order("sort_path", { ascending: true }),
-    supabase
-      .from("daily_logs")
-      .select("work_items")
-      .eq("case_id", caseId)
-      .in("status", ["submitted", "approved"]),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("*")
+        .eq("case_id", caseId)
+        .order("sort_path", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("daily_logs")
+        .select("id, work_items")
+        .eq("case_id", caseId)
+        .in("status", ["submitted", "approved"])
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   if (caseErr) return { ok: false, error: wrapDbError(caseErr, "讀取案件失敗").message };
@@ -141,19 +151,27 @@ export async function getCaseMonthlyReportXlsxAction(
     { data: logs, error: logErr },
   ] = await Promise.all([
     supabase.from("cases").select("*").eq("id", caseId).maybeSingle(),
-    supabase
-      .from("case_work_items")
-      .select("*")
-      .eq("case_id", caseId)
-      .order("sort_path", { ascending: true }),
-    supabase
-      .from("daily_logs")
-      .select("id, log_date, work_items, extra_items, unsigned_items")
-      .eq("case_id", caseId)
-      .gte("log_date", monthStart)
-      .lt("log_date", nextMonth)
-      .in("status", ["submitted", "approved"])
-      .order("log_date", { ascending: true }),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("*")
+        .eq("case_id", caseId)
+        .order("sort_path", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("daily_logs")
+        .select("id, log_date, work_items, extra_items, unsigned_items")
+        .eq("case_id", caseId)
+        .gte("log_date", monthStart)
+        .lt("log_date", nextMonth)
+        .in("status", ["submitted", "approved"])
+        .order("log_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   if (caseErr) return { ok: false, error: wrapDbError(caseErr, "讀取案件失敗").message };

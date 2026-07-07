@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { requireRole } from "@/lib/auth/require-role";
 import type { ParsedNode } from "@/lib/tender-parser";
 
@@ -76,10 +77,15 @@ export async function confirmImportAction(payload: ConfirmPayload) {
 
   // 2) 撈現有 work items 做 dedupe — 必須限定當前 case,否則跨案匯入會把
   //    新案的工項 parent_id 接到舊案的 row 上(bug fixed 2026-04-26)
-  const { data: existing, error: existErr } = await supabase
-    .from("case_work_items")
-    .select("id, tender_code, name, modified_by_user")
-    .eq("case_id", payload.caseId);
+  //    fetchAllRows:1000+ 項的案件重複匯入時,dedupe map 缺列會造成重複插入
+  const { data: existing, error: existErr } = await fetchAllRows((from, to) =>
+    supabase
+      .from("case_work_items")
+      .select("id, tender_code, name, modified_by_user")
+      .eq("case_id", payload.caseId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (existErr) return { ok: false, error: "讀取現有工項失敗：" + existErr.message };
 
   const dedupeKey = (code: string | null, name: string) => `${code ?? ""}|${name}`;

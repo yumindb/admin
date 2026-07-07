@@ -11,6 +11,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { wrapDbError } from "@/lib/db/wrap-error";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import {
   buildCrossCaseSummaryXlsx,
   computeCrossCaseSummaryRows,
@@ -69,19 +70,28 @@ export async function getCrossCaseSummaryXlsxAction(
 
   const allowedCaseIds = cases.map((c) => c.id);
 
+  // fetchAllRows:跨案報表的工項/日誌量會超過 PostgREST 1000 筆上限
   const [
     { data: workItems, error: wiErr },
     { data: logs, error: logErr },
   ] = await Promise.all([
-    supabase
-      .from("case_work_items")
-      .select("*")
-      .in("case_id", allowedCaseIds),
-    supabase
-      .from("daily_logs")
-      .select("case_id, work_items")
-      .in("case_id", allowedCaseIds)
-      .in("status", ["submitted", "approved"]),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("*")
+        .in("case_id", allowedCaseIds)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("daily_logs")
+        .select("id, case_id, work_items")
+        .in("case_id", allowedCaseIds)
+        .in("status", ["submitted", "approved"])
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   if (wiErr) return { ok: false, error: wrapDbError(wiErr, "讀取工項失敗").message };

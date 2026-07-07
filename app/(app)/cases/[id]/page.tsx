@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { PencilIcon } from "lucide-react";
@@ -77,11 +78,16 @@ export default async function CaseDetailPage({
     { data: reportRows },
   ] = await Promise.all([
     supabase.from("cases").select("*").eq("id", id).maybeSingle(),
-    supabase
-      .from("case_work_items")
-      .select("*")
-      .eq("case_id", id)
-      .order("sort_path", { ascending: true }),
+    // fetchAllRows:配電盤等真實標單單案 1200+ 工項,超 PostgREST 1000 筆上限
+    fetchAllRows((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("*")
+        .eq("case_id", id)
+        .order("sort_path", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
     supabase
       .from("tender_imports")
       .select("*")
@@ -89,14 +95,18 @@ export default async function CaseDetailPage({
       .order("created_at", { ascending: false })
       .limit(5),
     // 抓所有送出後或核定的日誌(草稿不計進度)
-    supabase
-      .from("daily_logs")
-      .select(
-        "id, log_date, work_items, status, extra_items, unsigned_items, photos",
-      )
-      .eq("case_id", id)
-      .in("status", ["submitted", "approved"])
-      .order("log_date", { ascending: false }),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("daily_logs")
+        .select(
+          "id, log_date, work_items, status, extra_items, unsigned_items, photos",
+        )
+        .eq("case_id", id)
+        .in("status", ["submitted", "approved"])
+        .order("log_date", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
     // migration-2.16:追加合約清單,工項屬於合約者透過 extra_contract_id join
     supabase
       .from("extra_contracts")

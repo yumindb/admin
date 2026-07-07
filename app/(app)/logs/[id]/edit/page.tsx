@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { NewLogForm, type CaseOption, type PendingFieldReport } from "../../new/new-log-form";
 import { NextStepHint } from "@/components/next-step-hint";
 import type { PickerItem } from "@/components/work-items-picker";
@@ -72,15 +73,20 @@ export default async function EditLogPage({
     .order("created_at", { ascending: false });
 
   const caseIds = (cases ?? []).map((c) => c.id);
+  // fetchAllRows:真實標單單案 1200+ 工項,跨案加總必超 PostgREST 1000 筆上限
   const { data: workItems } = caseIds.length
-    ? await supabase
-        .from("case_work_items")
-        .select(
-          "id, case_id, parent_id, depth, item_type, tender_code, name, unit, quantity, sort_path"
-        )
-        .in("case_id", caseIds)
-        .eq("skipped", false)
-        .order("sort_path", { ascending: true })
+    ? await fetchAllRows((from, to) =>
+        supabase
+          .from("case_work_items")
+          .select(
+            "id, case_id, parent_id, depth, item_type, tender_code, name, unit, quantity, sort_path"
+          )
+          .in("case_id", caseIds)
+          .eq("skipped", false)
+          .order("sort_path", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
     : { data: [] };
 
   // 與 /logs/new 同樣分組:合約內、未簽約。extra(追加合約)不在日誌出現,跳過。
@@ -159,11 +165,15 @@ export default async function EditLogPage({
   // 撈所有 submitted/approved 日誌的 work_items 算各工項已累計與模式鎖定;
   // 排除「自己」(編輯中的這份)避免重複計算
   const { data: priorRows } = caseIds.length
-    ? await supabase
-        .from("daily_logs")
-        .select("id, case_id, created_at, work_items, manpower, status")
-        .in("case_id", caseIds)
-        .in("status", ["submitted", "approved"])
+    ? await fetchAllRows((from, to) =>
+        supabase
+          .from("daily_logs")
+          .select("id, case_id, created_at, work_items, manpower, status")
+          .in("case_id", caseIds)
+          .in("status", ["submitted", "approved"])
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
     : { data: [] };
   const priorLogs = (priorRows ?? []).map((r) => ({
     id: r.id as string,
