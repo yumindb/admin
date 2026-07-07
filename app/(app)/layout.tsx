@@ -224,11 +224,14 @@ function navByRole(
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
         ],
+        // 2026-07-07:老闆手機版原本沒有「回報」入口(桌機 nav 有、頁面權限也開,
+        // 只漏了 tab),Phil 在手機上等於看不到也不能建現場回報 — 補上,共 6 tab。
         mobileTabs: [
           { href: "/dashboard", label: "首頁", icon: "home" },
           { href: "/approvals", label: "待核定", icon: "check" },
           { href: "/cases", label: "案件", icon: "folder" },
           { href: "/logs", label: "日誌", icon: "file" },
+          { href: "/field-reports", label: "回報", icon: "camera" },
           { href: "/staff", label: "人員", icon: "users" },
         ],
       };
