@@ -128,7 +128,8 @@ export function computeCrossCaseSummaryRows(input: {
   });
 
   for (const it of sortedItems) {
-    if (it.item_type !== "item" && it.item_type !== "spec") continue;
+    // manual 也列入(無標單小案只有 manual 工項)
+    if (it.item_type !== "item" && it.item_type !== "spec" && it.item_type !== "manual") continue;
     if (it.skipped) continue;
     const c = caseById.get(it.case_id);
     if (!c) continue;
