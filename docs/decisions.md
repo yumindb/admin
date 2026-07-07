@@ -730,3 +730,55 @@ case_work_items
 
 - 新增 leave（簽核鏈/推進/時數/可簽判定）、username（schema/雙向轉換/round-trip）、tender-parser（四類分類規則/樹狀 parent/千分位/兩種表頭格式）共 30 個單元測試,總數 51 → 81。
 
+---
+
+## 2026-07-08 上線前整備 — 全角色測試、PostgREST 截斷修復、Demo 資料
+
+> 正式上線前夕。用真實空白標單重建 demo 資料時,揭露兩個潛伏 bug。
+
+### 一、⚠ PostgREST 1000 筆靜默截斷（lib/db/fetch-all.ts）
+
+- **Supabase 預設 max-rows = 1000,超過的列被「默默丟掉」,不報錯。**
+  POC 期測試資料總量小(全庫 case_work_items 只有 458 列)從未觸發;
+  匯入真實「配電盤空白標單1140616」單案就 1236 列,以下全部靜默漏資料:
+  案件列表統計、案件詳情工項樹、日誌 picker、審核頁漏填檢查、
+  **重複匯入 dedupe(會造成重複插入!)**、Excel 匯出、dashboard、跨案報表。
+- 修法:`lib/db/fetch-all.ts` 的 `fetchAllRows()` — range 分頁、50 頁安全上限、
+  要求穩定排序(呼叫端一律加 `.order("id")` tiebreak,避免分頁重複/漏列)。
+- **規範:任何「撈整個案件或跨案件的 case_work_items / daily_logs」查詢必須走
+  fetchAllRows。**新頁面照抄現有 caller 的寫法。
+- 教訓:測試資料要用「真實尺寸」的資料 — demo seed 從此改用真實標單匯入。
+
+### 二、manual 工項不計進度
+
+- 所有進度迴圈只認 `item/spec`,`manual`(無標單小案的手動工項)被跳過 →
+  純手動案件進度永遠顯示「—」。案件列表 / dashboard / cases-overview /
+  跨案 Excel 四處一併修正。unsigned/extra 仍不計進度(它們是錢的追蹤,不是工程量)。
+
+### 三、老闆手機版沒有現場回報入口
+
+- 桌機 nav 與頁面權限一直都允許 owner,只有 `navByRole` 的 owner mobileTabs
+  漏了 `/field-reports` — 手機上等於看不到也不能建。補上共 6 tab。
+- 教訓:權限開了不等於入口有了;每個角色的 desktopNav / mobileTabs 要成對檢查。
+
+### 四、Demo 資料策略（_work/seed-demo-launch.mjs,gitignored 本機腳本）
+
+- 全清所有 POC 測試資料(帳號保留),用真實空白標單重建 4 案件:
+  配電盤(1111 項,含各簽核狀態日誌 + 未簽約 + 滲水回報)、管線(EMT+PVC 兩次
+  匯入)、泵浦(**故意空案件** — demo 現場示範匯入)、竹北李宅(manual 工項 +
+  追加合約 + 5 天後到期)。
+- 日期全部相對「跑腳本當天」— **demo 當天早上重跑一次腳本,所有日期就會
+  對齊當天**(冪等,先全清再重建)。
+- 座標:金華街用 Nominatim 街道級 geocode(約略),正式使用時 office 用地圖
+  picker 校正。
+- ⚠ date 欄位字串一律用 `toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" })`,
+  不能用 `toISOString().slice(0,10)`(UTC 會往前偏一天)。
+
+### 五、全角色×裝置 手動測試結論(2026-07-08)
+
+- owner 桌機(dashboard/簽核/案件/報表/人員)+ 手機(6 tab、回報可看可建)✓
+- site_supervisor 手機(日誌五狀態、新日誌 1234 項 picker + 搜尋、打卡、請假)✓
+- office_staff 桌機(dashboard、審核詳情、人員最後登入)✓
+- field_assistant 手機(打卡/案場/回報/新增/請假 5 tab)✓
+- migration-2.25 已由 Evelyn 套用,/reports/logins 有真實裝置/IP 資料。
+
