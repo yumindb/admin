@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>裕民工務管理系統 — 使用說明書</title>
+<style>
+  :root {
+    --navy: #003153; --copper: #A07850; --paper: #F5F1EC; --ink: #5A5050; --line: #E0DCD6;
+    --green: #15803D; --green-bg: #ECFDF5; --amber: #92400E; --amber-bg: #FFFBEB;
+    --red: #B91C1C; --red-bg: #FEF2F2;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  body {
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--paper); color: var(--ink);
+    font-size: 17px; line-height: 1.9; letter-spacing: .03em;
+  }
+  .serif, h1, h2, h3 { font-family: "Noto Serif TC", "PMingLiU", Georgia, serif; }
+
+  /* ===== 頂欄:標題 + 搜尋 ===== */
+  .topbar {
+    position: sticky; top: 0; z-index: 60; background: var(--navy); color: #E8E4DE;
+    padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .topbar .t { font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+  .topbar .t small { display: block; font-size: 10.5px; color: var(--copper); letter-spacing: .3em; font-weight: 400; }
+  .searchwrap { position: relative; flex: 1; min-width: 200px; max-width: 460px; }
+  #search {
+    width: 100%; height: 42px; border-radius: 8px; border: none; padding: 0 14px 0 40px;
+    font-size: 16px; background: #fff; color: var(--ink); outline: none;
+  }
+  .searchwrap svg.mag { position: absolute; left: 12px; top: 12px; }
+  #stopVoice {
+    display: none; height: 42px; border-radius: 8px; border: 1px solid var(--copper);
+    background: var(--copper); color: #fff; padding: 0 16px; font-size: 15px; cursor: pointer;
+  }
+  #results {
+    display: none; position: absolute; top: 48px; left: 0; right: 0; max-height: 60vh; overflow: auto;
+    background: #fff; border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18); color: var(--ink);
+  }
+  #results a { display: block; padding: 10px 14px; border-bottom: 1px solid #F0EBE4; text-decoration: none; color: var(--ink); }
+  #results a:hover { background: var(--paper); }
+  #results a b { color: var(--navy); display: block; font-size: 15px; }
+  #results a span { font-size: 13px; color: #8A847C; }
+  #results .none { padding: 14px; font-size: 14px; color: #8A847C; }
+
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 18px 90px; }
+
+  /* ===== hero ===== */
+  .hero { padding: 34px 0 6px; }
+  .hero h1 { color: var(--navy); font-size: 27px; letter-spacing: .06em; }
+  .hero p { margin-top: 8px; font-size: 15.5px; color: #7d726c; }
+  .hero .voicehint {
+    margin-top: 14px; display: flex; gap: 10px; align-items: flex-start;
+    background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--copper);
+    border-radius: 6px; padding: 12px 16px; font-size: 15px;
+  }
+
+  /* ===== 章節 ===== */
+  section.chap { margin-top: 46px; }
+  .chap-head {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    border-bottom: 2px solid var(--navy); padding-bottom: 8px; margin-bottom: 4px;
+  }
+  .chap-head .cnum {
+    background: var(--navy); color: #fff; border-radius: 6px; padding: 2px 12px;
+    font-family: Georgia, serif; font-size: 15px; letter-spacing: .1em;
+  }
+  .chap-head h2 { color: var(--navy); font-size: 23px; letter-spacing: .06em; flex: 1; min-width: 0; }
+  h3 { color: var(--navy); font-size: 18.5px; margin: 30px 0 6px; letter-spacing: .04em;
+       display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  h3 .role-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--copper); flex: none; }
+
+  button.speak {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 5px 14px; font-size: 13.5px; font-family: inherit;
+  }
+  button.speak:hover { border-color: var(--copper); color: var(--copper); }
+  button.speak.playing { background: var(--copper); border-color: var(--copper); color: #fff; }
+
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; margin: 14px 0; }
+  .tip, .warn {
+    display: flex; gap: 10px; margin: 12px 0; padding: 12px 16px; border-radius: 6px; font-size: 15.5px;
+  }
+  .tip  { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--copper); }
+  .warn { background: var(--amber-bg); border: 1px solid #FDE68A; border-left: 4px solid #D97706; }
+  .tip b, .warn b { flex: none; }
+
+  ol.bigsteps { list-style: none; counter-reset: st; margin: 10px 0; }
+  ol.bigsteps > li {
+    counter-increment: st; position: relative; padding: 0 0 16px 52px; min-height: 44px;
+  }
+  ol.bigsteps > li::before {
+    content: counter(st); position: absolute; left: 0; top: 0;
+    width: 36px; height: 36px; border-radius: 50%; background: var(--navy); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700;
+  }
+  ol.bigsteps > li:not(:last-child)::after {
+    content: ""; position: absolute; left: 17px; top: 40px; bottom: 2px; width: 2px; background: var(--line);
+  }
+  ol.bigsteps .then { display: block; font-size: 14.5px; color: #8A847C; }
+
+  table { width: 100%; border-collapse: collapse; background: #fff; font-size: 15.5px; margin: 12px 0; }
+  th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--navy); color: #fff; font-weight: 600; white-space: nowrap; }
+  tr:nth-child(even) td { background: #FBF9F6; }
+  .status { display: inline-block; border-radius: 999px; padding: 1px 12px; font-size: 13.5px; white-space: nowrap; }
+  .st-gray  { background: #F3F4F6; color: #6B7280; }
+  .st-blue  { background: #EFF4F9; color: #2C577E; }
+  .st-green { background: var(--green-bg); color: var(--green); }
+  .st-red   { background: var(--red-bg); color: var(--red); }
+  .st-amber { background: var(--amber-bg); color: var(--amber); }
+
+  /* ===== 功能地圖 ===== */
+  .map-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 14px 0; }
+  .map-col { background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .map-col .mh { padding: 10px 14px; color: #fff; font-weight: 700; letter-spacing: .05em; }
+  .map-col ul { list-style: none; padding: 8px 10px 10px; }
+  .map-col li a {
+    display: block; padding: 7px 10px; border-radius: 6px; text-decoration: none;
+    color: var(--ink); font-size: 15px;
+  }
+  .map-col li a:hover { background: var(--paper); color: var(--navy); }
+  .quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin: 12px 0; }
+  .quick a {
+    display: block; background: #fff; border: 1px solid var(--line); border-radius: 8px;
+    padding: 11px 14px; text-decoration: none; color: var(--ink); font-size: 15.5px;
+  }
+  .quick a:hover { border-color: var(--copper); }
+  .quick a b { color: var(--navy); }
+
+  details { background: #fff; border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; }
+  details summary {
+    cursor: pointer; padding: 14px 18px; font-size: 16.5px; font-weight: 600; color: var(--navy);
+    list-style: none; display: flex; gap: 10px; align-items: baseline;
+  }
+  details summary::before { content: "＋"; color: var(--copper); font-weight: 700; }
+  details[open] summary::before { content: "－"; }
+  details .a { padding: 0 18px 16px 40px; font-size: 15.5px; }
+
+  .flash { animation: flashbg 2s ease-out; }
+  @keyframes flashbg { 0% { background: #FDF0DC; } 100% { background: transparent; } }
+
+  #backtop {
+    position: fixed; right: 16px; bottom: 18px; z-index: 50;
+    width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--navy); color: #fff; font-size: 20px; box-shadow: 0 4px 12px rgba(0,0,0,.25);
+  }
+  footer { margin-top: 60px; text-align: center; font-size: 13.5px; color: #8A847C; }
+  @media print { .topbar, #backtop, button.speak, #stopVoice { display: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="t">使用說明書<small>YU MIN ADMIN</small></div>
+  <div class="searchwrap">
+    <svg class="mag" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A847C" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+    <input id="search" type="search" placeholder="想做什麼？輸入關鍵字，例如：打卡、退回、密碼" autocomplete="off">
+    <div id="results"></div>
+  </div>
+  <button id="stopVoice" type="button">停止朗讀</button>
+</div>
+
+<div class="wrap">
+
+<div class="hero">
+  <h1>裕民工務管理系統 — 使用說明書</h1>
+  <p>每個功能的操作步驟都在這裡。上面的<b>搜尋框</b>隨時可以用；每一節都有「朗讀」按鈕，可以用聽的。</p>
+  <div class="voicehint">
+    <b>用聽的：</b>
+    <span>每個標題旁邊有「<b>朗讀</b>」按鈕，按一下，手機或電腦就會把那一段唸給你聽；再按一次就停。（用手機請把音量打開）</span>
+  </div>
+</div>
+
+<!-- ================= 第 1 章 快速開始 ================= -->
+<section class="chap" id="start" data-title="快速開始：打開系統、加入主畫面、登入、改密碼">
+  <div class="chap-head"><span class="cnum">第 1 章</span><h2>快速開始</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <h3>打開系統</h3>
+  <div class="card">
+    <p>用手機或電腦的瀏覽器（Safari、Chrome 都可以）打開這個網址：</p>
+    <p style="font-size:19px; margin:8px 0;"><b>https://yumin-admin.vercel.app</b></p>
+    <p>不用安裝任何 App。建議照下面步驟把它放到手機主畫面，以後點圖示就開。</p>
+  </div>
+
+  <h3>加到手機主畫面（做一次就好）</h3>
+  <div class="card">
+    <p><b>iPhone（Safari）：</b></p>
+    <ol class="bigsteps">
+      <li>打開網址後，按畫面<b>下方中間的「分享」按鈕</b>（一個往上的箭頭）。</li>
+      <li>往下滑，點「<b>加入主畫面</b>」。</li>
+      <li>按右上角「新增」。<span class="then">完成！主畫面會多一個「裕民工務」圖示。</span></li>
+    </ol>
+    <p style="margin-top:10px;"><b>Android（Chrome）：</b></p>
+    <ol class="bigsteps">
+      <li>打開網址後，按<b>右上角三個點</b>。</li>
+      <li>點「<b>加到主畫面</b>」（或「安裝應用程式」）→ 按「新增」。</li>
+    </ol>
+  </div>
+
+  <h3>登入</h3>
+  <ol class="bigsteps">
+    <li>輸入<b>帳號</b>與<b>密碼</b>（辦公室會給你）。<span class="then">帳號是英文小寫，例如 supervisor。</span></li>
+    <li>按「登入」。<span class="then">登入後會直接進到你角色的首頁，之後幾天內不用重新登入。</span></li>
+  </ol>
+  <div class="warn"><b>注意：</b><span>密碼連續打錯 3 次會暫時鎖 15 分鐘。忘記密碼不用慌 — 請辦公室幫你重設一組新的。</span></div>
+
+  <h3>第一次登入請先改密碼</h3>
+  <ol class="bigsteps">
+    <li>按<b>右上角的人像</b>（電腦版是你的名字）。</li>
+    <li>在「修改密碼」區：輸入目前密碼 → 輸入新密碼兩次 → 按確認。</li>
+  </ol>
+  <div class="tip"><b>小撇步：</b><span>迷路的時候，按最上面的「<b>裕民工務 管理系統</b>」字樣就會回到首頁；按右上角的「<b>？</b>」隨時可以打開這本說明書。</span></div>
+</section>
+
+<!-- ================= 第 2 章 功能地圖 ================= -->
+<section class="chap" id="map" data-title="功能地圖：每個角色能做什麼（big picture）">
+  <div class="chap-head"><span class="cnum">第 2 章</span><h2>功能地圖 — 全系統一眼看完</h2><button class="speak" type="button">🔈 朗讀</button></div>
+  <p>整套系統就是一句話：<b>現場記錄 → 主任整理 → 辦公室核對 → 老闆簽名</b>。下面是每個角色的所有功能，點了就跳到說明。</p>
+
+  <div class="map-grid">
+    <div class="map-col">
+      <div class="mh" style="background:#4A7C59;">現場人員</div>
+      <ul>
+        <li><a href="#f-clock">GPS 打卡</a></li>
+        <li><a href="#f-report">現場回報（拍照）</a></li>
+        <li><a href="#c-leave">請假</a></li>
+        <li><a href="#f-mycases">我的案場</a></li>
+      </ul>
+    </div>
+    <div class="map-col">
+      <div class="mh" style="background:#2C577E;">工地主任</div>
+      <ul>
+        <li><a href="#s-log">填施工日誌</a></li>
+        <li><a href="#s-copy">複製昨天的日誌</a></li>
+        <li><a href="#s-reject">日誌被退回怎麼辦</a></li>
+        <li><a href="#f-clock">GPS 打卡</a></li>
+        <li><a href="#f-report">現場回報</a></li>
+        <li><a href="#c-leave">請假／簽核假單</a></li>
+      </ul>
+    </div>
+    <div class="map-col">
+      <div class="mh" style="background:#A07850;">辦公室助理</div>
+      <ul>
+        <li><a href="#o-case">開新案件</a></li>
+        <li><a href="#o-import">匯入標單</a></li>
+        <li><a href="#o-review">審核日誌</a></li>
+        <li><a href="#o-money">未簽約 → 報價 → 追加合約</a></li>
+        <li><a href="#o-close">結案</a></li>
+        <li><a href="#o-staff">人員管理</a></li>
+        <li><a href="#o-backfill">補登打卡</a></li>
+        <li><a href="#o-reports">報表</a></li>
+      </ul>
+    </div>
+    <div class="map-col">
+      <div class="mh" style="background:#003153;">老闆</div>
+      <ul>
+        <li><a href="#b-dash">儀表板（紅綠燈）</a></li>
+        <li><a href="#b-approve">核定日誌（簽名）</a></li>
+        <li><a href="#b-batch">批簽</a></li>
+        <li><a href="#b-history">我簽過的</a></li>
+        <li><a href="#o-reports">報表／紀錄</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>我想要……（常用捷徑）</h3>
+  <div class="quick">
+    <a href="#f-clock"><b>我要打卡</b> → 底部「打卡」</a>
+    <a href="#t-forgot"><b>我忘記打卡了</b> → 請辦公室補登</a>
+    <a href="#f-report"><b>我要回報現場狀況</b> → 拍照送出</a>
+    <a href="#s-log"><b>我要填今天的日誌</b> → 9 個步驟</a>
+    <a href="#s-copy"><b>今天做的跟昨天差不多</b> → 複製日誌</a>
+    <a href="#s-reject"><b>我的日誌被退回了</b> → 看原因改重送</a>
+    <a href="#c-leave"><b>我要請假</b> → 手機就能送</a>
+    <a href="#o-import"><b>我要把標單放進系統</b> → 匯入</a>
+    <a href="#o-money"><b>現場追加了工作</b> → 記一筆未簽約</a>
+    <a href="#b-approve"><b>我要簽核日誌</b> → 待核定</a>
+    <a href="#start"><b>我要改密碼</b> → 右上角人像</a>
+    <a href="#trouble"><b>出問題了</b> → 疑難排解</a>
+  </div>
+</section>
+
+<!-- ================= 第 3 章 現場人員 ================= -->
+<section class="chap" id="field" data-title="現場人員：打卡、現場回報、我的案場">
+  <div class="chap-head"><span class="cnum">第 3 章</span><h2>現場的每一天（現場人員／工地主任都適用）</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <h3 id="f-clock"><span class="role-dot" style="background:#4A7C59;"></span>GPS 打卡<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>到工地後，打開系統，按底部的「<b>打卡</b>」。</li>
+    <li>第一次會問「允許使用位置嗎？」→ 按<b>允許</b>。<span class="then">只問這一次，之後不會再吵你。</span></li>
+    <li>系統會自動推薦離你最近的案件，確認沒錯 → 按大大的「<b>上班打卡</b>」。<span class="then">畫面會顯示你離工地幾公尺。</span></li>
+    <li>收工離開前，同一頁按「<b>下班打卡</b>」。</li>
+  </ol>
+  <div class="tip"><b>小撇步：</b><span>人在公司或路上也可以打卡 — 案件選「無案件」，寫一句備註就好。</span></div>
+  <div class="tip"><b>小撇步：</b><span>站得離工地遠一點也打得進去，只是會標「超出範圍」的黃色字。這不是處罰，只是留個紀錄。</span></div>
+  <div class="warn"><b>注意：</b><span>山區訊號差送不出去？<b>不用重打</b>。系統會自動把這筆存在你手機裡排隊，等你回到有訊號的地方、再打開這個網頁，它會自己送出（畫面會顯示「待送 N 筆」）。</span></div>
+
+  <h3 id="f-report"><span class="role-dot" style="background:#4A7C59;"></span>現場回報（拍照回報狀況）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>看到任何值得記錄的事 — 材料到了、做到哪了、漏水裂縫、業主交代 — 拍照傳上來，主任和老闆馬上看得到。</p>
+  <ol class="bigsteps">
+    <li>按底部的「<b>新增</b>」（主任按「回報」再按「新增回報」）。</li>
+    <li>選案場。<span class="then">系統會把你最近去過的排在最前面。</span></li>
+    <li>按「<b>拍照／加照片</b>」拍或選照片（可以好幾張）。</li>
+    <li>寫一句話說明（例：「三樓管線排完八成」）→ 按「<b>送出回報</b>」。</li>
+  </ol>
+  <table>
+    <tr><th>回報的狀態</th><th>意思</th></tr>
+    <tr><td><span class="status st-amber">待整合</span></td><td>已送出，等主任把它「併入」當天日誌。這期間你還可以編輯或刪除。</td></tr>
+    <tr><td><span class="status st-green">已併入日誌</span></td><td>主任已把它收進日誌，照片也一起帶進去了。</td></tr>
+    <tr><td><span class="status st-gray">已封存</span></td><td>辦公室處理完收起來了。</td></tr>
+  </table>
+
+  <h3 id="f-mycases"><span class="role-dot" style="background:#4A7C59;"></span>我的案場<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>底部「<b>案場</b>」列出你最近打卡、回報過的工地，依最近接觸排序。每個案場旁邊就有「打卡」「新增回報」的捷徑按鈕，還有「地圖」可以導航。</p>
+</section>
+
+<!-- ================= 第 4 章 工地主任 ================= -->
+<section class="chap" id="supervisor" data-title="工地主任：填日誌、複製日誌、被退回、簽核">
+  <div class="chap-head"><span class="cnum">第 4 章</span><h2>工地主任 — 施工日誌</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <h3>日誌的四種狀態</h3>
+  <table>
+    <tr><th>狀態</th><th>意思</th><th>你要做什麼</th></tr>
+    <tr><td><span class="status st-gray">草稿</span></td><td>還沒送出，只有你看得到</td><td>繼續填完、送出</td></tr>
+    <tr><td><span class="status st-blue">簽核中</span></td><td>已送出，正在辦公室或老闆那關</td><td>不用做事，等就好</td></tr>
+    <tr><td><span class="status st-green">已核定</span></td><td>老闆簽完了，這份定案</td><td>沒事了，可下載 PDF</td></tr>
+    <tr><td><span class="status st-red">已退回</span></td><td>某一關覺得要修改</td><td>看原因 → 修改 → 重送</td></tr>
+  </table>
+
+  <h3 id="s-log"><span class="role-dot" style="background:#2C577E;"></span>填一份日誌（每天五分鐘）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>底部「<b>日誌</b>」→ 按「<b>新日誌</b>」。</li>
+    <li><b>選案件</b>。<span class="then">日期自動帶今天，天氣用按的（晴／多雲／陰／雨…上午下午各選一次）。</span></li>
+    <li>填<b>本日出工人數</b>。<span class="then">累計人次系統自動加總，不用心算。</span></li>
+    <li><b>勾今天做的工項</b>：清單就是標單匯入的項目。項目太多就用上面的<b>搜尋框</b>打兩個字。<span class="then">做完 100% 的工項會自動從清單消失，不會重複勾。</span></li>
+    <li>每個勾起來的工項<b>按 ＋ － 填數量</b>。<span class="then">「一式」的工項會改成填百分比，例如今天做了 30% 就填 30。</span></li>
+    <li>（有外包才填）外包工別與機具：按「＋ 新增工別」填人數。</li>
+    <li>（有的話）<b>勾選現場回報</b>把它併入日誌 — 照片自動跟著進來；<b>臨時追加的工作</b>按「新增臨時項」記一筆（之後辦公室會處理報價）。</li>
+    <li><b>拍照</b>：施工照片直接拍或從相簿選，每張可寫說明。</li>
+    <li>用手指<b>簽名</b> → 按「<b>送出</b>」。<span class="then">送出後會依序給辦公室、老闆簽。你隨時可在「日誌」看它走到哪一關。</span></li>
+  </ol>
+  <div class="tip"><b>小撇步：</b><span>填到一半被叫走？直接關掉沒關係 — <b>草稿每秒自動存在你的手機裡</b>，回來打開同一頁會自動還原。</span></div>
+  <div class="tip"><b>小撇步：</b><span>簽名簽過一次後，下次可以直接用「上次的簽名」，不用每份重簽。</span></div>
+
+  <h3 id="s-copy"><span class="role-dot" style="background:#2C577E;"></span>複製昨天的日誌<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>每天做的內容差不多時，不用重勾一遍：</p>
+  <ol class="bigsteps">
+    <li>「日誌」列表找到昨天那份，點進去。</li>
+    <li>按「<b>複製為新日誌</b>」。<span class="then">工項勾選、外包工別、天氣都幫你帶好，日期是今天；照片、備註、簽名不會帶（要重新拍、重新簽）。</span></li>
+    <li>改一下數量 → 拍今天的照片 → 簽名送出。</li>
+  </ol>
+
+  <h3 id="s-reject"><span class="role-dot" style="background:#2C577E;"></span>日誌被退回了怎麼辦<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>「日誌」列表找到紅色「已退回」那份，點進去。<span class="then">退回的原因寫在最上面（例：「請補拍箱內配線」）。</span></li>
+    <li>按「編輯」照原因修改（補照片、改數量…）。</li>
+    <li>重新簽名 → 送出。<span class="then">會重新走一次簽核。</span></li>
+  </ol>
+  <div class="warn"><b>注意：</b><span>退回的日誌放著不管，老闆的儀表板會亮紅燈提醒「退回未重送」— 盡快處理。</span></div>
+
+  <h3><span class="role-dot" style="background:#2C577E;"></span>幫別人簽核（待複核、假單）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>現場人員送的<b>假單</b>第一關是你：上方「請假」有紅色數字時，點進去看內容 → 核准或退回。你自己請假則送給辦公室和老闆簽。</p>
+</section>
+
+<!-- ================= 第 5 章 辦公室助理 ================= -->
+<section class="chap" id="office" data-title="辦公室助理：開案、匯入標單、審核、報價、追加合約、結案、人員、補登">
+  <div class="chap-head"><span class="cnum">第 5 章</span><h2>辦公室助理 — 案件與帳的管家</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <h3 id="o-case"><span class="role-dot"></span>開新案件<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>「案件總覽」→ 按「<b>開新案件</b>」。</li>
+    <li>填案件名稱、承接公司、地點、業主、開工／預計完工日期。<span class="then">案號可以自己編（例 YM-2026-005），留空也可以。</span></li>
+    <li><b>設定工地位置</b>（給 GPS 打卡用）：貼上 Google 地圖網址，或直接在小地圖上點工地位置。<span class="then">旁邊的「範圍」預設 200 公尺，大工地可以調大。</span></li>
+    <li>按「建立」。<span class="then">建好後畫面會提示下一步：匯入標單工項。</span></li>
+  </ol>
+
+  <h3 id="o-import"><span class="role-dot"></span>匯入標單（Excel 變工項）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>進案件頁 → 按「<b>匯入工項</b>」。</li>
+    <li>選 Excel 標單檔（.xlsx）。<span class="then">系統會解析出分類、工項、數量，先給你「預覽」，沒有動到任何資料。</span></li>
+    <li>檢查預覽的樹狀清單：不要的列可以勾「略過」。</li>
+    <li>按「<b>確認匯入</b>」。<span class="then">一千多項的標單也是幾秒鐘完成。</span></li>
+  </ol>
+  <div class="tip"><b>小撇步：</b><span>之後拿到<b>追加版標單</b>再匯一次就好 — 同名工項自動合併更新、新項目自動加入，<b>你手動改過的不會被蓋掉</b>。匯錯了也有「撤銷此次匯入」。</span></div>
+  <div class="tip"><b>小撇步：</b><span>沒有標單的小案子（例如住宅水電），在案件頁按「＋ 新增工項」手動建幾筆就能開始填日誌。</span></div>
+
+  <h3 id="o-review"><span class="role-dot"></span>審核日誌<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>上方「<b>待審核</b>」（有紅色數字 = 有幾份等你）。</li>
+    <li>點開一份：先看<b>摘要卡</b>（工項數、照片數、出工人數），再往下對細項。<span class="then">系統會自動提醒「這個案子還有哪些工項好像漏填」。</span></li>
+    <li>沒問題 → 簽名 →「通過」；有問題 →「退回」並寫清楚原因。<span class="then">通過後自動送老闆核定；也可以勾很多份一起「批簽」。</span></li>
+  </ol>
+
+  <h3 id="o-money"><span class="role-dot"></span>追錢三步驟：未簽約 → 報價 → 追加合約<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>工地臨時追加的工作，主任填日誌時就記了一筆「未簽約」。你的工作是月底收口：</p>
+  <ol class="bigsteps">
+    <li>案件頁往下捲到「<b>未簽約施工內容</b>」區塊（或看報表「本月超工／未簽約」總表）。</li>
+    <li>每一筆按「編輯」<b>補上單價</b>（= 已報價）。</li>
+    <li>業主同意後：勾選幾筆 →「<b>打包成追加合約</b>」，填合約名稱與總價。<span class="then">從此變成正式的合約項目，進度、金額都會跟著算。</span></li>
+  </ol>
+  <div class="warn"><b>注意：</b><span>老闆儀表板的「本月新增合約外金額」就是從這裡來的 — 未簽約放著不報價，錢就會漏掉。</span></div>
+
+  <h3 id="o-close"><span class="role-dot"></span>結案<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>案件頁右上按「<b>結案</b>」。</li>
+    <li>系統會先<b>自動盤點</b>：還有幾筆未簽約沒報價？幾份日誌卡在簽核？<span class="then">有錢沒收完會整個變紅色警告。</span></li>
+    <li>都處理完（或確認可以放掉）→ 按確認。<span class="then">結案後主任就不能再對這案子填日誌、打卡；案件可以隨時「重新開啟」。</span></li>
+  </ol>
+
+  <h3 id="o-staff"><span class="role-dot"></span>人員管理<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>上方「人員管理」：<b>新增帳號</b>（設帳號、姓名、角色、初始密碼）、<b>重設密碼</b>（有人忘記時）、<b>停用</b>（離職時 — 帳號停用後立刻不能登入，但他過去的紀錄都留著）。每個人的「最後登入」時間也在這頁。</p>
+
+  <h3 id="o-backfill"><span class="role-dot"></span>補登打卡（有人忘記打卡時）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>「報表」→「現場出勤（明細）」→ 按「<b>補登打卡</b>」。</li>
+    <li>選人員、案件、上／下班、日期時間，<b>填補登原因</b>（必填，例：手機沒電）。</li>
+    <li>按「確認補登」。<span class="then">補登的紀錄會標「補登」字樣，跟現場 GPS 打卡分得清清楚楚。</span></li>
+  </ol>
+
+  <h3 id="o-reports"><span class="role-dot"></span>報表（上方「報表」）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <table>
+    <tr><th>報表</th><th>什麼時候看</th></tr>
+    <tr><td>工項累計（跨案）</td><td>對進度、請款前，可下載 Excel</td></tr>
+    <tr><td>本月超工／未簽約</td><td>月底追加對帳用</td></tr>
+    <tr><td>案件進度總覽</td><td>全部案子的進度％一頁看完</td></tr>
+    <tr><td>今日打卡儀表板</td><td>早上看誰還沒打卡（紅綠燈）</td></tr>
+    <tr><td>現場出勤（明細）</td><td>算薪資、查某人某天，可下載 Excel、可補登</td></tr>
+    <tr><td>簽核延遲分析</td><td>看日誌卡在哪一關太久</td></tr>
+    <tr><td>登入紀錄</td><td>誰在什麼時候、用什麼裝置登入過</td></tr>
+    <tr><td>操作紀錄</td><td>誰改過單價、人員資料、合約（自動留底，不可竄改）</td></tr>
+  </table>
+</section>
+
+<!-- ================= 第 6 章 老闆 ================= -->
+<section class="chap" id="boss" data-title="老闆：儀表板紅綠燈、核定、批簽、我簽過的">
+  <div class="chap-head"><span class="cnum">第 6 章</span><h2>老闆 — 三十秒掌握全公司</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <h3 id="b-dash"><span class="role-dot" style="background:#003153;"></span>儀表板（首頁）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>打開就是紅綠燈：<b>綠色不用管，黃色瞄一眼，紅色點進去</b>。</p>
+  <table>
+    <tr><th>卡片</th><th>在講什麼</th></tr>
+    <tr><td>需要您出手</td><td>真正卡住的事：退回超過 2 天沒重送的日誌、超過 5 天沒新日誌的案場</td></tr>
+    <tr><td>待核定</td><td>幾份日誌等你簽，最久等了幾天</td></tr>
+    <tr><td>進度落後案場</td><td>開工兩個月進度還不到三成的案子</td></tr>
+    <tr><td>到期案件</td><td>已超過或 7 天內到預計完工日的案子</td></tr>
+    <tr><td>今日未打卡主任</td><td>今天還沒打卡的主任名單</td></tr>
+    <tr><td>本月新增合約外金額</td><td>這個月新冒出來的追加工作值多少錢</td></tr>
+  </table>
+
+  <h3 id="b-approve"><span class="role-dot" style="background:#003153;"></span>核定日誌<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>按「<b>待核定</b>」（紅色數字 = 幾份）。</li>
+    <li>點開：先看摘要卡與照片，有疑問往下看工項明細。</li>
+    <li>OK → 手指<b>簽名</b> →「核定」。<span class="then">簽完自動跳下一份，全部簽完會回列表。</span></li>
+    <li>有問題 →「<b>退回</b>」：可以點現成的原因（照片不夠清楚／工項數量怪…）或自己打字。<span class="then">主任會看到原因，修好重送。</span></li>
+  </ol>
+
+  <h3 id="b-batch"><span class="role-dot" style="background:#003153;"></span>批簽（一次簽很多份）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>「待核定」列表上方可以「全選」或逐份勾選 → 按「<b>批簽選取</b>」→ 簽一次名，全部完成。快速篩選（無照片／無工項／卡很久）幫你先挑出可疑的單獨看。</p>
+
+  <h3 id="b-history"><span class="role-dot" style="background:#003153;"></span>我簽過的<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>上方「我簽過的」— 你歷來核定、退回過的每一份都查得到，含當時的簽名圖。</p>
+  <div class="tip"><b>小撇步：</b><span>手機底部有「回報」分頁 — 現場拍的照片（滲水、缺失）你隨時看得到，也可以自己拍照回報交辦。</span></div>
+</section>
+
+<!-- ================= 第 7 章 大家都會用到 ================= -->
+<section class="chap" id="common" data-title="共同功能：請假、PDF、Excel、紅色數字、案件大事記">
+  <div class="chap-head"><span class="cnum">第 7 章</span><h2>大家都會用到的</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <h3 id="c-leave"><span class="role-dot"></span>請假<button class="speak" type="button">🔈 朗讀</button></h3>
+  <ol class="bigsteps">
+    <li>上方（或底部）「<b>請假</b>」→ 按「<b>新請假</b>」。</li>
+    <li>選假別（病假／事假／特休…）、起訖時間、寫事由 → 送出。</li>
+    <li>假單會<b>自動一層層往上簽</b>：現場人員 → 主任 → 辦公室 → 老闆；主任的假 → 辦公室 → 老闆。<span class="then">走到哪一關、准了沒，在「我的請假」隨時看得到；還沒簽完的可以自己取消。</span></li>
+  </ol>
+  <p>輪到你簽別人的假時，「請假」字樣旁會出現紅色數字。</p>
+
+  <h3><span class="role-dot"></span>紅色小數字（徽章）是什麼<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>畫面上看到紅色小數字，意思都一樣：「<b>有幾件事等你處理</b>」。點進去做完，數字就消失。</p>
+
+  <h3><span class="role-dot"></span>下載 PDF 與 Excel<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p><b>PDF</b>：已核定的日誌可以下載正式的 PDF（含四關簽名圖），在日誌頁按「下載 PDF」；日誌列表也能多份一起下載。<b>Excel</b>：案件工項進度、月報、出勤、跨案工項都有「下載 Excel」按鈕，給請款、算薪資用。</p>
+
+  <h3><span class="role-dot"></span>案件大事記<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>每個案件頁往下捲有「<b>案件大事記</b>」：這個案子從建立、匯標單、每份日誌的簽核、追加合約、現場回報 — 誰在什麼時候做了什麼，一條時間軸看完。吵不清楚的時候，來這裡對時間。</p>
+</section>
+
+<!-- ================= 第 8 章 貼心小功能 ================= -->
+<section class="chap" id="tips" data-title="貼心小功能索引：搜尋、草稿、離線、簽名重用、百分比">
+  <div class="chap-head"><span class="cnum">第 8 章</span><h2>貼心小功能索引</h2><button class="speak" type="button">🔈 朗讀</button></div>
+  <p>這些小地方系統都幫你想好了 — 不用學，知道有就好：</p>
+  <table>
+    <tr><th>小功能</th><th>在哪裡</th><th>一句話</th></tr>
+    <tr><td>工項搜尋</td><td>填日誌時</td><td>一千多項也是打兩個字就找到</td></tr>
+    <tr><td>草稿自動儲存</td><td>填日誌、回報時</td><td>填到一半關掉也不會不見</td></tr>
+    <tr><td>離線排隊</td><td>打卡、回報</td><td>沒訊號自動排隊，有訊號自動補送</td></tr>
+    <tr><td>簽名重用</td><td>所有簽名處</td><td>簽過一次，之後一鍵帶入</td></tr>
+    <tr><td>百分比填法</td><td>「一式」的工項</td><td>做了三成就填 30，不用算小數</td></tr>
+    <tr><td>做完自動隱藏</td><td>日誌工項清單</td><td>100% 的工項自動消失，不會重複勾</td></tr>
+    <tr><td>天氣按鈕</td><td>填日誌</td><td>不用打字，按晴／雨就好</td></tr>
+    <tr><td>快速選單</td><td>工別、機具、退回原因</td><td>常用的變成按鈕，點了就填</td></tr>
+    <tr><td>最近案場排前面</td><td>打卡、回報選案件</td><td>常去的工地永遠在最上面</td></tr>
+    <tr><td>案件 QR Code</td><td>案件頁</td><td>印出來貼工地，工人掃了直接回報</td></tr>
+    <tr><td>匯入可撤銷</td><td>案件頁匯入紀錄</td><td>匯錯標單一鍵撤銷</td></tr>
+    <tr><td>強制處理卡單</td><td>老闆／辦公室</td><td>日誌卡死時管理者可以介入處理</td></tr>
+  </table>
+</section>
+
+<!-- ================= 第 9 章 FAQ ================= -->
+<section class="chap" id="faq" data-title="常見問題 FAQ">
+  <div class="chap-head"><span class="cnum">第 9 章</span><h2>常見問題</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <details><summary>要不要下載 App？</summary><div class="a">不用。它是網頁，Safari 或 Chrome 打開就能用。照第 1 章把它加到主畫面，用起來跟 App 一樣。</div></details>
+  <details><summary>忘記密碼怎麼辦？</summary><div class="a">請辦公室助理（或老闆）到「人員管理」幫你重設一組，再用新密碼登入。自己記得密碼想換的話：右上角人像 → 修改密碼。</div></details>
+  <details><summary>打卡會不會被追蹤行蹤？</summary><div class="a">不會。只有你「按下打卡那一刻」會記位置，其他時間系統完全不知道你在哪。</div></details>
+  <details><summary>我在工地打卡卻顯示「超出範圍」？</summary><div class="a">工地座標可能標得不準，或 GPS 飄移。照常打卡沒關係（只是黃色標註），然後請辦公室在案件編輯頁把工地位置校正一下。</div></details>
+  <details><summary>日誌送出後發現填錯了？</summary><div class="a">還在「簽核中」的話，請下一關（辦公室或老闆）把它退回，你就能修改重送。已「核定」的日誌原則上不再改 — 有重大錯誤請找辦公室處理，所有修改都會留紀錄。</div></details>
+  <details><summary>照片會不會傳一傳不見？</summary><div class="a">不會。照片存在雲端，每天自動備份到第二個地方。上傳失敗時畫面會告訴你，按重試即可。</div></details>
+  <details><summary>為什麼我看不到某些功能？</summary><div class="a">每個角色看到的功能不一樣（第 2 章功能地圖）。現場人員本來就沒有「審核」，主任本來就沒有「人員管理」— 不是壞掉。</div></details>
+  <details><summary>兩個人可以同時用嗎？會不會互相蓋掉？</summary><div class="a">可以，各簽各的帳號互不影響。同一份日誌同時被兩個人簽核時，系統會擋下後簽的那位並提示已被處理。</div></details>
+  <details><summary>手機換了新的，資料還在嗎？</summary><div class="a">在。所有送出過的資料都在雲端，新手機登入同帳號就全部看得到。只有「還沒送出的草稿」存在舊手機裡，換機前記得把草稿送出。</div></details>
+  <details><summary>可以用電腦用嗎？</summary><div class="a">可以，同一個網址。辦公室的功能（匯標單、報表）用電腦比較順手；現場的功能（打卡、拍照）用手機比較順手。</div></details>
+  <details><summary>LINE 會不會通知我？</summary><div class="a">還不會，LINE 通知是下一階段的計畫。目前請養成習慣：主任每天收工填日誌，辦公室和老闆看到紅色數字就點進去。</div></details>
+</section>
+
+<!-- ================= 第 10 章 疑難排解 ================= -->
+<section class="chap" id="trouble" data-title="疑難排解：登入被鎖、GPS 定位不到、送出失敗、忘記打卡">
+  <div class="chap-head"><span class="cnum">第 10 章</span><h2>疑難排解</h2><button class="speak" type="button">🔈 朗讀</button></div>
+
+  <details><summary>登入一直失敗</summary><div class="a">
+    ① 帳號是<b>英文小寫</b>，前後不要有空格。② 密碼分大小寫。③ 連錯 3 次會鎖 15 分鐘 — 等一下再試，或請辦公室重設密碼。
+  </div></details>
+  <details id="t-gps"><summary>GPS 一直定位不到</summary><div class="a">
+    ① 確認手機的「定位服務」有開（iPhone：設定 → 隱私權 → 定位服務；Android：下拉快捷開關）。<br>
+    ② 確認有允許<b>瀏覽器</b>使用定位（iPhone：設定 → Safari → 位置；或網址列左邊的鎖頭 → 網站設定）。<br>
+    ③ 走到開闊處按「重新定位」。<br>
+    ④ 還是不行 → 照常工作，請辦公室<b>補登打卡</b>（見下一條）。
+  </div></details>
+  <details id="t-forgot"><summary>忘記打卡／手機沒電，怎麼補？</summary><div class="a">
+    跟辦公室說一聲就好。辦公室在「報表 → 現場出勤」按「<b>補登打卡</b>」，選你的名字、案件、時間，填上原因（例：手機沒電）。補登的紀錄會標示「補登」。
+  </div></details>
+  <details><summary>送出時轉圈圈很久／失敗</summary><div class="a">
+    多半是工地訊號差。<b>打卡和回報</b>會自動存進待送佇列，換個地方開網頁就自動補送；<b>日誌</b>草稿一直都在你手機裡，訊號好了再按一次送出即可。都不行時，先用手機拍好照片，回到訊號好的地方再補填。
+  </div></details>
+  <details><summary>照片上傳失敗</summary><div class="a">畫面會標出失敗的那幾張，按「重試」。連續失敗多半是訊號問題 — 照片還在你手機相簿裡，不會不見，稍後再補傳。</div></details>
+  <details><summary>畫面出現「系統發生錯誤」和一串代碼</summary><div class="a">先按「重試」；不行就把<b>錯誤代碼</b>截圖傳給辦公室，由辦公室回報 Evelyn。你填的資料多數情況都還在。</div></details>
+  <details><summary>頁面看起來怪怪的／按鈕跑版</summary><div class="a">下拉重新整理一次；還是怪就把瀏覽器完全關掉重開。長期沒更新的舊手機瀏覽器建議更新一下。</div></details>
+
+  <h3>找誰幫忙</h3>
+  <table>
+    <tr><th>問題</th><th>找誰</th></tr>
+    <tr><td>忘記密碼、帳號問題、補登打卡</td><td>辦公室助理</td></tr>
+    <tr><td>工地位置不準、案件設定</td><td>辦公室助理</td></tr>
+    <tr><td>操作不會、不確定按哪裡</td><td>先查這本說明書（上面搜尋框）→ 再問辦公室</td></tr>
+    <tr><td>系統錯誤、當機、資料異常</td><td>辦公室助理彙整後回報 Evelyn（Still Lab）</td></tr>
+  </table>
+</section>
+
+<footer>
+  <p>裕民工務管理系統 使用說明書 · 2026 年 7 月版 · Still Lab 製作</p>
+  <p>系統網址：https://yumin-admin.vercel.app · 隨系統更新，本書內容以系統實際畫面為準</p>
+</footer>
+</div>
+
+<button id="backtop" type="button" title="回到最上面" aria-label="回到最上面">↑</button>
+
+<script>
+(function () {
+  /* ========== 朗讀(Web Speech API) ========== */
+  var stopBtn = document.getElementById("stopVoice");
+  var currentBtn = null;
+  var supported = "speechSynthesis" in window;
+
+  function stopSpeak() {
+    if (supported) window.speechSynthesis.cancel();
+    if (currentBtn) { currentBtn.classList.remove("playing"); currentBtn.textContent = "🔈 朗讀"; }
+    currentBtn = null;
+    stopBtn.style.display = "none";
+  }
+
+  function pickVoice() {
+    var voices = window.speechSynthesis.getVoices();
+    return (
+      voices.find(function (v) { return v.lang === "zh-TW"; }) ||
+      voices.find(function (v) { return v.lang && v.lang.indexOf("zh") === 0; }) ||
+      null
+    );
+  }
+
+  document.querySelectorAll("button.speak").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (!supported) { alert("這台裝置的瀏覽器不支援語音朗讀，請改用文字閱讀。"); return; }
+      if (currentBtn === btn) { stopSpeak(); return; }
+      stopSpeak();
+      // 取這顆按鈕所屬區塊的文字:h3 區段讀到下一個 h3;章節鈕讀整章開頭段
+      var container = btn.closest("h3") ? sectionTextFromH3(btn.closest("h3")) : chapterIntroText(btn);
+      var u = new SpeechSynthesisUtterance(container);
+      u.lang = "zh-TW";
+      u.rate = 0.95;
+      var v = pickVoice();
+      if (v) u.voice = v;
+      u.onend = stopSpeak;
+      u.onerror = stopSpeak;
+      currentBtn = btn;
+      btn.classList.add("playing");
+      btn.textContent = "⏸ 停止";
+      stopBtn.style.display = "inline-block";
+      window.speechSynthesis.speak(u);
+    });
+  });
+  stopBtn.addEventListener("click", stopSpeak);
+
+  function cleanText(el) {
+    var clone = el.cloneNode(true);
+    clone.querySelectorAll("button, script, style").forEach(function (b) { b.remove(); });
+    return clone.textContent.replace(/\s+/g, " ").trim();
+  }
+  function sectionTextFromH3(h3) {
+    var parts = [cleanText(h3)];
+    var node = h3.nextElementSibling;
+    while (node && node.tagName !== "H3" && !node.classList.contains("chap-head")) {
+      parts.push(cleanText(node));
+      node = node.nextElementSibling;
+    }
+    return parts.join("。 ");
+  }
+  function chapterIntroText(btn) {
+    var chap = btn.closest("section.chap");
+    var parts = [];
+    var node = chap.querySelector(".chap-head").nextElementSibling;
+    // 章節鈕:讀到第一個 h3 為止(= 本章開場);沒有 h3 就整章
+    while (node) {
+      if (node.tagName === "H3") break;
+      parts.push(cleanText(node));
+      node = node.nextElementSibling;
+    }
+    if (parts.length === 0) parts.push(cleanText(chap));
+    return cleanText(chap.querySelector("h2")) + "。 " + parts.join("。 ");
+  }
+  // iOS 需要 voices 載入事件
+  if (supported && window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = function () {};
+  }
+
+  /* ========== 搜尋 ========== */
+  var input = document.getElementById("search");
+  var resultsBox = document.getElementById("results");
+
+  // 建索引:每個 h3 小節 + 每個 details + 每章
+  var index = [];
+  document.querySelectorAll("section.chap").forEach(function (chap) {
+    var chapTitle = chap.querySelector("h2").textContent.trim();
+    index.push({ id: chap.id, title: chapTitle, crumb: "章節", text: cleanText(chap) });
+    chap.querySelectorAll("h3").forEach(function (h3) {
+      if (!h3.id) h3.id = chap.id + "-" + Math.random().toString(36).slice(2, 7);
+      index.push({ id: h3.id, title: cleanText(h3), crumb: chapTitle, text: sectionTextFromH3(h3) });
+    });
+    chap.querySelectorAll("details").forEach(function (d, i) {
+      if (!d.id) d.id = chap.id + "-q" + i;
+      index.push({ id: d.id, title: d.querySelector("summary").textContent.trim(), crumb: chapTitle, text: cleanText(d), isDetails: true });
+    });
+  });
+
+  function doSearch(q) {
+    q = q.trim().toLowerCase();
+    if (!q) { resultsBox.style.display = "none"; resultsBox.innerHTML = ""; return; }
+    var hits = index
+      .filter(function (item) {
+        return item.title.toLowerCase().indexOf(q) >= 0 || item.text.toLowerCase().indexOf(q) >= 0;
+      })
+      .sort(function (a, b) {
+        // 標題命中 > 內文命中;小節/問答 > 整章(整章太籠統)
+        var score = function (x) {
+          var s = x.title.toLowerCase().indexOf(q) >= 0 ? 0 : 2;
+          if (x.crumb === "章節") s += 1;
+          return s;
+        };
+        return score(a) - score(b);
+      })
+      .slice(0, 12);
+    if (hits.length === 0) {
+      resultsBox.innerHTML = '<div class="none">找不到「' + escapeHtml(q) + '」— 換個說法試試，例如「打卡」「退回」「密碼」</div>';
+    } else {
+      resultsBox.innerHTML = hits.map(function (h) {
+        var i = h.text.toLowerCase().indexOf(q);
+        var snippet = i >= 0 ? h.text.slice(Math.max(0, i - 12), i + 34) : h.text.slice(0, 40);
+        return '<a href="#' + h.id + '" data-details="' + (h.isDetails ? "1" : "") + '"><b>' + escapeHtml(h.title) + '</b><span>' + escapeHtml(h.crumb) + ' — …' + escapeHtml(snippet) + '…</span></a>';
+      }).join("");
+    }
+    resultsBox.style.display = "block";
+  }
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  input.addEventListener("input", function () { doSearch(input.value); });
+  input.addEventListener("keydown", function (e) { if (e.key === "Escape") { input.value = ""; doSearch(""); } });
+  resultsBox.addEventListener("click", function (e) {
+    var a = e.target.closest("a");
+    if (!a) return;
+    resultsBox.style.display = "none";
+    input.blur();
+    var target = document.querySelector(a.getAttribute("href"));
+    if (target) {
+      if (a.getAttribute("data-details") === "1") target.open = true;
+      target.classList.remove("flash");
+      void target.offsetWidth;
+      target.classList.add("flash");
+    }
+  });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".searchwrap")) resultsBox.style.display = "none";
+  });
+
+  /* ========== 回頂端 ========== */
+  document.getElementById("backtop").addEventListener("click", function () {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.getElementById("search").focus();
+  });
+})();
+</script>
+</body>
+</html>

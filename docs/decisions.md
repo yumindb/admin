@@ -782,3 +782,43 @@ case_work_items
 - field_assistant 手機(打卡/案場/回報/新增/請假 5 tab)✓
 - migration-2.25 已由 Evelyn 套用,/reports/logins 有真實裝置/IP 資料。
 
+---
+
+## 2026-07-08(續)— 線上使用說明書、辦公室補登打卡(migration-2.26)
+
+> 現場 demo 取消,改為線上說明書 + 系統內指引。員工多不熟電腦,設計原則:
+> 「每一步都不需要額外學習或記憶」。
+
+### 一、使用說明書 `public/manual.html`
+
+- **放在系統本身**(`/manual.html`,public 靜態檔,免登入)而非發檔案 — 
+  入口:header 的「?」圖示(全角色全裝置)、登入頁 footer、/account 頁。
+  好處:永遠是最新版、不用傳檔、手機點開即看。
+- 結構:10 章(快速開始/功能地圖/現場/主任/辦公室/老闆/共同/小功能索引/FAQ/疑難排解)。
+  「功能地圖」= big picture(角色×功能格狀圖,點了跳小節);
+  「我想要…」任務式捷徑給不會描述功能名稱的使用者。
+- **全文搜尋**:純前端 index(章/小節/FAQ),標題命中 > 內文、小節 > 整章。
+- **AI 朗讀**:Web Speech API(`speechSynthesis`,zh-TW、rate 0.95),每節「朗讀」
+  按鈕 + 頂欄全域停止。零成本、離線可用、不依賴外部 TTS 服務;
+  裝置不支援時 fallback alert。已實測 speaking=true。
+- 文字原則:國小程度句子、每步一個動作、「接下來畫面會…」預期說明、
+  狀態表(草稿/簽核中/已核定/已退回)用顏色徽章對齊系統 UI。
+
+### 二、辦公室補登打卡(migration-2.26)
+
+- **寫說明書時發現的缺口**:打卡頁/回報頁 UI 寫著「請聯絡辦公室手動補登」,
+  但補登功能根本不存在(INSERT policy 限本人、lat/lng NOT NULL、source 無 manual)。
+  UI 不可以承諾不存在的路徑 — 教訓:寫文件是最好的功能盤點。
+- 設計:RLS 不開放代打(現場打卡=本人,證據性);補登走 server action +
+  service-role + requireRole(office/owner) + **note 必填留原因** + source='manual'。
+  時間軸標「辦公室補登(無 GPS)」、Excel 多「來源」欄,與現場 GPS 打卡永遠區分。
+- migration-2.26:lat/lng 改可空 + source check 加 'manual'。未套用前補登會
+  回友善錯誤,不影響其他功能。
+
+### 三、系統內指引
+
+- 登入頁「POC 試用」字樣移除(上線了),改「帳號由辦公室建立 · 忘記密碼請找
+  辦公室助理重設」+ 說明書連結。
+- 原則重申:能在系統內一句話講完的,不要叫使用者去翻說明書;
+  說明書負責「第一次學」與「出狀況查」,NextStepHint 負責「當下這一步」。
+
