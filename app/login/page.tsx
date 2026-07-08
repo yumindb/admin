@@ -30,7 +30,17 @@ export default async function LoginPage({
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          POC 試用 · 帳號由系統管理員建立
+          帳號由辦公室建立 · 忘記密碼請找辦公室助理重設
+        </p>
+        <p className="mt-2 text-center text-xs">
+          <a
+            href="/manual.html"
+            target="_blank"
+            rel="noopener"
+            className="text-accent underline underline-offset-2"
+          >
+            第一次使用？打開使用說明書
+          </a>
         </p>
       </div>
     </main>

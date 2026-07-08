@@ -65,6 +65,23 @@ export default async function AccountPage() {
         </p>
         <PasswordForm />
       </section>
+
+      <section className="mt-8 rounded-lg border border-[#E0DCD6] bg-card p-5">
+        <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">
+          使用說明書
+        </h2>
+        <p className="mb-3 text-sm text-muted-foreground">
+          每個功能的操作步驟、常見問題、疑難排解都在裡面，還可以按「朗讀」用聽的。
+        </p>
+        <a
+          href="/manual.html"
+          target="_blank"
+          rel="noopener"
+          className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          打開使用說明書
+        </a>
+      </section>
     </div>
   );
 }
