@@ -26,7 +26,29 @@
   }
   .topbar .t { font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
   .topbar .t small { display: block; font-size: 10.5px; color: var(--copper); letter-spacing: .3em; font-weight: 400; }
-  .searchwrap { position: relative; flex: 1; min-width: 200px; max-width: 460px; }
+  .searchwrap { position: relative; flex: 1; min-width: 170px; max-width: 460px; }
+  /* 目錄按鈕 + 下拉 */
+  #tocBtn {
+    height: 42px; border-radius: 8px; border: 1px solid rgba(232,228,222,.45);
+    background: transparent; color: #E8E4DE; padding: 0 16px; font-size: 15px;
+    cursor: pointer; font-family: inherit; letter-spacing: .1em; white-space: nowrap;
+  }
+  #tocBtn:hover { border-color: var(--copper); color: #fff; }
+  #tocPanel {
+    display: none; position: fixed; top: 62px; right: 12px; z-index: 70;
+    width: min(340px, calc(100vw - 24px)); max-height: 70vh; overflow: auto;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.22); padding: 8px;
+  }
+  #tocPanel a {
+    display: flex; align-items: baseline; gap: 10px; padding: 11px 12px;
+    border-radius: 8px; text-decoration: none; color: var(--ink); font-size: 16px;
+  }
+  #tocPanel a:hover { background: var(--paper); color: var(--navy); }
+  #tocPanel a .n {
+    flex: none; font-family: Georgia, serif; font-size: 13px; color: var(--copper);
+    width: 4.2em; white-space: nowrap;
+  }
   #search {
     width: 100%; height: 42px; border-radius: 8px; border: none; padding: 0 14px 0 40px;
     font-size: 16px; background: #fff; color: var(--ink); outline: none;
@@ -164,6 +186,8 @@
     <div id="results"></div>
   </div>
   <button id="stopVoice" type="button">停止朗讀</button>
+  <button id="tocBtn" type="button" aria-haspopup="true" aria-expanded="false">☰ 目錄</button>
+  <div id="tocPanel" role="menu" aria-label="章節目錄"></div>
 </div>
 
 <div class="wrap">
@@ -183,8 +207,8 @@
 
   <h3>打開系統</h3>
   <div class="card">
-    <p>用手機或電腦的瀏覽器（Safari、Chrome 都可以）打開這個網址：</p>
-    <p style="font-size:19px; margin:8px 0;"><b>https://yumin-admin.vercel.app</b></p>
+    <p>用手機或電腦的瀏覽器（Safari、Chrome 都可以）打開這個網址（點了就開）：</p>
+    <p style="font-size:19px; margin:8px 0;"><a href="https://yumin-admin.vercel.app" target="_blank" rel="noopener" style="color:var(--navy); text-decoration:underline; text-underline-offset:4px; font-weight:700;">https://yumin-admin.vercel.app</a></p>
     <p>不用安裝任何 App。建議照下面步驟把它放到手機主畫面，以後點圖示就開。</p>
   </div>
 
@@ -718,6 +742,29 @@
   document.addEventListener("click", function (e) {
     if (!e.target.closest(".searchwrap")) resultsBox.style.display = "none";
   });
+
+  /* ========== 目錄下拉 ========== */
+  var tocBtn = document.getElementById("tocBtn");
+  var tocPanel = document.getElementById("tocPanel");
+  var chaps = document.querySelectorAll("section.chap");
+  tocPanel.innerHTML = Array.prototype.map.call(chaps, function (chap) {
+    var num = chap.querySelector(".cnum").textContent.trim();
+    var title = chap.querySelector("h2").textContent.trim();
+    return '<a href="#' + chap.id + '"><span class="n">' + num + '</span><span>' + title + '</span></a>';
+  }).join("");
+  function toggleToc(show) {
+    var open = typeof show === "boolean" ? show : tocPanel.style.display !== "block";
+    tocPanel.style.display = open ? "block" : "none";
+    tocBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  tocBtn.addEventListener("click", function (e) { e.stopPropagation(); toggleToc(); });
+  tocPanel.addEventListener("click", function (e) {
+    if (e.target.closest("a")) toggleToc(false);
+  });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#tocPanel") && !e.target.closest("#tocBtn")) toggleToc(false);
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") toggleToc(false); });
 
   /* ========== 回頂端 ========== */
   document.getElementById("backtop").addEventListener("click", function () {
