@@ -19,64 +19,34 @@
   }
   .serif, h1, h2, h3 { font-family: "Noto Serif TC", "PMingLiU", Georgia, serif; }
 
-  /* ===== 頂欄:標題 + 搜尋 ===== */
+  /* ===== 固定頂部:標題+搜尋(上排) + 章節列(下排),整塊一起 sticky ===== */
+  .stickyhead { position: sticky; top: 0; z-index: 60; }
   .topbar {
-    position: sticky; top: 0; z-index: 60; background: var(--navy); color: #E8E4DE;
+    background: var(--navy); color: #E8E4DE;
     padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   }
   .topbar .t { font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
   .topbar .t small { display: block; font-size: 10.5px; color: var(--copper); letter-spacing: .3em; font-weight: 400; }
   .searchwrap { position: relative; flex: 1; min-width: 170px; max-width: 460px; }
-  /* 目錄按鈕 + 下拉 */
-  #tocBtn {
-    height: 42px; border-radius: 8px; border: 1px solid rgba(232,228,222,.45);
-    background: transparent; color: #E8E4DE; padding: 0 16px; font-size: 15px;
-    cursor: pointer; font-family: inherit; letter-spacing: .1em; white-space: nowrap;
-  }
-  #tocBtn:hover { border-color: var(--copper); color: #fff; }
-  #tocPanel {
-    display: none; position: fixed; top: 62px; right: 12px; z-index: 70;
-    width: min(340px, calc(100vw - 24px)); max-height: 70vh; overflow: auto;
-    background: #fff; border: 1px solid var(--line); border-radius: 10px;
-    box-shadow: 0 10px 28px rgba(0,0,0,.22); padding: 8px;
-  }
-  #tocPanel a {
-    display: flex; align-items: baseline; gap: 10px; padding: 11px 12px;
-    border-radius: 8px; text-decoration: none; color: var(--ink); font-size: 16px;
-  }
-  #tocPanel a:hover { background: var(--paper); color: var(--navy); }
-  #tocPanel a .n {
-    flex: none; font-family: Georgia, serif; font-size: 13px; color: var(--copper);
-    width: 4.2em; white-space: nowrap;
-  }
 
-  /* ===== 側邊章節導覽:永遠在,平時只有圓點(視覺定位),滑過才展開章名 ===== */
-  #rail {
-    position: fixed; right: 10px; top: 50%; transform: translateY(-50%); z-index: 45;
-    display: flex; flex-direction: column; gap: 3px;
+  /* 章節列:常駐橫向捲動,目前章節高亮。桌機、手機都在頂部 */
+  .chapbar {
+    background: var(--paper); border-bottom: 1px solid var(--line);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
   }
-  #rail a {
-    display: flex; align-items: center; justify-content: flex-end; gap: 9px;
-    text-decoration: none; padding: 4px 0;
+  .chapbar::-webkit-scrollbar { height: 0; }
+  .chapbar .inner {
+    display: flex; gap: 7px; padding: 8px 14px; width: max-content; min-width: 100%;
   }
-  #rail .dot {
-    flex: none; width: 9px; height: 9px; border-radius: 50%; background: #D8CDBE;
-    box-shadow: 0 0 0 3px rgba(245,241,236,.7); transition: all .2s;
+  .chapbar a {
+    flex: none; white-space: nowrap; text-decoration: none; font-size: 14.5px;
+    padding: 6px 13px; border-radius: 999px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); transition: background .15s, color .15s, border-color .15s;
   }
-  #rail a:hover .dot { background: var(--copper); }
-  #rail a.active .dot { background: var(--copper); width: 10px; height: 22px; border-radius: 5px; }
-  #rail .label {
-    opacity: 0; transform: translateX(8px); transition: opacity .18s, transform .18s;
-    background: var(--navy); color: #fff; font-size: 13.5px; line-height: 1.4;
-    padding: 4px 11px; border-radius: 6px; white-space: nowrap; pointer-events: none;
-    box-shadow: 0 3px 10px rgba(0,0,0,.2);
-  }
-  #rail a:hover .label { opacity: 1; transform: translateX(0); }
-  #rail a.active .label { color: #fff; }
-  @media (max-width: 640px) {
-    #rail { right: 5px; gap: 2px; }
-    #rail .label { display: none; }   /* 手機沒有 hover:只留圓點做定位,章名用上方「目錄」 */
-  }
+  .chapbar a .cn { color: var(--copper); font-family: Georgia, serif; margin-right: 5px; }
+  .chapbar a:hover { border-color: var(--copper); }
+  .chapbar a.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .chapbar a.active .cn { color: #E8C9A0; }
   #search {
     width: 100%; height: 42px; border-radius: 8px; border: none; padding: 0 14px 0 40px;
     font-size: 16px; background: #fff; color: var(--ink); outline: none;
@@ -206,17 +176,18 @@
 </head>
 <body>
 
-<div class="topbar">
-  <div class="t">使用說明書<small>YU MIN ADMIN</small></div>
-  <div class="searchwrap">
-    <svg class="mag" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A847C" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-    <input id="search" type="search" placeholder="想做什麼？輸入關鍵字，例如：打卡、退回、密碼" autocomplete="off">
-    <div id="results"></div>
+<header class="stickyhead">
+  <div class="topbar">
+    <div class="t">使用說明書<small>YU MIN ADMIN</small></div>
+    <div class="searchwrap">
+      <svg class="mag" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A847C" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input id="search" type="search" placeholder="想做什麼？輸入關鍵字，例如：打卡、退回、密碼" autocomplete="off">
+      <div id="results"></div>
+    </div>
+    <button id="stopVoice" type="button">停止朗讀</button>
   </div>
-  <button id="stopVoice" type="button">停止朗讀</button>
-  <button id="tocBtn" type="button" aria-haspopup="true" aria-expanded="false">☰ 目錄</button>
-  <div id="tocPanel" role="menu" aria-label="章節目錄"></div>
-</div>
+  <nav class="chapbar" aria-label="章節導覽"><div class="inner" id="chapbarInner"></div></nav>
+</header>
 
 <div class="wrap">
 
@@ -620,7 +591,6 @@
 </footer>
 </div>
 
-<nav id="rail" aria-label="章節導覽"></nav>
 <button id="backtop" type="button" title="回到最上面" aria-label="回到最上面">↑</button>
 
 <script>
@@ -826,48 +796,47 @@
     if (!e.target.closest(".searchwrap")) resultsBox.style.display = "none";
   });
 
-  /* ========== 目錄下拉 ========== */
-  var tocBtn = document.getElementById("tocBtn");
-  var tocPanel = document.getElementById("tocPanel");
+  /* ========== 頂部章節列 + 目前章節高亮(scrollspy) ========== */
   var chaps = document.querySelectorAll("section.chap");
-  tocPanel.innerHTML = Array.prototype.map.call(chaps, function (chap) {
-    var num = chap.querySelector(".cnum").textContent.trim();
+  // 短標籤:橫向章節列用(全名太長);查不到就用章名前 4 字
+  var SHORT = {
+    start: "快速開始", map: "功能地圖", field: "現場", supervisor: "工地主任",
+    office: "辦公室", boss: "老闆", common: "共同功能", tips: "小功能",
+    faq: "常見問題", trouble: "疑難排解"
+  };
+  var chapbarInner = document.getElementById("chapbarInner");
+  var stickyhead = document.querySelector(".stickyhead");
+  chapbarInner.innerHTML = Array.prototype.map.call(chaps, function (chap, i) {
     var title = chap.querySelector("h2").textContent.trim();
-    return '<a href="#' + chap.id + '"><span class="n">' + num + '</span><span>' + title + '</span></a>';
+    return '<a href="#' + chap.id + '" title="' + title + '"><span class="cn">' + (i + 1) + '</span>' +
+           (SHORT[chap.id] || title.slice(0, 4)) + '</a>';
   }).join("");
-  function toggleToc(show) {
-    var open = typeof show === "boolean" ? show : tocPanel.style.display !== "block";
-    tocPanel.style.display = open ? "block" : "none";
-    tocBtn.setAttribute("aria-expanded", open ? "true" : "false");
-  }
-  tocBtn.addEventListener("click", function (e) { e.stopPropagation(); toggleToc(); });
-  tocPanel.addEventListener("click", function (e) {
-    if (e.target.closest("a")) toggleToc(false);
-  });
-  document.addEventListener("click", function (e) {
-    if (!e.target.closest("#tocPanel") && !e.target.closest("#tocBtn")) toggleToc(false);
-  });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") toggleToc(false); });
+  var barLinks = chapbarInner.querySelectorAll("a");
 
-  /* ========== 側邊圓點導覽 + 目前章節高亮(scrollspy) ========== */
-  var rail = document.getElementById("rail");
-  rail.innerHTML = Array.prototype.map.call(chaps, function (chap) {
-    var num = chap.querySelector(".cnum").textContent.trim();
-    var title = chap.querySelector("h2").textContent.trim();
-    return '<a href="#' + chap.id + '" title="' + num + ' ' + title + '">' +
-           '<span class="label">' + num + '　' + title + '</span><span class="dot"></span></a>';
-  }).join("");
-  var railLinks = rail.querySelectorAll("a");
+  // sticky 頭高度會因手機換行而變 → 動態設定 scroll-padding,讓錨點跳轉不被頭遮住
+  function syncHeadOffset() {
+    var h = stickyhead.getBoundingClientRect().height;
+    document.documentElement.style.scrollPaddingTop = (h + 10) + "px";
+    return h;
+  }
+
+  var lastIdx = -1;
   function updateActive() {
+    var threshold = stickyhead.getBoundingClientRect().height + 16;
     var idx = 0;
-    // getBoundingClientRect().top 是相對視窗;章節頂端捲到頂欄下方(130px)就算「目前章節」
     chaps.forEach(function (c, i) {
-      if (c.getBoundingClientRect().top <= 130) idx = i;
+      if (c.getBoundingClientRect().top <= threshold) idx = i;
     });
-    railLinks.forEach(function (a, i) { a.classList.toggle("active", i === idx); });
+    if (idx === lastIdx) return;
+    lastIdx = idx;
+    barLinks.forEach(function (a, i) { a.classList.toggle("active", i === idx); });
+    // 目前章節的 chip 自動捲進可視範圍(只捲橫向章節列,不動頁面)
+    var act = barLinks[idx];
+    if (act && act.scrollIntoView) act.scrollIntoView({ inline: "center", block: "nearest" });
   }
   window.addEventListener("scroll", updateActive, { passive: true });
-  window.addEventListener("resize", updateActive);
+  window.addEventListener("resize", function () { syncHeadOffset(); lastIdx = -1; updateActive(); });
+  syncHeadOffset();
   updateActive();
 
   /* ========== 回頂端 ========== */
