@@ -12,11 +12,14 @@ export type AttendanceReportRow = {
   user_role: string;        // 中文 label
   case_label: string;       // "code｜name" or "（無案件）"
   event_type: "clock_in" | "clock_out";
-  lat: number;
-  lng: number;
+  /** 補登(source='manual')沒有 GPS → null */
+  lat: number | null;
+  lng: number | null;
   accuracy_m: number | null;
   distance_m: number | null;
   within_geofence: boolean | null;
+  /** 'manual' = 辦公室補登 */
+  source?: string | null;
   note: string | null;
 };
 
@@ -51,6 +54,7 @@ export function buildAttendanceReportXlsx(input: {
     "角色",
     "案件",
     "上/下班",
+    "來源",
     "緯度",
     "經度",
     "精度（m）",
@@ -68,8 +72,9 @@ export function buildAttendanceReportXlsx(input: {
       r.user_role,
       r.case_label,
       r.event_type === "clock_in" ? "上班" : "下班",
-      r.lat,
-      r.lng,
+      r.source === "manual" ? "補登" : "現場",
+      r.lat ?? "",
+      r.lng ?? "",
       r.accuracy_m ?? "",
       r.distance_m === null ? "" : Math.round(r.distance_m),
       r.within_geofence === null ? "—" : r.within_geofence ? "✓" : "超出",
@@ -80,7 +85,7 @@ export function buildAttendanceReportXlsx(input: {
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws["!cols"] = [
     { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 32 },
-    { wch: 8 }, { wch: 11 }, { wch: 11 }, { wch: 8 }, { wch: 10 }, { wch: 8 }, { wch: 30 },
+    { wch: 8 }, { wch: 7 }, { wch: 11 }, { wch: 11 }, { wch: 8 }, { wch: 10 }, { wch: 8 }, { wch: 30 },
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "出勤紀錄");

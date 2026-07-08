@@ -18,11 +18,14 @@ export type TimelineEvent = {
   event_type: "clock_in" | "clock_out";
   user_name: string | null;
   case_label: string | null;
-  lat: number;
-  lng: number;
+  /** 補登(source='manual')沒有 GPS → null */
+  lat: number | null;
+  lng: number | null;
   accuracy_m: number | null;
   distance_m: number | null;
   within_geofence: boolean | null;
+  /** 'manual' = 辦公室補登;顯示「補登」標籤與現場打卡區隔 */
+  source?: string | null;
   note: string | null;
   created_at: string;
 };
@@ -98,7 +101,11 @@ export function AttendanceTimeline({
                     </div>
                   )}
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                    {e.distance_m !== null ? (
+                    {e.source === "manual" ? (
+                      <span className="rounded bg-[#F5F1EC] px-1.5 py-0.5 text-[#A07850]">
+                        辦公室補登（無 GPS）
+                      </span>
+                    ) : e.distance_m !== null ? (
                       <span>
                         {formatDistance(e.distance_m)}
                         {e.within_geofence === false && (
@@ -113,14 +120,16 @@ export function AttendanceTimeline({
                     {e.accuracy_m !== null && (
                       <span>· 精度 ±{Math.round(e.accuracy_m)} m</span>
                     )}
-                    <a
-                      href={googleMapsLink({ lat: e.lat, lng: e.lng })}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-auto text-accent underline-offset-2 hover:underline"
-                    >
-                      地圖 ↗
-                    </a>
+                    {e.lat !== null && e.lng !== null && (
+                      <a
+                        href={googleMapsLink({ lat: e.lat, lng: e.lng })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto text-accent underline-offset-2 hover:underline"
+                      >
+                        地圖 ↗
+                      </a>
+                    )}
                   </div>
                   {e.note && (
                     <div className="mt-0.5 text-xs text-foreground/80">{e.note}</div>

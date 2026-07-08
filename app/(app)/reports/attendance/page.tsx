@@ -81,7 +81,7 @@ export default async function AttendanceReportPage({
   let q = supabase
     .from("attendance_events")
     .select(
-      "id, user_id, case_id, event_type, lat, lng, accuracy_m, distance_m, within_geofence, note, created_at",
+      "id, user_id, case_id, event_type, lat, lng, accuracy_m, distance_m, within_geofence, source, note, created_at",
     )
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
@@ -123,11 +123,12 @@ export default async function AttendanceReportPage({
     case_label: e.case_id
       ? caseLabelById.get(e.case_id as string) ?? "（未知案件）"
       : null,
-    lat: e.lat as number,
-    lng: e.lng as number,
+    lat: e.lat as number | null,
+    lng: e.lng as number | null,
     accuracy_m: e.accuracy_m as number | null,
     distance_m: e.distance_m as number | null,
     within_geofence: e.within_geofence as boolean | null,
+    source: e.source as string | null,
     note: e.note as string | null,
     created_at: e.created_at as string,
   }));
@@ -152,6 +153,7 @@ export default async function AttendanceReportPage({
         initialCaseId={caseId}
         initialUserId={userId}
         rows={rows}
+        canBackfill={actor.role === "office_staff" || actor.role === "owner"}
       />
     </div>
   );

@@ -1,6 +1,8 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
 import {
   buildAttendanceReportXlsx,
@@ -41,7 +43,7 @@ export async function exportAttendanceXlsx(
   let q = supabase
     .from("attendance_events")
     .select(
-      "id, user_id, case_id, event_type, lat, lng, accuracy_m, distance_m, within_geofence, note, created_at",
+      "id, user_id, case_id, event_type, lat, lng, accuracy_m, distance_m, within_geofence, source, note, created_at",
     )
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
@@ -96,11 +98,12 @@ export async function exportAttendanceXlsx(
       user_role: u?.role ?? "—",
       case_label: cid ? caseById.get(cid) ?? "（未知案件）" : "（無案件 / 移動中）",
       event_type: e.event_type as "clock_in" | "clock_out",
-      lat: e.lat as number,
-      lng: e.lng as number,
+      lat: e.lat as number | null,
+      lng: e.lng as number | null,
       accuracy_m: e.accuracy_m as number | null,
       distance_m: e.distance_m as number | null,
       within_geofence: e.within_geofence as boolean | null,
+      source: e.source as string | null,
       note: e.note as string | null,
     };
   });
@@ -112,4 +115,73 @@ export async function exportAttendanceXlsx(
   const base64 = buf.toString("base64");
   const filename = `出勤_${filters.from}_${filters.to}.xlsx`;
   return { ok: true, base64, filename };
+}
+
+const BackfillSchema = z.object({
+  userId: z.string().uuid(),
+  caseId: z.string().uuid().nullable(),
+  eventType: z.enum(["clock_in", "clock_out"]),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式錯誤"),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "時間格式錯誤"),
+  note: z.string().trim().min(2, "補登原因必填(例:手機沒電)").max(200),
+});
+
+/**
+ * 辦公室補登打卡(migration-2.26)。
+ *
+ * 為什麼走 service-role:attendance_events 的 INSERT policy 限本人
+ * (user_id = auth.uid()),維持「現場打卡只能本人」的證據性;
+ * 補登是辦公室權限的例外路徑 — requireRole 把關 + source='manual' 明標
+ * + note 必填留原因,報表與時間軸都會顯示「補登」與現場 GPS 打卡區隔。
+ */
+export async function backfillAttendanceAction(input: {
+  userId: string;
+  caseId: string | null;
+  eventType: "clock_in" | "clock_out";
+  date: string;
+  time: string;
+  note: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireRole(["office_staff", "owner"]);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "權限不足" };
+  }
+
+  const parsed = BackfillSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "輸入格式錯誤" };
+  }
+  const d = parsed.data;
+
+  // Asia/Taipei 時間 → timestamptz
+  const createdAt = new Date(`${d.date}T${d.time}:00+08:00`);
+  if (Number.isNaN(createdAt.getTime())) return { ok: false, error: "日期時間無效" };
+  if (createdAt.getTime() > Date.now()) return { ok: false, error: "不能補登未來的時間" };
+
+  const service = createServiceClient();
+  const { error } = await service.from("attendance_events").insert({
+    user_id: d.userId,
+    case_id: d.caseId,
+    event_type: d.eventType,
+    lat: null,
+    lng: null,
+    accuracy_m: null,
+    distance_m: null,
+    within_geofence: null,
+    source: "manual",
+    user_agent: null,
+    note: d.note,
+    created_at: createdAt.toISOString(),
+  });
+  if (error) {
+    // migration-2.26 未跑時最常見:NOT NULL / check constraint
+    if (/null value|check constraint/i.test(error.message)) {
+      return { ok: false, error: "資料庫尚未升級(migration-2.26 未執行),請先請管理者更新後再補登。" };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/reports/attendance");
+  return { ok: true };
 }
