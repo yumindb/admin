@@ -49,6 +49,34 @@
     flex: none; font-family: Georgia, serif; font-size: 13px; color: var(--copper);
     width: 4.2em; white-space: nowrap;
   }
+
+  /* ===== 側邊章節導覽:永遠在,平時只有圓點(視覺定位),滑過才展開章名 ===== */
+  #rail {
+    position: fixed; right: 10px; top: 50%; transform: translateY(-50%); z-index: 45;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  #rail a {
+    display: flex; align-items: center; justify-content: flex-end; gap: 9px;
+    text-decoration: none; padding: 4px 0;
+  }
+  #rail .dot {
+    flex: none; width: 9px; height: 9px; border-radius: 50%; background: #D8CDBE;
+    box-shadow: 0 0 0 3px rgba(245,241,236,.7); transition: all .2s;
+  }
+  #rail a:hover .dot { background: var(--copper); }
+  #rail a.active .dot { background: var(--copper); width: 10px; height: 22px; border-radius: 5px; }
+  #rail .label {
+    opacity: 0; transform: translateX(8px); transition: opacity .18s, transform .18s;
+    background: var(--navy); color: #fff; font-size: 13.5px; line-height: 1.4;
+    padding: 4px 11px; border-radius: 6px; white-space: nowrap; pointer-events: none;
+    box-shadow: 0 3px 10px rgba(0,0,0,.2);
+  }
+  #rail a:hover .label { opacity: 1; transform: translateX(0); }
+  #rail a.active .label { color: #fff; }
+  @media (max-width: 640px) {
+    #rail { right: 5px; gap: 2px; }
+    #rail .label { display: none; }   /* 手機沒有 hover:只留圓點做定位,章名用上方「目錄」 */
+  }
   #search {
     width: 100%; height: 42px; border-radius: 8px; border: none; padding: 0 14px 0 40px;
     font-size: 16px; background: #fff; color: var(--ink); outline: none;
@@ -592,6 +620,7 @@
 </footer>
 </div>
 
+<nav id="rail" aria-label="章節導覽"></nav>
 <button id="backtop" type="button" title="回到最上面" aria-label="回到最上面">↑</button>
 
 <script>
@@ -600,21 +629,85 @@
   var stopBtn = document.getElementById("stopVoice");
   var currentBtn = null;
   var supported = "speechSynthesis" in window;
+  var speakToken = 0;       // 每次開始/停止 +1,讓被取代的 utterance 回呼失效
+  var queue = [];
 
-  function stopSpeak() {
-    if (supported) window.speechSynthesis.cancel();
+  function resetBtn() {
     if (currentBtn) { currentBtn.classList.remove("playing"); currentBtn.textContent = "🔈 朗讀"; }
     currentBtn = null;
     stopBtn.style.display = "none";
   }
+  function stopSpeak() {
+    speakToken++;
+    queue = [];
+    if (supported) window.speechSynthesis.cancel();
+    resetBtn();
+  }
 
+  // 選「聽起來最自然」的中文語音:優先線上/神經語音(Online / Natural / Google),
+  // 再挑常見的台灣女聲,最後才 fallback 到任何中文語音。
   function pickVoice() {
-    var voices = window.speechSynthesis.getVoices();
-    return (
-      voices.find(function (v) { return v.lang === "zh-TW"; }) ||
-      voices.find(function (v) { return v.lang && v.lang.indexOf("zh") === 0; }) ||
-      null
-    );
+    var vs = window.speechSynthesis.getVoices().filter(function (v) {
+      return (v.lang || "").toLowerCase().indexOf("zh") === 0;
+    });
+    var prefer = ["online", "natural", "google", "hsiao", "yating", "mei", "yun"];
+    for (var i = 0; i < prefer.length; i++) {
+      var m = vs.find(function (v) {
+        return (v.name || "").toLowerCase().indexOf(prefer[i]) >= 0 && (v.lang || "").indexOf("TW") >= 0;
+      });
+      if (m) return m;
+    }
+    for (var j = 0; j < prefer.length; j++) {
+      var m2 = vs.find(function (v) { return (v.name || "").toLowerCase().indexOf(prefer[j]) >= 0; });
+      if (m2) return m2;
+    }
+    return vs.find(function (v) { return (v.lang || "").indexOf("TW") >= 0; }) || vs[0] || null;
+  }
+
+  // 把畫面文字轉成「唸起來順」的字串:網址、符號、百分比、圈號等 TTS 唸不好的先處理掉。
+  function normalizeForSpeech(t) {
+    return t
+      .replace(/https?:\/\/[^\s，。]+/g, "系統網址")
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, "") // emoji / 箭頭
+      .replace(/①/g, "第一，").replace(/②/g, "第二，").replace(/③/g, "第三，").replace(/④/g, "第四，")
+      .replace(/100\s*%/g, "百分之百")
+      .replace(/(\d+)\s*%/g, "百分之$1")
+      .replace(/％/g, "百分比")
+      .replace(/＋/g, "加").replace(/－/g, "減")
+      .replace(/[／]/g, "、")
+      .replace(/[「」『』]/g, "")           // 引號 TTS 常唸成停頓雜音,去掉更順
+      .replace(/[·・‧]/g, "，")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  // 依句末標點切成一句一段 — 每句獨立朗讀,句與句之間自然停頓(這是「不機械」的關鍵)。
+  function splitForSpeech(t) {
+    return t.replace(/([。！？；])/g, "$1").split("")
+      .map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+
+  function speakSection(chunks, btn) {
+    var myToken = ++speakToken;
+    queue = chunks.slice();
+    var voice = pickVoice();
+    currentBtn = btn;
+    btn.classList.add("playing");
+    btn.textContent = "⏸ 停止";
+    stopBtn.style.display = "inline-block";
+
+    function next() {
+      if (myToken !== speakToken) return;      // 已被新的朗讀/停止取代
+      if (!queue.length) { if (myToken === speakToken) resetBtn(); return; }
+      var u = new SpeechSynthesisUtterance(queue.shift());
+      u.lang = "zh-TW";
+      u.rate = 1.0;        // 正常語速比放慢更自然(放慢反而拖成機械音)
+      u.pitch = 1.0;
+      if (voice) u.voice = voice;
+      u.onend = function () { if (myToken === speakToken) next(); };
+      u.onerror = function () { if (myToken === speakToken) next(); };
+      window.speechSynthesis.speak(u);
+    }
+    next();
   }
 
   document.querySelectorAll("button.speak").forEach(function (btn) {
@@ -622,20 +715,10 @@
       if (!supported) { alert("這台裝置的瀏覽器不支援語音朗讀，請改用文字閱讀。"); return; }
       if (currentBtn === btn) { stopSpeak(); return; }
       stopSpeak();
-      // 取這顆按鈕所屬區塊的文字:h3 區段讀到下一個 h3;章節鈕讀整章開頭段
-      var container = btn.closest("h3") ? sectionTextFromH3(btn.closest("h3")) : chapterIntroText(btn);
-      var u = new SpeechSynthesisUtterance(container);
-      u.lang = "zh-TW";
-      u.rate = 0.95;
-      var v = pickVoice();
-      if (v) u.voice = v;
-      u.onend = stopSpeak;
-      u.onerror = stopSpeak;
-      currentBtn = btn;
-      btn.classList.add("playing");
-      btn.textContent = "⏸ 停止";
-      stopBtn.style.display = "inline-block";
-      window.speechSynthesis.speak(u);
+      var raw = btn.closest("h3") ? sectionTextFromH3(btn.closest("h3")) : chapterIntroText(btn);
+      var chunks = splitForSpeech(normalizeForSpeech(raw));
+      if (!chunks.length) return;
+      speakSection(chunks, btn);
     });
   });
   stopBtn.addEventListener("click", stopSpeak);
@@ -765,6 +848,27 @@
     if (!e.target.closest("#tocPanel") && !e.target.closest("#tocBtn")) toggleToc(false);
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") toggleToc(false); });
+
+  /* ========== 側邊圓點導覽 + 目前章節高亮(scrollspy) ========== */
+  var rail = document.getElementById("rail");
+  rail.innerHTML = Array.prototype.map.call(chaps, function (chap) {
+    var num = chap.querySelector(".cnum").textContent.trim();
+    var title = chap.querySelector("h2").textContent.trim();
+    return '<a href="#' + chap.id + '" title="' + num + ' ' + title + '">' +
+           '<span class="label">' + num + '　' + title + '</span><span class="dot"></span></a>';
+  }).join("");
+  var railLinks = rail.querySelectorAll("a");
+  function updateActive() {
+    var idx = 0;
+    // getBoundingClientRect().top 是相對視窗;章節頂端捲到頂欄下方(130px)就算「目前章節」
+    chaps.forEach(function (c, i) {
+      if (c.getBoundingClientRect().top <= 130) idx = i;
+    });
+    railLinks.forEach(function (a, i) { a.classList.toggle("active", i === idx); });
+  }
+  window.addEventListener("scroll", updateActive, { passive: true });
+  window.addEventListener("resize", updateActive);
+  updateActive();
 
   /* ========== 回頂端 ========== */
   document.getElementById("backtop").addEventListener("click", function () {
