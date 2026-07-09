@@ -197,9 +197,9 @@ export default async function AppLayout({
 
       <BottomTabNav tabs={mobileTabs} />
 
-      {/* 首次登入依角色彈一次「最基本要做的事」小卡(裝置-local,可選以後不再顯示) */}
+      {/* 首次登入依角色彈一次「最基本要做的事」小卡(依帳號記憶,可選以後不再顯示) */}
       {profile?.role && (
-        <RoleWelcomeCard role={profile.role} fullName={fullName} />
+        <RoleWelcomeCard role={profile.role} fullName={fullName} userId={user.id} />
       )}
     </div>
   );

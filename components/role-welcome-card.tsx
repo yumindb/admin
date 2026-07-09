@@ -72,32 +72,43 @@ const CARDS: Record<Role, CardDef> = {
   },
 };
 
-const STORAGE_KEY = "yumin_welcome_v1";
+// 記憶鑰匙「依帳號」分開 —— 同一台裝置換不同帳號登入,各自都會看到自己的卡一次。
+// (共用電腦、或切換角色測試時才不會被別人關過的狀態蓋掉)
+const keyFor = (userId: string) => `yumin_welcome_v1_${userId}`;
 
-export function RoleWelcomeCard({ role, fullName }: { role: string; fullName: string }) {
+export function RoleWelcomeCard({
+  role,
+  fullName,
+  userId,
+}: {
+  role: string;
+  fullName: string;
+  userId: string;
+}) {
   const [open, setOpen] = useState(false);
   const [dontShow, setDontShow] = useState(true);
 
   const card = CARDS[role as Role];
+  const storageKey = keyFor(userId);
 
   useEffect(() => {
     if (!card) return;
     try {
-      if (localStorage.getItem(STORAGE_KEY) === "1") return; // 永久關過
-      if (sessionStorage.getItem(STORAGE_KEY) === "1") return; // 這個 session 關過
+      if (localStorage.getItem(storageKey) === "1") return; // 這帳號永久關過
+      if (sessionStorage.getItem(storageKey) === "1") return; // 這帳號這 session 關過
       setOpen(true);
     } catch {
       // 隱私模式等 storage 不可用 → 就當作沒關過,顯示一次(不會壞)
       setOpen(true);
     }
-  }, [card]);
+  }, [card, storageKey]);
 
   if (!card || !open) return null;
 
   function close() {
     try {
-      if (dontShow) localStorage.setItem(STORAGE_KEY, "1");
-      else sessionStorage.setItem(STORAGE_KEY, "1");
+      if (dontShow) localStorage.setItem(storageKey, "1");
+      else sessionStorage.setItem(storageKey, "1");
     } catch {
       /* storage 不可用就算了,下次再顯示無妨 */
     }
