@@ -1150,10 +1150,10 @@
   syncHeadOffset();
   computeActive();
 
-  /* ========== 回頂端 ========== */
+  /* ========== 回頂端(瞬間跳,不要慢慢捲) ========== */
   document.getElementById("backtop").addEventListener("click", function () {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    document.getElementById("search").focus();
+    // behavior:"instant" 覆蓋 html 的 scroll-behavior:smooth;頁面很長時不會拖很久
+    window.scrollTo({ top: 0, behavior: "instant" });
   });
 })();
 </script>
