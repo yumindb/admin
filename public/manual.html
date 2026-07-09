@@ -820,8 +820,19 @@
     return h;
   }
 
+  var chapbar = document.querySelector(".chapbar");
+  // 只捲章節列自己的水平位置,把 chip 移到中間 —— 完全不碰頁面的垂直捲動
+  // (原本用 scrollIntoView 會連帶微調頁面捲動,造成「下一章亮了又跳回」的來回閃)
+  function centerChip(chip) {
+    if (chapbar.scrollWidth <= chapbar.clientWidth) return; // 沒有可捲空間(桌機全放得下)
+    var barRect = chapbar.getBoundingClientRect();
+    var chipRect = chip.getBoundingClientRect();
+    var delta = (chipRect.left - barRect.left) - (chapbar.clientWidth - chip.offsetWidth) / 2;
+    chapbar.scrollLeft += delta;
+  }
+
   var lastIdx = -1;
-  function updateActive() {
+  function computeActive() {
     var threshold = stickyhead.getBoundingClientRect().height + 16;
     var idx = 0;
     chaps.forEach(function (c, i) {
@@ -830,14 +841,19 @@
     if (idx === lastIdx) return;
     lastIdx = idx;
     barLinks.forEach(function (a, i) { a.classList.toggle("active", i === idx); });
-    // 目前章節的 chip 自動捲進可視範圍(只捲橫向章節列,不動頁面)
-    var act = barLinks[idx];
-    if (act && act.scrollIntoView) act.scrollIntoView({ inline: "center", block: "nearest" });
+    centerChip(barLinks[idx]);
   }
-  window.addEventListener("scroll", updateActive, { passive: true });
-  window.addEventListener("resize", function () { syncHeadOffset(); lastIdx = -1; updateActive(); });
+  // rAF 節流:一個 frame 內多次 scroll 只算一次,避免捲動時卡頓
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () { computeActive(); ticking = false; });
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", function () { syncHeadOffset(); lastIdx = -1; computeActive(); });
   syncHeadOffset();
-  updateActive();
+  computeActive();
 
   /* ========== 回頂端 ========== */
   document.getElementById("backtop").addEventListener("click", function () {
