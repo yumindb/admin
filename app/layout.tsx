@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -16,6 +16,25 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "裕民工務 管理系統",
   description: "裕民工務 管理系統",
+  // 手機「加到主畫面」的圖示:iOS 走 apple-touch-icon,Android/PWA 走 manifest
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/yumin-badge.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  // iOS 加到主畫面後的名稱(短,避免被截斷)+ 全螢幕 web app
+  appleWebApp: {
+    capable: true,
+    title: "裕民工務",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#003153",
 };
 
 export default function RootLayout({
