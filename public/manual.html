@@ -103,6 +103,17 @@
   button.speak.playing { background: var(--copper); border-color: var(--copper); color: #fff; }
 
   .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; margin: 14px 0; }
+
+  /* 介面示意圖:看圖少看字。朗讀會自動略過 figure(見 cleanText) */
+  figure.ui {
+    margin: 16px 0; background: #FBF9F6; border: 1px solid var(--line);
+    border-radius: 8px; padding: 16px; text-align: center;
+  }
+  figure.ui svg { max-width: 100%; height: auto; }
+  figure.ui figcaption { margin-top: 10px; font-size: 14px; color: #8A847C; }
+  .ui-phones { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+  .ui-phones figure.ui { flex: 0 1 auto; margin: 8px 0; }
+
   .tip, .warn {
     display: flex; gap: 10px; margin: 12px 0; padding: 12px 16px; border-radius: 6px; font-size: 15.5px;
   }
@@ -246,6 +257,50 @@
   <div class="chap-head"><span class="cnum">第 2 章</span><h2>功能地圖 — 全系統一眼看完</h2><button class="speak" type="button">🔈 朗讀</button></div>
   <p>整套系統就是一句話：<b>現場記錄 → 主任整理 → 辦公室核對 → 老闆簽名</b>。下面是每個角色的所有功能，點了就跳到說明。</p>
 
+  <figure class="ui">
+    <svg viewBox="0 0 680 175" style="width:100%;max-width:680px" role="img" aria-label="簽核流程示意圖">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#A07850"/>
+        </marker>
+      </defs>
+      <g font-family="'Noto Sans TC',sans-serif">
+        <rect x="8" y="34" width="150" height="82" rx="8" fill="#fff" stroke="#E0DCD6"/>
+        <circle cx="83" cy="58" r="12" fill="none" stroke="#003153" stroke-width="2"/>
+        <path d="M77 58 l0 -5 a6 6 0 0 1 12 0 l0 5" fill="none" stroke="#003153" stroke-width="2"/>
+        <rect x="74" y="58" width="18" height="8" rx="2" fill="#003153"/>
+        <text x="83" y="90" text-anchor="middle" font-size="15" fill="#003153" font-weight="700">現場人員</text>
+        <text x="83" y="107" text-anchor="middle" font-size="11.5" fill="#8A847C">打卡・拍照回報</text>
+
+        <rect x="182" y="34" width="150" height="82" rx="8" fill="#fff" stroke="#E0DCD6"/>
+        <rect x="247" y="46" width="22" height="27" rx="3" fill="none" stroke="#003153" stroke-width="2"/>
+        <line x1="252" y1="54" x2="264" y2="54" stroke="#003153" stroke-width="2"/>
+        <line x1="252" y1="60" x2="264" y2="60" stroke="#003153" stroke-width="2"/>
+        <text x="257" y="90" text-anchor="middle" font-size="15" fill="#003153" font-weight="700">工地主任</text>
+        <text x="257" y="107" text-anchor="middle" font-size="11.5" fill="#8A847C">填日誌・送出</text>
+
+        <rect x="356" y="34" width="150" height="82" rx="8" fill="#fff" stroke="#E0DCD6"/>
+        <circle cx="431" cy="57" r="13" fill="none" stroke="#003153" stroke-width="2"/>
+        <path d="M424 57 l5 5 l9 -10" fill="none" stroke="#003153" stroke-width="2.2"/>
+        <text x="431" y="90" text-anchor="middle" font-size="15" fill="#003153" font-weight="700">辦公室助理</text>
+        <text x="431" y="107" text-anchor="middle" font-size="11.5" fill="#8A847C">核對・審核</text>
+
+        <rect x="530" y="34" width="142" height="82" rx="8" fill="#003153"/>
+        <path d="M593 50 l6 11 l6 -14 l6 14 l6 -11 l0 14 l-24 0 z" fill="#A07850"/>
+        <text x="601" y="90" text-anchor="middle" font-size="15" fill="#fff" font-weight="700">老闆</text>
+        <text x="601" y="107" text-anchor="middle" font-size="11.5" fill="#C9BBAE">核定・簽名</text>
+
+        <line x1="158" y1="75" x2="176" y2="75" stroke="#A07850" stroke-width="2" marker-end="url(#ar)"/>
+        <line x1="332" y1="75" x2="350" y2="75" stroke="#A07850" stroke-width="2" marker-end="url(#ar)"/>
+        <line x1="506" y1="75" x2="524" y2="75" stroke="#A07850" stroke-width="2" marker-end="url(#ar)"/>
+
+        <path d="M601 116 C 601 150, 257 150, 257 120" fill="none" stroke="#B91C1C" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <text x="429" y="167" text-anchor="middle" font-size="12" fill="#B91C1C">任何一關退回，就回到主任修正後重送</text>
+      </g>
+    </svg>
+    <figcaption>一份日誌的旅程：從現場一路簽到老闆，中間有人覺得不對就退回主任。</figcaption>
+  </figure>
+
   <div class="map-grid">
     <div class="map-col">
       <div class="mh" style="background:#4A7C59;">現場人員</div>
@@ -320,6 +375,26 @@
     <li>系統會自動推薦離你最近的案件，確認沒錯 → 按大大的「<b>上班打卡</b>」。<span class="then">畫面會顯示你離工地幾公尺。</span></li>
     <li>收工離開前，同一頁按「<b>下班打卡</b>」。</li>
   </ol>
+  <figure class="ui">
+    <svg width="210" height="340" viewBox="0 0 210 340" role="img" aria-label="打卡畫面示意">
+      <rect x="10" y="6" width="190" height="328" rx="22" fill="#003153"/>
+      <rect x="18" y="32" width="174" height="278" rx="6" fill="#F5F1EC"/>
+      <rect x="18" y="32" width="174" height="28" fill="#003153"/>
+      <text x="105" y="51" text-anchor="middle" font-size="12" fill="#fff" font-family="sans-serif">GPS 打卡</text>
+      <circle cx="105" cy="126" r="44" fill="#EAE4DC"/>
+      <circle cx="105" cy="126" r="44" fill="none" stroke="#A07850" stroke-width="1.6" stroke-dasharray="4 4"/>
+      <path d="M105 111 a11 11 0 0 1 11 11 c0 9 -11 19 -11 19 s-11 -10 -11 -19 a11 11 0 0 1 11 -11 z" fill="#003153"/>
+      <circle cx="105" cy="121" r="4.5" fill="#F5F1EC"/>
+      <text x="105" y="190" text-anchor="middle" font-size="11" fill="#5A5050" font-family="sans-serif">距離工地 46 公尺・範圍內</text>
+      <rect x="36" y="206" width="138" height="34" rx="6" fill="#003153"/>
+      <text x="105" y="228" text-anchor="middle" font-size="13" fill="#fff" font-family="sans-serif">上班打卡</text>
+      <rect x="36" y="248" width="138" height="26" rx="6" fill="#fff" stroke="#E0DCD6"/>
+      <text x="105" y="265" text-anchor="middle" font-size="11" fill="#5A5050" font-family="sans-serif">下班打卡</text>
+      <line x1="18" y1="286" x2="192" y2="286" stroke="#E0DCD6"/>
+      <text x="105" y="302" text-anchor="middle" font-size="9.5" fill="#8A847C" font-family="sans-serif">打卡　日誌　待複核　回報</text>
+    </svg>
+    <figcaption>畫面長這樣：一顆大大的「上班打卡」，上面顯示你離工地幾公尺。</figcaption>
+  </figure>
   <div class="tip"><b>小撇步：</b><span>人在公司或路上也可以打卡 — 案件選「無案件」，寫一句備註就好。</span></div>
   <div class="tip"><b>小撇步：</b><span>站得離工地遠一點也打得進去，只是會標「超出範圍」的黃色字，方便日後對照，不影響打卡。</span></div>
   <div class="warn"><b>注意：</b><span>山區訊號差送不出去？<b>不用重打</b>。系統會自動把這筆存在你手機裡排隊，等你回到有訊號的地方、再打開這個網頁，它會自己送出（畫面會顯示「待送 N 筆」）。</span></div>
@@ -332,6 +407,27 @@
     <li>按「<b>拍照／加照片</b>」拍或選照片（可以好幾張）。</li>
     <li>寫一句話說明（例：「三樓管線排完八成」）→ 按「<b>送出回報</b>」。</li>
   </ol>
+  <figure class="ui">
+    <svg width="210" height="340" viewBox="0 0 210 340" role="img" aria-label="現場回報畫面示意">
+      <rect x="10" y="6" width="190" height="328" rx="22" fill="#003153"/>
+      <rect x="18" y="32" width="174" height="278" rx="6" fill="#F5F1EC"/>
+      <rect x="18" y="32" width="174" height="28" fill="#003153"/>
+      <text x="105" y="51" text-anchor="middle" font-size="12" fill="#fff" font-family="sans-serif">新增回報</text>
+      <text x="30" y="82" font-size="10" fill="#8A847C" font-family="sans-serif">案場</text>
+      <rect x="30" y="88" width="150" height="26" rx="6" fill="#fff" stroke="#E0DCD6"/>
+      <text x="40" y="105" font-size="10.5" fill="#003153" font-family="sans-serif">清華（配電盤）　▾</text>
+      <rect x="30" y="124" width="150" height="86" rx="6" fill="#EAE4DC" stroke="#E0DCD6"/>
+      <circle cx="105" cy="160" r="15" fill="none" stroke="#A07850" stroke-width="2"/>
+      <path d="M98 160 h14 M105 153 v14" stroke="#A07850" stroke-width="2"/>
+      <text x="105" y="192" text-anchor="middle" font-size="10" fill="#8A847C" font-family="sans-serif">拍照 / 加照片</text>
+      <rect x="30" y="220" width="150" height="40" rx="6" fill="#fff" stroke="#E0DCD6"/>
+      <text x="40" y="238" font-size="10" fill="#5A5050" font-family="sans-serif">三樓管線排完八成，</text>
+      <text x="40" y="252" font-size="10" fill="#5A5050" font-family="sans-serif">電井待放樣。</text>
+      <rect x="30" y="270" width="150" height="30" rx="6" fill="#003153"/>
+      <text x="105" y="290" text-anchor="middle" font-size="12" fill="#fff" font-family="sans-serif">送出回報</text>
+    </svg>
+    <figcaption>拍照、選案場、寫一句話，按送出就好。</figcaption>
+  </figure>
   <table>
     <tr><th>回報的狀態</th><th>意思</th></tr>
     <tr><td><span class="status st-amber">待整合</span></td><td>已送出，等主任把它「併入」當天日誌。這期間你還可以編輯或刪除。</td></tr>
@@ -368,6 +464,39 @@
     <li><b>拍照</b>：施工照片直接拍或從相簿選，每張可寫說明。</li>
     <li>用手指<b>簽名</b> → 按「<b>送出</b>」。<span class="then">送出後會依序給辦公室、老闆簽。你隨時可在「日誌」看它走到哪一關。</span></li>
   </ol>
+  <figure class="ui">
+    <svg width="210" height="340" viewBox="0 0 210 340" role="img" aria-label="施工日誌畫面示意">
+      <rect x="10" y="6" width="190" height="328" rx="22" fill="#003153"/>
+      <rect x="18" y="32" width="174" height="278" rx="6" fill="#F5F1EC"/>
+      <rect x="18" y="32" width="174" height="28" fill="#003153"/>
+      <text x="105" y="51" text-anchor="middle" font-size="12" fill="#fff" font-family="sans-serif">今日施工日誌</text>
+      <rect x="28" y="68" width="154" height="22" rx="5" fill="#fff" stroke="#E0DCD6"/>
+      <circle cx="41" cy="79" r="4.5" fill="none" stroke="#8A847C" stroke-width="1.4"/><line x1="44" y1="82" x2="47" y2="85" stroke="#8A847C" stroke-width="1.4"/>
+      <text x="54" y="83" font-size="9.5" fill="#8A847C" font-family="sans-serif">搜尋工項…</text>
+      <g font-family="sans-serif">
+        <rect x="28" y="96" width="154" height="28" rx="5" fill="#fff" stroke="#E0DCD6"/>
+        <rect x="35" y="103" width="13" height="13" rx="2" fill="#003153"/><path d="M38 109 l3 3 l5 -6" stroke="#fff" stroke-width="1.7" fill="none"/>
+        <text x="55" y="114" font-size="9.5" fill="#5A5050">配電盤基座定位</text>
+        <text x="172" y="114" text-anchor="end" font-size="11" fill="#003153">− 2 ＋</text>
+        <rect x="28" y="128" width="154" height="28" rx="5" fill="#fff" stroke="#E0DCD6"/>
+        <rect x="35" y="135" width="13" height="13" rx="2" fill="#003153"/><path d="M38 141 l3 3 l5 -6" stroke="#fff" stroke-width="1.7" fill="none"/>
+        <text x="55" y="146" font-size="9.5" fill="#5A5050">二次側配線</text>
+        <text x="172" y="146" text-anchor="end" font-size="10" fill="#A07850">70%</text>
+        <rect x="28" y="160" width="154" height="28" rx="5" fill="#fff" stroke="#E0DCD6"/>
+        <rect x="35" y="167" width="13" height="13" rx="2" fill="#fff" stroke="#C9BBAE"/>
+        <text x="55" y="178" font-size="9.5" fill="#8A847C">接地端子箱安裝</text>
+      </g>
+      <rect x="28" y="196" width="74" height="46" rx="5" fill="#EAE4DC"/>
+      <text x="65" y="222" text-anchor="middle" font-size="9" fill="#8A847C" font-family="sans-serif">照片 ×3</text>
+      <rect x="108" y="196" width="74" height="46" rx="5" fill="#fff" stroke="#E0DCD6"/>
+      <path d="M135 216 q9 -11 18 0 q-5 13 -18 9 z" fill="none" stroke="#A07850" stroke-width="1.5"/>
+      <text x="145" y="236" text-anchor="middle" font-size="9" fill="#8A847C" font-family="sans-serif">手寫簽名</text>
+      <rect x="28" y="250" width="154" height="28" rx="6" fill="#003153"/>
+      <text x="105" y="269" text-anchor="middle" font-size="12" fill="#fff" font-family="sans-serif">簽名並送出</text>
+      <text x="105" y="300" text-anchor="middle" font-size="9.5" fill="#8A847C" font-family="sans-serif">打卡　日誌　待複核　回報</text>
+    </svg>
+    <figcaption>勾工項、按 ＋ − 填數量、簽名，就送出了。打勾的工項才會算進去。</figcaption>
+  </figure>
   <div class="tip"><b>小撇步：</b><span>填到一半被叫走？直接關掉沒關係 — <b>草稿每秒自動存在你的手機裡</b>，回來打開同一頁會自動還原。</span></div>
   <div class="tip"><b>小撇步：</b><span>簽名簽過一次後，下次可以直接用「上次的簽名」，不用每份重簽。</span></div>
 
@@ -410,6 +539,38 @@
     <li>檢查預覽的樹狀清單：不要的列可以勾「略過」。</li>
     <li>按「<b>確認匯入</b>」。<span class="then">一千多項的標單也是幾秒鐘完成。</span></li>
   </ol>
+  <figure class="ui">
+    <svg viewBox="0 0 620 150" style="width:100%;max-width:620px" role="img" aria-label="匯入標單三步驟示意">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#A07850"/></marker>
+      </defs>
+      <g font-family="'Noto Sans TC',sans-serif">
+        <rect x="10" y="24" width="170" height="90" rx="8" fill="#fff" stroke="#E0DCD6"/>
+        <rect x="70" y="44" width="42" height="52" rx="4" fill="#fff" stroke="#4A7C59" stroke-width="2"/>
+        <path d="M100 44 l12 12 h-12 z" fill="#4A7C59"/>
+        <text x="91" y="76" text-anchor="middle" font-size="11" fill="#4A7C59" font-weight="700">xlsx</text>
+        <text x="95" y="107" text-anchor="middle" font-size="13" fill="#003153" font-weight="700">① 選標單檔</text>
+
+        <line x1="180" y1="69" x2="205" y2="69" stroke="#A07850" stroke-width="2" marker-end="url(#ar2)"/>
+
+        <rect x="225" y="24" width="170" height="90" rx="8" fill="#fff" stroke="#E0DCD6"/>
+        <g stroke="#003153" stroke-width="1.6">
+          <line x1="250" y1="42" x2="370" y2="42"/><line x1="262" y1="56" x2="370" y2="56"/>
+          <line x1="262" y1="70" x2="370" y2="70"/><line x1="274" y1="84" x2="370" y2="84"/>
+        </g>
+        <circle cx="250" cy="42" r="2.5" fill="#A07850"/><circle cx="262" cy="56" r="2.5" fill="#003153"/>
+        <text x="310" y="107" text-anchor="middle" font-size="13" fill="#003153" font-weight="700">② 預覽確認</text>
+
+        <line x1="395" y1="69" x2="420" y2="69" stroke="#A07850" stroke-width="2" marker-end="url(#ar2)"/>
+
+        <rect x="440" y="24" width="170" height="90" rx="8" fill="#003153"/>
+        <circle cx="525" cy="58" r="16" fill="none" stroke="#fff" stroke-width="2"/>
+        <path d="M517 58 l6 6 l11 -12" fill="none" stroke="#fff" stroke-width="2.4"/>
+        <text x="525" y="107" text-anchor="middle" font-size="13" fill="#fff" font-weight="700">③ 匯入完成</text>
+      </g>
+    </svg>
+    <figcaption>Excel 標單三步驟就變成系統工項，一千多項也是幾秒鐘。</figcaption>
+  </figure>
   <div class="tip"><b>小撇步：</b><span>之後拿到<b>追加版標單</b>再匯一次就好 — 同名工項自動合併更新、新項目自動加入，<b>你手動改過的不會被蓋掉</b>。匯錯了也有「撤銷此次匯入」。</span></div>
   <div class="tip"><b>小撇步：</b><span>沒有標單的小案子（例如住宅水電），在案件頁按「＋ 新增工項」手動建幾筆就能開始填日誌。</span></div>
 
@@ -475,6 +636,36 @@
     <tr><td>今日未打卡主任</td><td>今天還沒打卡的主任名單</td></tr>
     <tr><td>本月新增合約外金額</td><td>這個月新冒出來的追加工作值多少錢</td></tr>
   </table>
+  <figure class="ui">
+    <svg width="210" height="330" viewBox="0 0 210 330" role="img" aria-label="老闆儀表板示意">
+      <rect x="10" y="6" width="190" height="318" rx="22" fill="#003153"/>
+      <rect x="18" y="32" width="174" height="268" rx="6" fill="#F5F1EC"/>
+      <rect x="18" y="32" width="174" height="28" fill="#003153"/>
+      <text x="105" y="51" text-anchor="middle" font-size="12" fill="#fff" font-family="sans-serif">老闆儀表板</text>
+      <g font-family="sans-serif">
+        <rect x="28" y="68" width="154" height="34" rx="5" fill="#FEF2F2" stroke="#FCA5A5"/>
+        <circle cx="41" cy="85" r="4" fill="#B91C1C"/>
+        <text x="51" y="82" font-size="9.5" fill="#B91C1C" font-weight="bold">需要您出手（1）</text>
+        <text x="51" y="95" font-size="8.5" fill="#8A847C">日誌退回 3 天未重送</text>
+        <rect x="28" y="110" width="74" height="52" rx="5" fill="#FEF2F2" stroke="#FCA5A5"/>
+        <text x="65" y="128" text-anchor="middle" font-size="9" fill="#B91C1C">待核定</text>
+        <text x="65" y="150" text-anchor="middle" font-size="19" fill="#B91C1C" font-weight="bold">1</text>
+        <rect x="108" y="110" width="74" height="52" rx="5" fill="#FFFBEB" stroke="#FDE68A"/>
+        <text x="145" y="128" text-anchor="middle" font-size="9" fill="#92400E">到期案件</text>
+        <text x="145" y="150" text-anchor="middle" font-size="19" fill="#92400E" font-weight="bold">1</text>
+        <rect x="28" y="170" width="74" height="52" rx="5" fill="#ECFDF5" stroke="#A7F3D0"/>
+        <text x="65" y="188" text-anchor="middle" font-size="9" fill="#15803D">進度落後</text>
+        <text x="65" y="210" text-anchor="middle" font-size="19" fill="#15803D" font-weight="bold">0</text>
+        <rect x="108" y="170" width="74" height="52" rx="5" fill="#FFFBEB" stroke="#FDE68A"/>
+        <text x="145" y="188" text-anchor="middle" font-size="9" fill="#92400E">本月合約外</text>
+        <text x="145" y="210" text-anchor="middle" font-size="13" fill="#92400E" font-weight="bold">35,000</text>
+        <rect x="28" y="230" width="154" height="26" rx="6" fill="#fff" stroke="#E0DCD6"/>
+        <text x="105" y="247" text-anchor="middle" font-size="10" fill="#003153">跳去簽 →</text>
+      </g>
+      <text x="105" y="292" text-anchor="middle" font-size="9" fill="#8A847C" font-family="sans-serif">首頁　待核定　案件　日誌　回報　人員</text>
+    </svg>
+    <figcaption>紅色點進去，黃色瞄一眼，綠色不用管。</figcaption>
+  </figure>
 
   <h3 id="b-approve"><span class="role-dot" style="background:#003153;"></span>核定日誌<button class="speak" type="button">🔈 朗讀</button></h3>
   <ol class="bigsteps">
@@ -502,10 +693,42 @@
     <li>選假別（病假／事假／特休…）、起訖時間、寫事由 → 送出。</li>
     <li>假單會<b>自動一層層往上簽</b>：現場人員 → 主任 → 辦公室 → 老闆；主任的假 → 辦公室 → 老闆。<span class="then">走到哪一關、准了沒，在「我的請假」隨時看得到；還沒簽完的可以自己取消。</span></li>
   </ol>
+  <figure class="ui">
+    <svg viewBox="0 0 620 96" style="width:100%;max-width:620px" role="img" aria-label="請假簽核往上送示意">
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#A07850"/></marker>
+      </defs>
+      <g font-family="'Noto Sans TC',sans-serif" font-size="14">
+        <rect x="8" y="30" width="120" height="40" rx="20" fill="#fff" stroke="#E0DCD6"/>
+        <text x="68" y="55" text-anchor="middle" fill="#003153">現場人員送出</text>
+        <line x1="128" y1="50" x2="150" y2="50" stroke="#A07850" stroke-width="2" marker-end="url(#ar3)"/>
+        <rect x="156" y="30" width="96" height="40" rx="20" fill="#fff" stroke="#E0DCD6"/>
+        <text x="204" y="55" text-anchor="middle" fill="#003153">工地主任</text>
+        <line x1="252" y1="50" x2="274" y2="50" stroke="#A07850" stroke-width="2" marker-end="url(#ar3)"/>
+        <rect x="280" y="30" width="110" height="40" rx="20" fill="#fff" stroke="#E0DCD6"/>
+        <text x="335" y="55" text-anchor="middle" fill="#003153">辦公室助理</text>
+        <line x1="390" y1="50" x2="412" y2="50" stroke="#A07850" stroke-width="2" marker-end="url(#ar3)"/>
+        <rect x="418" y="30" width="150" height="40" rx="20" fill="#003153"/>
+        <text x="493" y="55" text-anchor="middle" fill="#fff">老闆核准 ✓</text>
+      </g>
+    </svg>
+    <figcaption>你只要送出，系統會自己一關一關往上送，不用打電話追。</figcaption>
+  </figure>
   <p>輪到你簽別人的假時，「請假」字樣旁會出現紅色數字。</p>
 
   <h3><span class="role-dot"></span>紅色小數字（徽章）是什麼<button class="speak" type="button">🔈 朗讀</button></h3>
   <p>畫面上看到紅色小數字，意思都一樣：「<b>有幾件事等你處理</b>」。點進去做完，數字就消失。</p>
+  <figure class="ui">
+    <svg viewBox="0 0 260 60" style="width:100%;max-width:260px" role="img" aria-label="紅色數字徽章示意">
+      <g font-family="'Noto Sans TC',sans-serif">
+        <text x="20" y="37" font-size="17" fill="#003153" font-weight="700">待核定</text>
+        <circle cx="112" cy="22" r="13" fill="#B91C1C"/>
+        <text x="112" y="27" text-anchor="middle" font-size="14" fill="#fff" font-weight="700">3</text>
+        <text x="150" y="35" font-size="13" fill="#8A847C">= 有 3 件等你</text>
+      </g>
+    </svg>
+    <figcaption>像這樣的紅色數字，就是提醒你有幾件事等你處理。</figcaption>
+  </figure>
 
   <h3><span class="role-dot"></span>下載 PDF 與 Excel<button class="speak" type="button">🔈 朗讀</button></h3>
   <p><b>PDF</b>：已核定的日誌可以下載正式的 PDF（含四關簽名圖），在日誌頁按「下載 PDF」；日誌列表也能多份一起下載。<b>Excel</b>：案件工項進度、月報、出勤、跨案工項都有「下載 Excel」按鈕，給請款、算薪資用。</p>
@@ -695,7 +918,8 @@
 
   function cleanText(el) {
     var clone = el.cloneNode(true);
-    clone.querySelectorAll("button, script, style").forEach(function (b) { b.remove(); });
+    // figure/svg = 介面示意圖,裡面的文字不要被朗讀或進搜尋(內容已由步驟文字說明)
+    clone.querySelectorAll("button, script, style, figure, svg").forEach(function (b) { b.remove(); });
     return clone.textContent.replace(/\s+/g, " ").trim();
   }
   function sectionTextFromH3(h3) {
