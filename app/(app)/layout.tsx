@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BottomTabNav, type BottomTab } from "@/components/bottom-tab-nav";
 import { LogoutButton } from "@/components/logout-button";
 import { RouteProgress } from "@/components/route-progress";
+import { RoleWelcomeCard } from "@/components/role-welcome-card";
 import { logoutAction } from "../login/actions";
 import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
@@ -195,6 +196,11 @@ export default async function AppLayout({
       </main>
 
       <BottomTabNav tabs={mobileTabs} />
+
+      {/* 首次登入依角色彈一次「最基本要做的事」小卡(裝置-local,可選以後不再顯示) */}
+      {profile?.role && (
+        <RoleWelcomeCard role={profile.role} fullName={fullName} />
+      )}
     </div>
   );
 }

@@ -114,6 +114,19 @@
   .ui-phones { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
   .ui-phones figure.ui { flex: 0 1 auto; margin: 8px 0; }
 
+  /* 角色速查卡:一頁看完自己每天要做的事 */
+  .rolecards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
+  .rolecard { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+  .rolecard .rc-head { padding: 12px 16px; color: #fff; }
+  .rolecard .rc-head b { font-size: 18px; letter-spacing: .05em; }
+  .rolecard .rc-head span { display: block; margin-top: 2px; font-size: 13px; opacity: .9; }
+  .rolecard ul { list-style: none; padding: 12px 16px; margin: 0; flex: 1; }
+  .rolecard li { display: flex; gap: 9px; padding: 6px 0; font-size: 14.5px; line-height: 1.6; }
+  .rolecard li .n { flex: none; width: 21px; height: 21px; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .rolecard li b { color: var(--navy); }
+  .rolecard .rc-more { display: block; padding: 10px 16px; border-top: 1px solid var(--line); background: #FAF7F2; font-size: 14px; color: var(--copper); text-decoration: none; }
+  .rolecard .rc-more:hover { color: var(--navy); }
+
   .tip, .warn {
     display: flex; gap: 10px; margin: 12px 0; padding: 12px 16px; border-radius: 6px; font-size: 15.5px;
   }
@@ -210,6 +223,57 @@
     <span>每個標題旁邊有「<b>朗讀</b>」按鈕，按一下，手機或電腦就會把那一段唸給你聽；再按一次就停。（用手機請把音量打開）</span>
   </div>
 </div>
+
+<!-- ================= 角色速查卡 ================= -->
+<section class="chap" id="cards" data-title="角色速查卡：一頁看完自己每天要做的事">
+  <div class="chap-head"><span class="cnum">速查卡</span><h2>先看這張就好 — 你每天要做的事</h2><button class="speak" type="button">🔈 朗讀</button></div>
+  <p>系統功能很多，但<b>每個人平常只用到幾樣</b>。先找到你的角色，看這一張就能上工；細節再翻後面章節或按「朗讀」用聽的。</p>
+
+  <div class="rolecards">
+    <div class="rolecard">
+      <div class="rc-head" style="background:#4A7C59;"><b>現場人員</b><span>你只要顧好兩件事</span></div>
+      <ul>
+        <li><span class="n" style="background:#4A7C59;">1</span><span><b>打卡</b>：到工地按底部「打卡」→ 上班；收工按下班。</span></li>
+        <li><span class="n" style="background:#4A7C59;">2</span><span><b>拍照回報</b>：按底部「新增」→ 拍照、寫一句話 → 送出。</span></li>
+        <li><span class="n" style="background:#4A7C59;">3</span><span><b>請假</b>：按底部「請假」→ 新請假，系統自動往上送。</span></li>
+      </ul>
+      <a class="rc-more" href="#field">看現場人員完整說明 →</a>
+    </div>
+
+    <div class="rolecard">
+      <div class="rc-head" style="background:#2C577E;"><b>工地主任</b><span>每天五分鐘填一份日誌</span></div>
+      <ul>
+        <li><span class="n" style="background:#2C577E;">1</span><span><b>填日誌</b>：勾工項、按數量、簽名、送出。</span></li>
+        <li><span class="n" style="background:#2C577E;">2</span><span><b>打卡</b>：到工地按底部「打卡」。</span></li>
+        <li><span class="n" style="background:#2C577E;">3</span><span><b>臨時追加</b>：填日誌時按「新增臨時項」記一筆。</span></li>
+        <li><span class="n" style="background:#2C577E;">4</span><span><b>簽假單</b>：「請假」有紅色數字時點進去核准。</span></li>
+      </ul>
+      <a class="rc-more" href="#supervisor">看工地主任完整說明 →</a>
+    </div>
+
+    <div class="rolecard">
+      <div class="rc-head" style="background:#A07850;"><b>辦公室助理</b><span>紅色數字，點進去處理就對了</span></div>
+      <ul>
+        <li><span class="n" style="background:#A07850;">1</span><span><b>開案 + 匯標單</b>：開新案件 → 匯入工項。</span></li>
+        <li><span class="n" style="background:#A07850;">2</span><span><b>審核日誌</b>：「待審核」→ 對數量 → 通過或退回。</span></li>
+        <li><span class="n" style="background:#A07850;">3</span><span><b>月底收款</b>：未簽約 → 補單價 → 打包追加合約。</span></li>
+        <li><span class="n" style="background:#A07850;">4</span><span><b>補登打卡</b>：有人忘打卡時到「現場出勤」補。</span></li>
+      </ul>
+      <a class="rc-more" href="#office">看辦公室助理完整說明 →</a>
+    </div>
+
+    <div class="rolecard">
+      <div class="rc-head" style="background:#003153;"><b>老闆</b><span>綠色不用管，紅色點進去</span></div>
+      <ul>
+        <li><span class="n" style="background:#003153;">1</span><span><b>滑儀表板</b>：有紅燈點進去，沒紅燈就放心。</span></li>
+        <li><span class="n" style="background:#003153;">2</span><span><b>核定日誌</b>：「待核定」→ 看照片 → 簽名（可批簽）。</span></li>
+        <li><span class="n" style="background:#003153;">3</span><span><b>看現場</b>：底部「回報」隨時看現場照片。</span></li>
+      </ul>
+      <a class="rc-more" href="#boss">看老闆完整說明 →</a>
+    </div>
+  </div>
+  <div class="tip"><b>小撇步：</b><span>登入後第一次也會自動彈出這張卡；看完可勾「以後不再顯示」。想再看，右上角「<b>?</b>」→ 回到這裡就有。</span></div>
+</section>
 
 <!-- ================= 第 1 章 快速開始 ================= -->
 <section class="chap" id="start" data-title="快速開始：打開系統、加入主畫面、登入、改密碼">
@@ -1024,15 +1088,19 @@
   var chaps = document.querySelectorAll("section.chap");
   // 短標籤:橫向章節列用(全名太長);查不到就用章名前 4 字
   var SHORT = {
-    start: "快速開始", map: "功能地圖", field: "現場", supervisor: "工地主任",
+    cards: "速查卡", start: "快速開始", map: "功能地圖", field: "現場", supervisor: "工地主任",
     office: "辦公室", boss: "老闆", common: "共同功能", tips: "小功能",
     faq: "常見問題", trouble: "疑難排解"
   };
   var chapbarInner = document.getElementById("chapbarInner");
   var stickyhead = document.querySelector(".stickyhead");
-  chapbarInner.innerHTML = Array.prototype.map.call(chaps, function (chap, i) {
+  chapbarInner.innerHTML = Array.prototype.map.call(chaps, function (chap) {
     var title = chap.querySelector("h2").textContent.trim();
-    return '<a href="#' + chap.id + '" title="' + title + '"><span class="cn">' + (i + 1) + '</span>' +
+    // 章號從該節的 cnum 取(「第 3 章」→ 3);速查卡沒有章號 → 用 ★
+    var cn = chap.querySelector(".cnum").textContent.trim();
+    var m = cn.match(/第\s*(\d+)\s*章/);
+    var num = m ? m[1] : "★";
+    return '<a href="#' + chap.id + '" title="' + title + '"><span class="cn">' + num + '</span>' +
            (SHORT[chap.id] || title.slice(0, 4)) + '</a>';
   }).join("");
   var barLinks = chapbarInner.querySelectorAll("a");
