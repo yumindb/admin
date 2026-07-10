@@ -7,6 +7,20 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png">
 <title>裕民工務管理系統 — 使用說明書</title>
+<script>
+  // 說明書是給人「讀」的,不是 app 入口。若這頁被當成「加到主畫面」的 app
+  // 冷啟動(standalone,且不是從系統內按「?」點進來的),就自動跳回系統首頁。
+  // 這樣舊的、指到說明書的主畫面捷徑不用重加也會自動修正;在瀏覽器分頁正常閱讀不受影響。
+  (function () {
+    try {
+      var standalone =
+        window.navigator.standalone === true ||
+        (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+      var fromApp = document.referrer && new URL(document.referrer).origin === location.origin;
+      if (standalone && !fromApp) location.replace("/");
+    } catch (e) { /* 安全起見,出錯就正常顯示說明書 */ }
+  })();
+</script>
 <style>
   :root {
     --navy: #003153; --copper: #A07850; --paper: #F5F1EC; --ink: #5A5050; --line: #E0DCD6;
