@@ -32,6 +32,8 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic =
     pathname === "/login" ||
+    // 使用說明書:免登入就能看(登入頁、給新員工的連結都指向它)
+    pathname === "/manual.html" ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
     // Cron 用 CRON_SECRET bearer 守門,middleware 不擋(否則 Vercel Cron 會被重導到 /login)
