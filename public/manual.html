@@ -24,7 +24,9 @@
 
   /* ===== 固定頂部:標題+搜尋(上排) + 章節列(下排),整塊一起 sticky ===== */
   .stickyhead { position: sticky; top: 0; z-index: 60; }
+  /* topbar 疊在 chapbar 之上,搜尋結果下拉才不會被下面的章節列蓋住 */
   .topbar {
+    position: relative; z-index: 2;
     background: var(--navy); color: #E8E4DE;
     padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   }
@@ -34,6 +36,7 @@
 
   /* 章節列:常駐橫向捲動,目前章節高亮。桌機、手機都在頂部 */
   .chapbar {
+    position: relative; z-index: 1;
     background: var(--paper); border-bottom: 1px solid var(--line);
     overflow-x: auto; -webkit-overflow-scrolling: touch;
   }
