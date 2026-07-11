@@ -21,6 +21,8 @@ type CardDef = {
   line: string;
   items: [string, string][];
   manualHash: string;
+  /** 教學影片(免登入的 /videos/*.mp4,點了原生播放) — 與 manual.html 速查卡同步 */
+  videos: { href: string; label: string }[];
 };
 
 const CARDS: Record<Role, CardDef> = {
@@ -34,6 +36,10 @@ const CARDS: Record<Role, CardDef> = {
       ["要請假", "按底部「請假」→ 新請假，系統會自動往上送。"],
     ],
     manualHash: "field",
+    videos: [
+      { href: "/videos/field-basics.mp4", label: "打卡與拍照回報（3 分鐘）" },
+      { href: "/videos/field-leave.mp4", label: "用手機請假（1 分半）" },
+    ],
   },
   site_supervisor: {
     title: "工地主任",
@@ -46,6 +52,9 @@ const CARDS: Record<Role, CardDef> = {
       ["幫忙簽假單", "「請假」出現紅色數字時，點進去核准。"],
     ],
     manualHash: "supervisor",
+    videos: [
+      { href: "/videos/supervisor-log.mp4", label: "施工日誌從填到送（2 分半）" },
+    ],
   },
   office_staff: {
     title: "辦公室助理",
@@ -58,6 +67,9 @@ const CARDS: Record<Role, CardDef> = {
       ["有人忘打卡", "「報表 → 現場出勤」按「補登打卡」。"],
     ],
     manualHash: "office",
+    videos: [
+      { href: "/videos/office-overview.mp4", label: "系統全覽（3 分鐘，建議電腦看）" },
+    ],
   },
   owner: {
     title: "老闆",
@@ -69,6 +81,9 @@ const CARDS: Record<Role, CardDef> = {
       ["看現場照片", "手機底部「回報」隨時看得到現場拍的照片。"],
     ],
     manualHash: "boss",
+    videos: [
+      { href: "/videos/owner-overview.mp4", label: "核定與儀表板（1 分半）" },
+    ],
   },
 };
 
@@ -124,11 +139,11 @@ export function RoleWelcomeCard({
       onClick={close}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-t-2xl border border-[#E0DCD6] bg-card shadow-xl sm:rounded-2xl"
+        className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-[#E0DCD6] bg-card shadow-xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* header */}
-        <div className="px-6 pt-6 pb-4" style={{ background: card.color }}>
+        <div className="shrink-0 px-6 pt-6 pb-4" style={{ background: card.color }}>
           <div className="text-sm text-white/80">歡迎，{fullName}</div>
           <div className="mt-1 flex items-center gap-2">
             <h2 className="text-2xl font-semibold text-white">{card.title}</h2>
@@ -139,8 +154,8 @@ export function RoleWelcomeCard({
           <p className="mt-2 text-[15px] leading-relaxed text-white/90">{card.line}</p>
         </div>
 
-        {/* 3-4 件基本的事 */}
-        <div className="px-6 py-5">
+        {/* 3-4 件基本的事(中段可捲,手機小螢幕才不會把按鈕擠出畫面) */}
+        <div className="min-h-0 overflow-y-auto px-6 py-5">
           <div className="mb-3 text-sm font-medium text-muted-foreground">
             你平常只要做這幾件事：
           </div>
@@ -161,7 +176,23 @@ export function RoleWelcomeCard({
             ))}
           </ul>
 
-          <div className="mt-4 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2.5 text-sm text-muted-foreground">
+          {/* 教學影片 — 點了直接原生播放 */}
+          <div className="mt-4 space-y-2">
+            {card.videos.map((v) => (
+              <a
+                key={v.href}
+                href={v.href}
+                target="_blank"
+                rel="noopener"
+                className="flex min-h-11 items-center gap-2.5 rounded-md border border-[#A07850]/40 bg-[#FAF7F2] px-3 py-2.5 text-sm font-medium text-accent transition-colors hover:border-accent active:bg-[#F0EBE4]"
+              >
+                <span aria-hidden>▶</span>
+                <span>教學影片：{v.label}</span>
+              </a>
+            ))}
+          </div>
+
+          <div className="mt-3 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2.5 text-sm text-muted-foreground">
             需要更詳細的步驟、或用聽的？
             <a
               href={`/manual.html#${card.manualHash}`}
@@ -176,7 +207,7 @@ export function RoleWelcomeCard({
         </div>
 
         {/* footer */}
-        <div className="flex flex-col gap-3 border-t border-[#E0DCD6] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-[#E0DCD6] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
