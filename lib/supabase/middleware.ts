@@ -34,6 +34,8 @@ export async function updateSession(request: NextRequest) {
     pathname === "/login" ||
     // 使用說明書:免登入就能看(登入頁、給新員工的連結都指向它)
     pathname === "/manual.html" ||
+    // 教學影片:跟說明書一樣免登入(速查卡的影片連結;新員工拿到帳號前就能先看)
+    pathname.startsWith("/videos/") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
     // Cron 用 CRON_SECRET bearer 守門,middleware 不擋(否則 Vercel Cron 會被重導到 /login)
