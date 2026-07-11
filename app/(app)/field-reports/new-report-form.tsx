@@ -9,6 +9,7 @@ import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
 import { NextStepHint } from "@/components/next-step-hint";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
+import { evaluateGeofence } from "@/lib/geo";
 import { isOfflineErrorMessage } from "@/lib/offline-clock-queue";
 import {
   enqueueReport,
@@ -85,6 +86,32 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
   const sessionUploadsRef = useRef<Set<string>>(new Set());
   // 隱式 GPS 戳記:已授權才靜默取(未授權不彈視窗、不擋送出)
   const silentLoc = useSilentLocationOnce();
+
+  // 人已在某工地範圍內 → 自動選好該案場(跟打卡頁的自動推薦同一套邏輯)。
+  // 只在草稿還原完、沒有 preset、使用者也還沒自己選時做一次;選錯隨時可改。
+  const autoPickedRef = useRef(false);
+  useEffect(() => {
+    if (autoPickedRef.current || !hydrated || !silentLoc || caseId || reportId) return;
+    const candidates = cases
+      .map((c) => ({
+        id: c.id,
+        ev: evaluateGeofence(
+          {
+            lat: c.lat ?? null,
+            lng: c.lng ?? null,
+            geofence_radius_m: c.geofence_radius_m ?? 300,
+          },
+          { lat: silentLoc.lat, lng: silentLoc.lng },
+        ),
+      }))
+      .filter((x) => x.ev.withinGeofence && x.ev.distanceM !== null)
+      .sort((a, b) => (a.ev.distanceM ?? 0) - (b.ev.distanceM ?? 0));
+    if (candidates.length > 0) {
+      autoPickedRef.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 同步外部系統(GPS)的一次性預選
+      setCaseId(candidates[0].id);
+    }
+  }, [hydrated, silentLoc, caseId, reportId, cases]);
 
   // 離線排隊狀態(僅新建時走 queue;編輯不排隊 — 已存在的 record 等連線好再改即可)
   const [pending, setPending] = useState<PendingReport[]>([]);

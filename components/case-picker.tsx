@@ -11,6 +11,8 @@ export type CasePickerOption = {
   // migration-2.20:可選座標。提供時 picker 依距離排序 + 顯示「離我多遠」
   lat?: number | null;
   lng?: number | null;
+  // 可選 geofence 半徑 — 回報表單用來「人在範圍內就自動選好案場」;picker 本身不用
+  geofence_radius_m?: number | null;
 };
 
 /**

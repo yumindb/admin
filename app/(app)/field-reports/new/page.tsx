@@ -27,10 +27,11 @@ export default async function NewFieldReportPage({
     redirect("/field-reports");
   }
 
-  // migration-2.20 起加 lat/lng 給 CasePicker 依距離排序
+  // migration-2.20 起加 lat/lng 給 CasePicker 依距離排序;
+  // geofence_radius_m 給「人在工地範圍內就自動選好案場」用
   const { data: cases } = await supabase
     .from("cases")
-    .select("id, name, code, lat, lng")
+    .select("id, name, code, lat, lng, geofence_radius_m")
     .eq("status", "active")
     .order("created_at", { ascending: false });
 
@@ -40,6 +41,7 @@ export default async function NewFieldReportPage({
     code: c.code as string | null,
     lat: c.lat as number | null,
     lng: c.lng as number | null,
+    geofence_radius_m: c.geofence_radius_m as number | null,
   }));
 
   return (
