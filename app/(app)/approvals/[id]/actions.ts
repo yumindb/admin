@@ -72,7 +72,12 @@ async function loadLogStage(supabase: Awaited<ReturnType<typeof createClient>>, 
 /**
  * 通過當前關卡。每關都要帶 signatureUrl。
  */
-export async function approveStageAction(payload: ActPayload) {
+export async function approveStageAction(
+  payload: ActPayload,
+  // 內部參數:批簽(batchApproveAction)逐筆呼叫時抑制單筆 LINE 通知,
+  // 改由批次結束後送彙總通知(省官方帳號訊息額度)。client 端不會帶。
+  internal?: { suppressNotify?: boolean },
+) {
   const { supabase, user, role } = await getActor();
   if (!user || !role) return { ok: false as const, error: "未登入" };
 
@@ -187,6 +192,19 @@ export async function approveStageAction(payload: ActPayload) {
     );
   }
 
+  // LINE 通知(不阻塞、失敗不影響簽核):
+  //   audit 過關 → 通知老闆待核定;老闆核定通過 → 通知主任
+  if (!internal?.suppressNotify) {
+    after(async () => {
+      const events = await import("@/lib/notifications/events");
+      if (nextStage === null) {
+        await events.notifyLogApproved(payload.logId);
+      } else if (nextStage === "approve") {
+        await events.notifyLogAwaitingApproval(payload.logId);
+      }
+    });
+  }
+
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);
   return { ok: true as const };
@@ -245,6 +263,13 @@ export async function rejectStageAction(payload: ActPayload) {
     );
   }
 
+  // LINE 通知主任:日誌被退回(附原因)
+  const rejectComment = payload.comment.trim();
+  after(async () => {
+    const { notifyLogRejected } = await import("@/lib/notifications/events");
+    await notifyLogRejected(payload.logId, rejectComment);
+  });
+
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);
   return { ok: true as const };
@@ -294,11 +319,15 @@ export async function batchApproveAction(payload: {
       if (i >= logIds.length) return;
       const id = logIds[i];
       try {
-        const res = await approveStageAction({
-          logId: id,
-          signatureUrl,
-          comment,
-        });
+        const res = await approveStageAction(
+          {
+            logId: id,
+            signatureUrl,
+            comment,
+          },
+          // 批簽抑制單筆通知,批完送彙總(見下方)
+          { suppressNotify: true },
+        );
         if (res.ok) {
           okList.push(id);
         } else {
@@ -311,6 +340,22 @@ export async function batchApproveAction(payload: {
     }
   });
   await Promise.all(workers);
+
+  // 批簽彙總通知:一批只送一則(而不是 N 則),省官方帳號訊息額度。
+  //   office_staff 批審核 → 通知老闆「N 份待核定」
+  //   owner 批核定 → 依主任分組,各通知「你的 N 份已核定」
+  if (okList.length > 0) {
+    const { role } = await getActor();
+    const approvedIds = [...okList];
+    after(async () => {
+      const events = await import("@/lib/notifications/events");
+      if (role === "office_staff") {
+        await events.notifyLogsBatchAwaitingApproval(approvedIds.length);
+      } else if (role === "owner") {
+        await events.notifyLogsBatchApproved(approvedIds);
+      }
+    });
+  }
 
   return { ok: okList, failed };
 }
@@ -388,6 +433,12 @@ export async function forceRejectStuckLogAction(payload: {
       { logId: payload.logId, err: insErr.message },
     );
   }
+
+  // LINE 通知主任:日誌被強制退回(附原因)
+  after(async () => {
+    const { notifyLogRejected } = await import("@/lib/notifications/events");
+    await notifyLogRejected(payload.logId, reason, { forced: true });
+  });
 
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);

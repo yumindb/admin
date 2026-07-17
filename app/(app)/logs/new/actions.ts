@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateGeofence } from "@/lib/geo";
 import type {
@@ -351,6 +352,16 @@ export async function saveLogAction(payload: SaveLogPayload) {
       signature_url: payload.fillSignatureUrl,
     });
     if (sigErr) return { ok: false, error: "簽名儲存失敗：" + sigErr.message };
+  }
+
+  // 送出成功(首次或重送)→ LINE 通知辦公室助理有日誌進 audit 關。
+  // 放在 after():不阻塞 response,通知失敗也不影響日誌本身。
+  if (payload.intent === "submit" && logId) {
+    const notifyLogId = logId;
+    after(async () => {
+      const { notifyLogSubmitted } = await import("@/lib/notifications/events");
+      await notifyLogSubmitted(notifyLogId);
+    });
   }
 
   // 把整合進來的現場回報翻成 merged。

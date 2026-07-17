@@ -72,8 +72,9 @@ draft →[主任填表+簽名 fill]→ submitted+review
 | `/my-cases` | field_assistant / supervisor 的個人案件視角 |
 | `/reports/*` | 出勤、簽核延遲、未簽約、工項、案件總覽等報表 + xlsx 匯出 |
 | `/staff` | 帳號管理（office_staff / owner） |
-| `/account` | 個人設定 |
+| `/account` | 個人設定（改密碼、LINE 通知綁定） |
 | `/api/cron/*` | Vercel cron 入口（見下方「排程」節） |
+| `/api/line/webhook` | LINE 官方帳號 webhook（綁定碼、解除綁定；詳見 [`docs/LINE.md`](LINE.md)） |
 
 登入方式：**帳號（username）+ 密碼**，不是 email（server 端 username→email 映射）。
 
@@ -81,7 +82,8 @@ draft →[主任填表+簽名 fill]→ submitted+review
 
 - 表：profiles, cases, case_work_items, daily_logs, log_approvals, tender_imports,
   field_reports, daily_log_revisions, extra_contracts, login_attempts, audit_logs,
-  attendance_events, leave_requests, leave_approvals（+ storage buckets:
+  attendance_events, leave_requests, leave_approvals, line_bindings,
+  notification_queue（+ storage buckets:
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
 - **RLS 是正式 role-based**（migration-2.10 起），不是 POC 全開版。改 policy 前先讀
   MIGRATIONS.md 2.10 / 2.14 / 2.15 / 2.18 的收緊歷史。
@@ -98,7 +100,8 @@ draft →[主任填表+簽名 fill]→ submitted+review
   **silent deploy failure**（push 後完全不 deploy、無報錯）— 踩過一次（2026-05-17）。
   改 `vercel.json` 後務必確認 deploy 有觸發。
 - 現有 cron：`cleanup-orphan-photos`（23:30 台北）、`recheck-stuck-pdfs`（00:00 台北）。
-  資料留存清理（audit/log 表 retention，`lib/retention.ts`）掛在既有 cron route 內執行。
+  資料留存清理（audit/log 表 retention，`lib/retention.ts`）與 LINE 通知重試/佇列清理
+  （`lib/notifications/notify.ts`）都掛在 `recheck-stuck-pdfs` route 內執行。
 - **每日備份**：GitHub Actions `backup.yml`（02:00 台北）→ DB pg_dump + Storage → Cloudflare R2；
   失敗寄 email、每週寄 heartbeat。細節見 [`docs/BACKUP.md`](BACKUP.md)。
 - Secrets / production 憑證放 `D:\Evelyn\_secrets\`（本機）+ GitHub Actions secrets，
@@ -153,6 +156,7 @@ draft →[主任填表+簽名 fill]→ submitted+review
 
 - [`docs/decisions.md`](decisions.md) — 各 Phase 決策記錄（why）。**改架構前必讀**
 - [`docs/MIGRATIONS.md`](MIGRATIONS.md) — migration 執行順序 + 排錯
+- [`docs/LINE.md`](LINE.md) — LINE 通知架構、後台設定、額度成本、疑難排解
 - [`docs/BACKUP.md`](BACKUP.md) — 備份機制
 - [`docs/SETUP.md`](SETUP.md) — 初始建置紀錄（歷史文件，內容為 POC 時期）
 - `docs/schema.sql` — 初始 schema（之後的變更都在 migration-2.X.sql）
@@ -168,7 +172,8 @@ draft →[主任填表+簽名 fill]→ submitted+review
 
 ## 已知待辦（大方向）
 
-- LINE 整合（Phase 5，另議 4 週）：通知推播、LIFF 打卡
+- LINE 整合（Phase 5）：**通知推播已上線（2026-07，見 docs/LINE.md）**；LIFF 打卡未做
+- LINE 訊息額度觀察：免費方案 200 則/月，試用期後視用量決定是否升級中用量（NT$800/月）
 - 離線送出「日誌」（打卡與現場回報已有前景排隊；日誌還沒有）
 - work_item_library 跨案工項詞典（Phase 3 構想）
 - 登入頁仍顯示「POC 試用」字樣，正式命名後要改

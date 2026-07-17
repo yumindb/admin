@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateGeofence } from "@/lib/geo";
 import type { FieldReportPhoto, UserRole } from "@/lib/types";
@@ -87,6 +88,15 @@ export async function createFieldReportAction(payload: ReportPayload) {
   if (error || !data) {
     return { ok: false, error: "儲存失敗：" + (error?.message ?? "unknown") };
   }
+
+  // LINE 通知辦公室助理有新回報(不阻塞、失敗不影響回報)
+  const newReportId = data.id as string;
+  after(async () => {
+    const { notifyFieldReportCreated } = await import(
+      "@/lib/notifications/events"
+    );
+    await notifyFieldReportCreated(newReportId);
+  });
 
   revalidatePath("/field-reports");
   revalidatePath("/logs/new");

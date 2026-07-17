@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { getActor } from "@/lib/auth/require-role";
+import { generateBindingCode } from "@/lib/line/binding";
+import { BINDING_CODE_TTL_MINUTES } from "@/lib/line/constants";
 
 export type ChangePasswordState =
   | { ok: true; message: string }
@@ -88,4 +91,81 @@ export async function changePasswordAction(
 
   revalidatePath("/account");
   return { ok: true, message: "密碼已更新。下次登入請使用新密碼。" };
+}
+
+// ============================================================
+// LINE 綁定(migration-2.27:line_bindings,RLS 只准動自己那列)
+// ============================================================
+
+export type BindingCodeResult =
+  | { ok: true; code: string; ttlMinutes: number }
+  | { ok: false; error: string };
+
+/**
+ * 產生 6 位數綁定碼(30 分鐘有效)。
+ * 使用者把碼傳給 LINE 官方帳號,webhook 比對後完成綁定。
+ * 重複按 = 換一組新碼(舊碼即失效)。
+ */
+export async function generateLineBindingCodeAction(): Promise<BindingCodeResult> {
+  const me = await getActor();
+  const supabase = await createClient();
+  const expiresAt = new Date(
+    Date.now() + BINDING_CODE_TTL_MINUTES * 60 * 1000,
+  ).toISOString();
+
+  // 6 位數有一百萬組,撞碼機率極低;撞到(unique violation)就重骰,最多 5 次
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateBindingCode();
+    const { error } = await supabase.from("line_bindings").upsert(
+      {
+        profile_id: me.id,
+        binding_code: code,
+        binding_code_expires_at: expiresAt,
+      },
+      { onConflict: "profile_id" },
+    );
+    if (!error) {
+      revalidatePath("/account");
+      return { ok: true, code, ttlMinutes: BINDING_CODE_TTL_MINUTES };
+    }
+    if (!error.message.includes("duplicate") && error.code !== "23505") {
+      return { ok: false, error: "產生綁定碼失敗：" + error.message };
+    }
+  }
+  return { ok: false, error: "產生綁定碼失敗，請再試一次" };
+}
+
+export type LineActionResult = { ok: true } | { ok: false; error: string };
+
+/** 解除綁定(之後不再收到任何通知;可隨時重新綁定) */
+export async function unbindLineAction(): Promise<LineActionResult> {
+  const me = await getActor();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("line_bindings")
+    .update({
+      line_user_id: null,
+      bound_at: null,
+      binding_code: null,
+      binding_code_expires_at: null,
+    })
+    .eq("profile_id", me.id);
+  if (error) return { ok: false, error: "解除綁定失敗：" + error.message };
+  revalidatePath("/account");
+  return { ok: true };
+}
+
+/** 暫停 / 恢復通知(保留綁定) */
+export async function setLineNotificationsAction(
+  enabled: boolean,
+): Promise<LineActionResult> {
+  const me = await getActor();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("line_bindings")
+    .update({ notifications_enabled: enabled })
+    .eq("profile_id", me.id);
+  if (error) return { ok: false, error: "設定失敗：" + error.message };
+  revalidatePath("/account");
+  return { ok: true };
 }

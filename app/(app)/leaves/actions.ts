@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole, getActor } from "@/lib/auth/require-role";
@@ -104,6 +105,13 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
     return { ok: false, error: "送出失敗：" + (error?.message ?? "未知錯誤") };
   }
 
+  // LINE 通知第一關簽核角色(不阻塞、失敗不影響請假)
+  const newRequestId = data.id as string;
+  after(async () => {
+    const { notifyLeaveSubmitted } = await import("@/lib/notifications/events");
+    await notifyLeaveSubmitted(newRequestId);
+  });
+
   revalidatePath("/leaves");
   return { ok: true, requestId: data.id as string };
 }
@@ -187,6 +195,17 @@ export async function approveLeaveAction(input: {
     return { ok: false, error: "更新狀態失敗：" + updErr.message };
   }
 
+  // LINE 通知:還有下一關 → 通知該關角色;最後一關過 → 通知申請人已核准
+  const requestId = req.id as string;
+  after(async () => {
+    const events = await import("@/lib/notifications/events");
+    if (next) {
+      await events.notifyLeaveAdvanced(requestId, next);
+    } else {
+      await events.notifyLeaveResolved(requestId, "approved");
+    }
+  });
+
   revalidatePath("/leaves");
   revalidatePath(`/leaves/${req.id}`);
   return { ok: true };
@@ -250,6 +269,14 @@ export async function rejectLeaveAction(input: {
   if (updErr) {
     return { ok: false, error: "更新狀態失敗：" + updErr.message };
   }
+
+  // LINE 通知申請人:請假被退回(附原因)
+  const requestId = req.id as string;
+  const rejectComment = parsed.data.comment;
+  after(async () => {
+    const { notifyLeaveResolved } = await import("@/lib/notifications/events");
+    await notifyLeaveResolved(requestId, "rejected", rejectComment);
+  });
 
   revalidatePath("/leaves");
   revalidatePath(`/leaves/${req.id}`);

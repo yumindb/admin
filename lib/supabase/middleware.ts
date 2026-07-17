@@ -40,6 +40,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/auth") ||
     // Cron 用 CRON_SECRET bearer 守門,middleware 不擋(否則 Vercel Cron 會被重導到 /login)
     pathname.startsWith("/api/cron/") ||
+    // LINE webhook 用 X-Line-Signature 守門(LINE 平台呼叫,沒有 Supabase session)
+    pathname.startsWith("/api/line/") ||
     pathname === "/favicon.ico";
 
   if (!user && !isPublic) {

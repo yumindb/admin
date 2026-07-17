@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
 import { PasswordForm } from "./password-form";
+import { LineBindingCard } from "./line-binding-card";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
@@ -23,6 +24,20 @@ export default async function AccountPage() {
     .select("full_name, role, company, phone")
     .eq("id", user.id)
     .maybeSingle();
+
+  // LINE 綁定狀態(migration-2.27;還沒跑 migration 時 data 會是 null,卡片顯示未綁定)
+  const { data: lineBinding } = await supabase
+    .from("line_bindings")
+    .select("line_user_id, bound_at, notifications_enabled")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+  const lineBound = Boolean(lineBinding?.line_user_id);
+  const boundAtText = lineBinding?.bound_at
+    ? new Intl.DateTimeFormat("zh-TW", {
+        timeZone: "Asia/Taipei",
+        dateStyle: "medium",
+      }).format(new Date(lineBinding.bound_at as string))
+    : null;
 
   const roleLabel = profile?.role
     ? ROLE_LABEL[profile.role] ?? profile.role
@@ -54,6 +69,20 @@ export default async function AccountPage() {
         <p className="mt-3 text-xs text-muted-foreground">
           以上欄位若需更動，請聯絡管理員。
         </p>
+      </section>
+
+      <section className="mb-8 rounded-lg border border-[#E0DCD6] bg-card p-5">
+        <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">
+          LINE 通知
+        </h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          綁定 LINE 後，待簽核、退回、請假結果等通知會即時傳到你的 LINE。
+        </p>
+        <LineBindingCard
+          bound={lineBound}
+          boundAtText={boundAtText}
+          notificationsEnabled={lineBinding?.notifications_enabled ?? true}
+        />
       </section>
 
       <section className="rounded-lg border border-[#E0DCD6] bg-card p-5">

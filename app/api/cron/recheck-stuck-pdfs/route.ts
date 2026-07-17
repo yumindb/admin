@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { cleanupOldLogs } from "@/lib/retention";
+import { retryPendingNotifications } from "@/lib/notifications/notify";
 
-// 兩個工作合併:PDF flip 數秒,retention 通常數秒(三張小表 delete)。
-export const maxDuration = 30;
+// 三個工作合併:PDF flip 數秒,retention 數秒,通知重試最多 50 則。
+export const maxDuration = 60;
 
 /**
- * 夜間 housekeeping(2 個工作 — 為了不超過 Vercel Hobby plan 的 2-cron 上限,
+ * 夜間 housekeeping(3 個工作 — 為了不超過 Vercel Hobby plan 的 2-cron 上限,
  * 共用同一個 endpoint 一次跑完):
  *
  *   1. 把卡在 pdf_status='generating' 太久(>10 分鐘)的日誌翻成 'failed'
  *   2. 清理過期的 login_attempts / daily_log_revisions / audit_logs(見 lib/retention)
+ *   3. 重試沒送成的 LINE 通知 + 清 30 天前的 notification_queue(見 lib/notifications)
  *
  * 觸發:每天 UTC 16:00(台北 00:00),見 vercel.json。
  *
@@ -78,10 +80,20 @@ export async function GET(request: Request) {
     );
   }
 
+  // 第三件事:LINE 通知重試 + 佇列清理
+  const notifications = await retryPendingNotifications(supabase);
+  if (notifications.error) {
+    console.error(
+      "[recheck-stuck-pdfs] notification retry failed:",
+      notifications.error,
+    );
+  }
+
   return NextResponse.json({
-    ok: !retentionError,
+    ok: !retentionError && !notifications.error,
     flipped: flippedCount,
     ids: stuckIds,
     retention,
+    notifications,
   });
 }

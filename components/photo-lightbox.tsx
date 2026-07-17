@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export type LightboxPhoto = {
@@ -11,7 +11,7 @@ export type LightboxPhoto = {
 /**
  * 全螢幕照片放大檢視 + 上下張切換 + 照片下方顯示 caption。
  *
- * 點背景或 × 關閉、點圖本身不關。←→ 鍵或左右箭頭按鈕在 photos 中切換。ESC 關閉。
+ * 點背景或 × 關閉、點圖本身不關。←→ 鍵、左右箭頭按鈕、或手機左右滑動在 photos 中切換。ESC 關閉。
  *
  * 用法:
  *   const [path, setPath] = useState<string | null>(null);
@@ -44,6 +44,32 @@ export function PhotoLightbox({
   const hasNext = idx >= 0 && idx < paths.length - 1;
   const caption = idx >= 0 ? items[idx]?.caption ?? null : null;
 
+  // 手機滑動切換：記下 touchstart 座標，touchend 時判斷水平位移
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  function onTouchStart(e: React.TouchEvent) {
+    // 多指（縮放）不當作滑動
+    touchStart.current =
+      e.touches.length === 1
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+        : null;
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    // 水平位移要夠大、且明顯大於垂直位移，才算滑動（避免誤觸捲動）
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx > 0 && hasPrev) {
+      onChange(paths[idx - 1]); // 往右滑 → 上一張
+    } else if (dx < 0 && hasNext) {
+      onChange(paths[idx + 1]); // 往左滑 → 下一張
+    }
+  }
+
   // 鍵盤:ESC 關閉、←→ 切換
   useEffect(() => {
     if (!path) return;
@@ -67,7 +93,9 @@ export function PhotoLightbox({
       role="dialog"
       aria-modal="true"
       onClick={() => onChange(null)}
-      className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/85 p-4"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      className="fixed inset-0 z-[70] flex touch-pan-y flex-col items-center justify-center bg-black/85 p-4"
     >
       <div
         className="flex w-full flex-1 items-center justify-center overflow-hidden"
