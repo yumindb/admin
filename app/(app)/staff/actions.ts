@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { usernameSchema, usernameToEmail } from "@/lib/auth/username";
+import { CATEGORY_KEYS } from "@/lib/notifications/prefs";
 import type { StaffActionResult } from "./types";
 
 async function requireManager() {
@@ -147,6 +148,50 @@ export async function resetPasswordAction(
   const upd = await admin.auth.admin.updateUserById(userId, { password });
   if (upd.error) return { ok: false, error: upd.error.message };
 
+  return { ok: true };
+}
+
+/**
+ * 設定某人的 LINE 通知分類開關(migration-2.28)。
+ * 只有老闆 / 辦公室助理可操作;寫入走 service-role(line_bindings RLS 只准
+ * 本人動自己那列,管理端統一從這裡過 requireManager 後代寫)。
+ * 對方還沒綁定 LINE 也能先設定(建一列 line_user_id 為 null 的 row),
+ * 綁定完成後設定直接生效。
+ */
+export async function setNotificationPrefsAction(input: {
+  userId: string;
+  prefs: Record<string, boolean>;
+}): Promise<StaffActionResult> {
+  const auth = await requireManager();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const parsed = z
+    .object({
+      userId: z.string().uuid(),
+      prefs: z.record(z.string(), z.boolean()),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: "輸入格式錯誤" };
+
+  // 只收合法分類 key,其他丟掉(防手殘或惡意欄位塞進 jsonb)
+  const cleaned: Record<string, boolean> = {};
+  for (const key of CATEGORY_KEYS) {
+    const v = parsed.data.prefs[key];
+    if (typeof v === "boolean") cleaned[key] = v;
+  }
+
+  const admin = createServiceClient();
+  const { error } = await admin.from("line_bindings").upsert(
+    {
+      profile_id: parsed.data.userId,
+      notification_prefs: cleaned,
+    },
+    { onConflict: "profile_id" },
+  );
+  if (error) return { ok: false, error: "儲存失敗：" + error.message };
+
+  revalidatePath("/staff");
+  revalidatePath("/account");
   return { ok: true };
 }
 

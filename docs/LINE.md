@@ -43,7 +43,18 @@ server actions(簽核/請假/回報成功後)
 | 請假核准 / 退回 | 申請人 | green / red |
 | 現場回報 | office_staff(排除回報人) | amber |
 
-只推給「已綁定 + 通知開啟」的人;沒人綁定就完全不寫佇列。
+實際收件人還要過三道過濾(依序):
+
+1. **已綁定 LINE**(line_bindings.line_user_id 非空)
+2. **總開關開啟**(notifications_enabled;本人可在 /account 暫停)
+3. **分類開關**(migration-2.28,`notification_prefs` jsonb,白名單制):
+   - 通知拆 5 類:日誌待簽核 / 日誌結果 / 請假待簽核 / 請假結果 / 現場回報
+     (事件 → 分類對照見 `lib/notifications/prefs.ts` 的 `EVENT_CATEGORY`)
+   - 由老闆 / 辦公室助理在 **/staff →「通知」按鈕** 幫每個人設定;
+     可在對方還沒綁定前先設,綁定後生效
+   - 沒設定過的人走角色預設:**owner / office_staff 全開;
+     site_supervisor / field_assistant 全關**(要收通知得先被開啟)
+   - /account 綁定卡會顯示本人目前會收到哪些分類(唯讀)
 
 ## ⚠ 訊息額度(成本)
 

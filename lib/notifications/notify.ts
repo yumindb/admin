@@ -6,6 +6,11 @@ import {
   type LineMessage,
 } from "@/lib/line/client";
 import type { UserRole } from "@/lib/types";
+import {
+  EVENT_CATEGORY,
+  isCategoryEnabled,
+  type NotificationPrefs,
+} from "@/lib/notifications/prefs";
 
 /**
  * 推播佇列核心 — 所有通知都經過這裡:
@@ -52,7 +57,7 @@ export async function sendNotification(input: NotifyInput): Promise<void> {
   try {
     const supabase = createServiceClient();
 
-    // 1. 解析收件人
+    // 1. 解析收件人(統一撈 id + role:role 除了選人,也用來算分類偏好的角色預設)
     const targetIds = new Set<string>(input.recipients.profileIds ?? []);
     if (input.recipients.roles && input.recipients.roles.length > 0) {
       const { data: roleProfiles, error } = await supabase
@@ -71,18 +76,44 @@ export async function sendNotification(input: NotifyInput): Promise<void> {
     }
     if (targetIds.size === 0) return;
 
-    // 2. 只留已綁定 + 通知開啟的
-    const { data: bindings, error: bindErr } = await supabase
+    const { data: targetProfiles, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .in("id", Array.from(targetIds))
+      .eq("is_active", true);
+    if (profErr) {
+      console.error("[notifications] 讀收件人 profiles 失敗:", profErr.message);
+      return;
+    }
+    const roleById = new Map(
+      (targetProfiles ?? []).map((p) => [p.id as string, p.role as UserRole]),
+    );
+
+    // 2. 只留「已綁定 + 總開關開啟 + 這個分類有開」的人。
+    //    分類開關(migration-2.28):明確設定值優先,沒設走角色預設
+    //    (owner / office_staff 全開;主任 / 現場人員全關 — 白名單制)。
+    const category = EVENT_CATEGORY[input.eventType];
+    const { data: rawBindings, error: bindErr } = await supabase
       .from("line_bindings")
-      .select("profile_id, line_user_id")
-      .in("profile_id", Array.from(targetIds))
+      .select("profile_id, line_user_id, notification_prefs")
+      .in("profile_id", Array.from(roleById.keys()))
       .eq("notifications_enabled", true)
       .not("line_user_id", "is", null);
     if (bindErr) {
       console.error("[notifications] 讀 line_bindings 失敗:", bindErr.message);
       return;
     }
-    if (!bindings || bindings.length === 0) return;
+    const bindings = (rawBindings ?? []).filter((b) => {
+      const role = roleById.get(b.profile_id as string);
+      if (!role) return false;
+      if (!category) return true; // 未登記分類的事件不過濾(目前不會發生)
+      return isCategoryEnabled(
+        b.notification_prefs as NotificationPrefs | null,
+        role,
+        category,
+      );
+    });
+    if (bindings.length === 0) return;
 
     // 3. 去重(十分鐘內同 profile + event + related 已送過就跳過)
     const cutoff = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();

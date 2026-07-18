@@ -35,6 +35,7 @@
 | 29 | [`migration-2.25.sql`](migration-2.25.sql) | login_attempts 加 user_agent + ip(登入紀錄管理頁 /reports/logins)| 必跑 |
 | 30 | [`migration-2.26.sql`](migration-2.26.sql) | attendance_events 支援辦公室補登(source 加 'manual'、lat/lng 可空)| 必跑 |
 | 31 | [`migration-2.27.sql`](migration-2.27.sql) | LINE 通知:line_bindings(綁定碼流程)+ notification_queue(推播佇列)+ RLS(見 [`LINE.md`](LINE.md))| 必跑 |
+| 32 | [`migration-2.28.sql`](migration-2.28.sql) | LINE 通知偏好:line_bindings 加 notification_prefs jsonb(白名單制分類開關,/staff 設定)| 必跑 |
 
 ## 排錯
 

@@ -18,6 +18,7 @@ import {
   ChevronRight,
   LayoutGrid,
   Rows3,
+  Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +30,13 @@ import {
   updateStaffAction,
   resetPasswordAction,
   toggleActiveAction,
+  setNotificationPrefsAction,
 } from "./actions";
+import {
+  NOTIFICATION_CATEGORIES,
+  resolvePrefs,
+  type NotificationCategory,
+} from "@/lib/notifications/prefs";
 import type { StaffActionResult } from "./types";
 import type { StaffRow } from "./page";
 
@@ -105,6 +112,7 @@ type ModalMode =
   | { kind: "create" }
   | { kind: "edit"; staff: StaffRow }
   | { kind: "reset"; staff: StaffRow }
+  | { kind: "notify"; staff: StaffRow }
   | null;
 
 type ViewMode = "card" | "table";
@@ -294,6 +302,7 @@ export function StaffManager({
             canManage={canManage}
             onEdit={(s) => setModal({ kind: "edit", staff: s })}
             onReset={(s) => setModal({ kind: "reset", staff: s })}
+            onNotify={(s) => setModal({ kind: "notify", staff: s })}
           />
         ) : (
           <div className="space-y-6">
@@ -306,6 +315,7 @@ export function StaffManager({
                 currentUserRole={currentUserRole}
                 onEdit={(s) => setModal({ kind: "edit", staff: s })}
                 onReset={(s) => setModal({ kind: "reset", staff: s })}
+                onNotify={(s) => setModal({ kind: "notify", staff: s })}
               />
             ))}
           </div>
@@ -321,6 +331,9 @@ export function StaffManager({
       )}
       {modal?.kind === "reset" && (
         <ResetModal staff={modal.staff} onClose={() => setModal(null)} />
+      )}
+      {modal?.kind === "notify" && (
+        <NotifyModal staff={modal.staff} onClose={() => setModal(null)} />
       )}
     </div>
   );
@@ -507,12 +520,14 @@ function StaffTable({
   canManage,
   onEdit,
   onReset,
+  onNotify,
 }: {
   staff: StaffRow[];
   currentUserId: string;
   canManage: boolean;
   onEdit: (s: StaffRow) => void;
   onReset: (s: StaffRow) => void;
+  onNotify: (s: StaffRow) => void;
 }) {
   if (staff.length === 0) {
     return (
@@ -548,6 +563,7 @@ function StaffTable({
                 canManage={canManage}
                 onEdit={() => onEdit(s)}
                 onReset={() => onReset(s)}
+                onNotify={() => onNotify(s)}
               />
             ))}
           </tbody>
@@ -563,12 +579,14 @@ function StaffTableRow({
   canManage,
   onEdit,
   onReset,
+  onNotify,
 }: {
   staff: StaffRow;
   isSelf: boolean;
   canManage: boolean;
   onEdit: () => void;
   onReset: () => void;
+  onNotify: () => void;
 }) {
   const role = ROLE_BY_KEY.get(staff.role as UserRole);
   const Icon = role?.icon ?? UserCog;
@@ -655,6 +673,15 @@ function StaffTableRow({
               <KeyRound className="size-3" />
               改密碼
             </button>
+            <button
+              type="button"
+              onClick={onNotify}
+              title="LINE 通知設定"
+              className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-2 py-1 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
+            >
+              <Bell className="size-3" />
+              通知
+            </button>
             {!isSelf && (
               <button
                 type="button"
@@ -703,6 +730,7 @@ function RoleSection({
   currentUserRole,
   onEdit,
   onReset,
+  onNotify,
 }: {
   role: RoleMeta;
   staff: StaffRow[];
@@ -710,6 +738,7 @@ function RoleSection({
   currentUserRole: UserRole;
   onEdit: (s: StaffRow) => void;
   onReset: (s: StaffRow) => void;
+  onNotify: (s: StaffRow) => void;
 }) {
   const Icon = role.icon;
   const activeCount = staff.filter((s) => s.is_active).length;
@@ -745,6 +774,7 @@ function RoleSection({
               }
               onEdit={() => onEdit(s)}
               onReset={() => onReset(s)}
+              onNotify={() => onNotify(s)}
             />
           ))}
         </div>
@@ -760,6 +790,7 @@ function StaffCard({
   canManage,
   onEdit,
   onReset,
+  onNotify,
 }: {
   staff: StaffRow;
   role: RoleMeta;
@@ -767,6 +798,7 @@ function StaffCard({
   canManage: boolean;
   onEdit: () => void;
   onReset: () => void;
+  onNotify: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [confirmingToggle, setConfirmingToggle] = useState(false);
@@ -850,6 +882,13 @@ function StaffCard({
             className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-2.5 py-1 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
           >
             <KeyRound className="size-3" /> 改密碼
+          </button>
+          <button
+            type="button"
+            onClick={onNotify}
+            className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-2.5 py-1 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
+          >
+            <Bell className="size-3" /> 通知
           </button>
           {!isSelf && (
             <button
@@ -1306,6 +1345,108 @@ function ResetModal({
           )}
         </div>
       </form>
+    </ModalShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* LINE 通知設定(分類開關;migration-2.28)                             */
+/* ------------------------------------------------------------------ */
+
+function NotifyModal({
+  staff,
+  onClose,
+}: {
+  staff: StaffRow;
+  onClose: () => void;
+}) {
+  const role = staff.role as UserRole;
+  // 初始值 = 生效值(明確設定 + 角色預設補洞);儲存時整組寫成明確值
+  const [prefs, setPrefs] = useState<Record<NotificationCategory, boolean>>(
+    () => resolvePrefs(staff.notification_prefs, role),
+  );
+  const [isPending, startTransition] = useTransition();
+
+  const enabledCount = Object.values(prefs).filter(Boolean).length;
+
+  function save() {
+    startTransition(async () => {
+      const res = await setNotificationPrefsAction({
+        userId: staff.id,
+        prefs,
+      });
+      if (res.ok) {
+        toast.success(`已儲存「${staff.full_name}」的通知設定`);
+        onClose();
+      } else {
+        toast.error(res.error ?? "儲存失敗");
+      }
+    });
+  }
+
+  return (
+    <ModalShell title={`LINE 通知設定：${staff.full_name}`} onClose={onClose}>
+      <div className="space-y-4">
+        {staff.line_bound ? (
+          <div className="rounded-md border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-2 text-sm text-[#4A7C59]">
+            已綁定 LINE — 勾選的通知會即時傳到本人的 LINE。
+          </div>
+        ) : (
+          <div className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-sm text-[#92400E]">
+            還沒綁定 LINE — 設定會先保留，等本人到「我的帳號」完成綁定後生效。
+          </div>
+        )}
+
+        <div className="divide-y divide-[#F0EBE4] rounded-md border border-[#E0DCD6] bg-white">
+          {NOTIFICATION_CATEGORIES.map((cat) => {
+            const on = prefs[cat.key];
+            return (
+              <label
+                key={cat.key}
+                className="flex cursor-pointer items-center gap-3 px-4 py-3"
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) =>
+                    setPrefs((prev) => ({
+                      ...prev,
+                      [cat.key]: e.target.checked,
+                    }))
+                  }
+                  className="size-5 shrink-0 accent-[#003153]"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">
+                    {cat.label}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {cat.description}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <NextStepHint tone="muted">
+          沒設定過的人走角色預設：老闆、辦公室助理全開；工地主任、現場人員全關（要收通知得在這裡開）。本人也可以在「我的帳號」暫停全部通知。
+        </NextStepHint>
+
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <span className="text-xs text-muted-foreground">
+            已開啟 {enabledCount} / {NOTIFICATION_CATEGORIES.length} 類
+          </span>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              取消
+            </Button>
+            <Button type="button" onClick={save} disabled={isPending}>
+              {isPending ? "儲存中…" : "儲存"}
+            </Button>
+          </div>
+        </div>
+      </div>
     </ModalShell>
   );
 }

@@ -25,10 +25,13 @@ export function LineBindingCard({
   bound,
   boundAtText,
   notificationsEnabled,
+  receiveLabels,
 }: {
   bound: boolean;
   boundAtText: string | null;
   notificationsEnabled: boolean;
+  /** 這個人目前會收到的通知分類(由 /staff 管理端設定;空 = 全關) */
+  receiveLabels: string[];
 }) {
   const [pending, startTransition] = useTransition();
   const [code, setCode] = useState<string | null>(null);
@@ -73,13 +76,41 @@ export function LineBindingCard({
     });
   };
 
+  const receiveSummary =
+    receiveLabels.length > 0 ? (
+      <div className="rounded-md border border-[#E0DCD6] bg-white px-4 py-3">
+        <div className="mb-1.5 text-xs text-muted-foreground">
+          {bound ? "你會收到的通知" : "綁定後你會收到的通知"}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {receiveLabels.map((label) => (
+            <span
+              key={label}
+              className="rounded-full border border-[#E0DCD6] bg-[#FAF7F2] px-2.5 py-0.5 text-xs text-foreground"
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        <div className="mt-1.5 text-xs text-muted-foreground">
+          要調整項目請找辦公室助理或老闆（人員管理 → 通知）。
+        </div>
+      </div>
+    ) : (
+      <NextStepHint tone="warning">
+        目前沒有開啟任何通知項目，{bound ? "" : "就算完成綁定"}
+        也不會收到通知。請找辦公室助理或老闆在「人員管理 → 通知」幫你開啟。
+      </NextStepHint>
+    );
+
   if (bound) {
     return (
       <div className="space-y-4">
         <NextStepHint tone="success" title="已綁定 LINE">
           {boundAtText ? `綁定時間:${boundAtText}。` : ""}
-          簽核、請假、回報的通知會傳到你的 LINE。
+          開啟的通知項目會傳到你的 LINE。
         </NextStepHint>
+        {receiveSummary}
         <div className="flex flex-wrap gap-3">
           <Button
             type="button"
@@ -163,8 +194,10 @@ export function LineBindingCard({
         </div>
       )}
 
+      {receiveSummary}
+
       <NextStepHint>
-        綁定後,待簽核、退回、請假結果等通知會即時傳到 LINE。想停掉隨時可以回這裡解除,或傳「{UNBIND_KEYWORD}」給官方帳號。
+        綁定後,開啟的通知項目會即時傳到 LINE。想停掉隨時可以回這裡解除,或傳「{UNBIND_KEYWORD}」給官方帳號。
       </NextStepHint>
     </div>
   );

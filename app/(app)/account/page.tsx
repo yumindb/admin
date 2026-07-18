@@ -4,6 +4,12 @@ import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
 import { PasswordForm } from "./password-form";
 import { LineBindingCard } from "./line-binding-card";
+import {
+  NOTIFICATION_CATEGORIES,
+  resolvePrefs,
+  type NotificationPrefs,
+} from "@/lib/notifications/prefs";
+import type { UserRole } from "@/lib/types";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
@@ -28,10 +34,23 @@ export default async function AccountPage() {
   // LINE 綁定狀態(migration-2.27;還沒跑 migration 時 data 會是 null,卡片顯示未綁定)
   const { data: lineBinding } = await supabase
     .from("line_bindings")
-    .select("line_user_id, bound_at, notifications_enabled")
+    .select("line_user_id, bound_at, notifications_enabled, notification_prefs")
     .eq("profile_id", user.id)
     .maybeSingle();
   const lineBound = Boolean(lineBinding?.line_user_id);
+
+  // 這個人會收到哪些通知(分類開關 migration-2.28;由 /staff 管理端設定)
+  const effectivePrefs = profile?.role
+    ? resolvePrefs(
+        (lineBinding?.notification_prefs as NotificationPrefs | null) ?? null,
+        profile.role as UserRole,
+      )
+    : null;
+  const receiveLabels = effectivePrefs
+    ? NOTIFICATION_CATEGORIES.filter((c) => effectivePrefs[c.key]).map(
+        (c) => c.label,
+      )
+    : [];
   const boundAtText = lineBinding?.bound_at
     ? new Intl.DateTimeFormat("zh-TW", {
         timeZone: "Asia/Taipei",
@@ -82,6 +101,7 @@ export default async function AccountPage() {
           bound={lineBound}
           boundAtText={boundAtText}
           notificationsEnabled={lineBinding?.notifications_enabled ?? true}
+          receiveLabels={receiveLabels}
         />
       </section>
 
