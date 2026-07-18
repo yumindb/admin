@@ -34,6 +34,7 @@ import {
 } from "./actions";
 import {
   NOTIFICATION_CATEGORIES,
+  ROLE_RECOMMENDED_PREFS,
   resolvePrefs,
   type NotificationCategory,
 } from "@/lib/notifications/prefs";
@@ -548,6 +549,7 @@ function StaffTable({
               <th className="px-4 py-3 font-medium">電話</th>
               <th className="px-4 py-3 font-medium">角色</th>
               <th className="px-4 py-3 font-medium">狀態</th>
+              <th className="px-4 py-3 font-medium">LINE</th>
               <th className="px-4 py-3 font-medium">最後登入</th>
               {canManage && (
                 <th className="px-4 py-3 text-right font-medium">操作</th>
@@ -648,6 +650,15 @@ function StaffTableRow({
         >
           {staff.is_active ? "啟用中" : "已停用"}
         </span>
+      </td>
+      <td className="px-4 py-3">
+        {staff.line_bound ? (
+          <span className="inline-flex rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-xs text-[#4A7C59]">
+            已綁定
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">未綁定</span>
+        )}
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
         {lastLoginLabel(staff.last_sign_in_at)}
@@ -844,6 +855,9 @@ function StaffCard({
           )}
           <div className="mt-0.5 text-sm text-muted-foreground">
             最後登入：{lastLoginLabel(staff.last_sign_in_at)}
+          </div>
+          <div className="mt-0.5 text-sm text-muted-foreground">
+            LINE：{staff.line_bound ? "已綁定" : "未綁定"}
           </div>
         </div>
         <span
@@ -1430,7 +1444,7 @@ function NotifyModal({
         </div>
 
         <NextStepHint tone="muted">
-          沒設定過的人走角色預設：老闆、辦公室助理全開；工地主任、現場人員全關（要收通知得在這裡開）。本人也可以在「我的帳號」暫停全部通知。
+          沒設定過的人走角色預設：老闆、助理只開職責相關項目；工地主任、現場人員全關（要收通知得在這裡開）。「套用建議值」會帶入這個角色最合理的組合。本人也可以在「我的帳號」暫停全部通知。
         </NextStepHint>
 
         <div className="flex items-center justify-between gap-2 pt-1">
@@ -1438,6 +1452,16 @@ function NotifyModal({
             已開啟 {enabledCount} / {NOTIFICATION_CATEGORIES.length} 類
           </span>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setPrefs({ ...ROLE_RECOMMENDED_PREFS[role] })
+              }
+              className="border-[#E0DCD6]"
+            >
+              套用建議值
+            </Button>
             <Button type="button" variant="outline" onClick={onClose}>
               取消
             </Button>

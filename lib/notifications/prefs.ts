@@ -65,16 +65,81 @@ export const EVENT_CATEGORY: Record<string, NotificationCategory> = {
   field_report_created: "field_reports",
 };
 
-/** 角色預設:owner / office_staff 全開,主任 / 現場人員全關 */
-export function roleDefaultEnabled(role: UserRole): boolean {
-  return role === "owner" || role === "office_staff";
-}
-
 export type NotificationPrefs = Partial<Record<NotificationCategory, boolean>>;
 
 /**
+ * 角色預設矩陣(2026-07-18 二修:從「owner/office 全開」改成按職責給):
+ *   - 老闆:日誌待核定、日誌結果(只在他自己寫日誌時觸發)、請假待簽核。
+ *     「請假結果」對老闆是死項目(沒有上層可請假)、現場回報太吵 → 關
+ *   - 助理:日誌待審核、請假待簽核、自己的請假結果、現場回報。
+ *     「日誌結果」助理不寫日誌 → 關
+ *   - 主任 / 現場人員:全關(白名單制,管理端開了才收得到)
+ */
+export const ROLE_DEFAULT_PREFS: Record<
+  UserRole,
+  Record<NotificationCategory, boolean>
+> = {
+  owner: {
+    logs_to_review: true,
+    log_results: true,
+    leaves_to_review: true,
+    leave_results: false,
+    field_reports: false,
+  },
+  office_staff: {
+    logs_to_review: true,
+    log_results: false,
+    leaves_to_review: true,
+    leave_results: true,
+    field_reports: true,
+  },
+  site_supervisor: {
+    logs_to_review: false,
+    log_results: false,
+    leaves_to_review: false,
+    leave_results: false,
+    field_reports: false,
+  },
+  field_assistant: {
+    logs_to_review: false,
+    log_results: false,
+    leaves_to_review: false,
+    leave_results: false,
+    field_reports: false,
+  },
+};
+
+/**
+ * 「套用建議值」按鈕用的建議組合:
+ *   owner / office 就是角色預設;主任 / 現場人員是「要開的話開這些最合理」——
+ *   主任:自己日誌的結果、工人請假第一關、自己請假的結果
+ *   現場人員:自己請假的結果
+ */
+export const ROLE_RECOMMENDED_PREFS: Record<
+  UserRole,
+  Record<NotificationCategory, boolean>
+> = {
+  owner: ROLE_DEFAULT_PREFS.owner,
+  office_staff: ROLE_DEFAULT_PREFS.office_staff,
+  site_supervisor: {
+    logs_to_review: false,
+    log_results: true,
+    leaves_to_review: true,
+    leave_results: true,
+    field_reports: false,
+  },
+  field_assistant: {
+    logs_to_review: false,
+    log_results: false,
+    leaves_to_review: false,
+    leave_results: true,
+    field_reports: false,
+  },
+};
+
+/**
  * 這個人這個分類到底收不收?
- * 明確設定過 → 用設定值;沒設過 → 角色預設。
+ * 明確設定過 → 用設定值;沒設過 → 角色預設矩陣。
  */
 export function isCategoryEnabled(
   prefs: NotificationPrefs | null | undefined,
@@ -83,7 +148,7 @@ export function isCategoryEnabled(
 ): boolean {
   const explicit = prefs?.[category];
   if (typeof explicit === "boolean") return explicit;
-  return roleDefaultEnabled(role);
+  return ROLE_DEFAULT_PREFS[role]?.[category] ?? false;
 }
 
 /** 給 UI 用:算出每個分類目前的生效值(明確值 + 角色預設補洞) */

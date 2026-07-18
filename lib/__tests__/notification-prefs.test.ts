@@ -2,25 +2,62 @@ import { describe, expect, it } from "vitest";
 import {
   CATEGORY_KEYS,
   EVENT_CATEGORY,
+  ROLE_DEFAULT_PREFS,
+  ROLE_RECOMMENDED_PREFS,
   isCategoryEnabled,
   resolvePrefs,
-  roleDefaultEnabled,
 } from "@/lib/notifications/prefs";
 
-describe("角色預設 — 白名單制", () => {
-  it("owner / office_staff 預設開;主任 / 現場人員預設關", () => {
-    expect(roleDefaultEnabled("owner")).toBe(true);
-    expect(roleDefaultEnabled("office_staff")).toBe(true);
-    expect(roleDefaultEnabled("site_supervisor")).toBe(false);
-    expect(roleDefaultEnabled("field_assistant")).toBe(false);
+describe("角色預設矩陣 — 按職責給", () => {
+  it("老闆:待核定/日誌結果/請假待簽核 開;請假結果(死項目)/現場回報 關", () => {
+    expect(isCategoryEnabled(null, "owner", "logs_to_review")).toBe(true);
+    expect(isCategoryEnabled(null, "owner", "log_results")).toBe(true);
+    expect(isCategoryEnabled(null, "owner", "leaves_to_review")).toBe(true);
+    expect(isCategoryEnabled(null, "owner", "leave_results")).toBe(false);
+    expect(isCategoryEnabled(null, "owner", "field_reports")).toBe(false);
   });
 
-  it("沒設定過(null)→ 全走角色預設", () => {
+  it("助理:日誌結果(不寫日誌)關,其餘職責項目開", () => {
     expect(isCategoryEnabled(null, "office_staff", "logs_to_review")).toBe(true);
-    expect(isCategoryEnabled(null, "site_supervisor", "log_results")).toBe(false);
-    expect(isCategoryEnabled(undefined, "field_assistant", "leave_results")).toBe(
-      false,
-    );
+    expect(isCategoryEnabled(null, "office_staff", "log_results")).toBe(false);
+    expect(isCategoryEnabled(null, "office_staff", "leaves_to_review")).toBe(true);
+    expect(isCategoryEnabled(null, "office_staff", "leave_results")).toBe(true);
+    expect(isCategoryEnabled(null, "office_staff", "field_reports")).toBe(true);
+  });
+
+  it("主任 / 現場人員:白名單制,預設全關", () => {
+    for (const key of CATEGORY_KEYS) {
+      expect(isCategoryEnabled(null, "site_supervisor", key)).toBe(false);
+      expect(isCategoryEnabled(undefined, "field_assistant", key)).toBe(false);
+    }
+  });
+
+  it("預設與建議矩陣涵蓋所有角色 × 所有分類", () => {
+    for (const matrix of [ROLE_DEFAULT_PREFS, ROLE_RECOMMENDED_PREFS]) {
+      for (const role of [
+        "owner",
+        "office_staff",
+        "site_supervisor",
+        "field_assistant",
+      ] as const) {
+        expect(Object.keys(matrix[role]).sort()).toEqual(
+          [...CATEGORY_KEYS].sort(),
+        );
+      }
+    }
+  });
+
+  it("建議值:主任開 日誌結果+請假待簽核+請假結果;現場人員只開 請假結果", () => {
+    const sup = ROLE_RECOMMENDED_PREFS.site_supervisor;
+    expect(sup.log_results).toBe(true);
+    expect(sup.leaves_to_review).toBe(true);
+    expect(sup.leave_results).toBe(true);
+    expect(sup.logs_to_review).toBe(false);
+    const fa = ROLE_RECOMMENDED_PREFS.field_assistant;
+    expect(fa.leave_results).toBe(true);
+    expect(
+      CATEGORY_KEYS.filter((k) => fa[k]),
+    ).toEqual(["leave_results"]);
   });
 
   it("明確設定值蓋過角色預設(開主任的、關老闆的)", () => {
