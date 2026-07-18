@@ -13,6 +13,7 @@
  */
 
 import { useState, useTransition } from "react";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import { toast } from "sonner";
 import { Pencil, Unlink, ChevronDown, Pencil as PencilIcon, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -453,6 +454,9 @@ function ContractEditModal({
   );
   const [note, setNote] = useState(contract.note ?? "");
   const [isPending, startTransition] = useTransition();
+  // 鎖背景捲動 + ESC 關閉(pending 中不關)
+  useBodyScrollLock(true);
+  useEscToClose(true, onClose, !isPending);
 
   function submit() {
     if (!name.trim()) {
@@ -481,7 +485,7 @@ function ContractEditModal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-md rounded-lg border border-[#E0DCD6] bg-card">
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-y-auto overscroll-contain rounded-lg border border-[#E0DCD6] bg-card">
         <div className="border-b border-[#E0DCD6] px-5 py-3">
           <h3 className="text-base font-semibold text-primary">編輯追加合約</h3>
         </div>
@@ -492,7 +496,7 @@ function ContractEditModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
           <Field label="bundle 優惠價（整份合約金額，可空）">
@@ -502,7 +506,7 @@ function ContractEditModal({
               value={bundlePrice}
               onChange={(e) => setBundlePrice(e.target.value)}
               placeholder="留空 = 用各品項複價加總"
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
           <Field label="簽約備註">
@@ -511,7 +515,7 @@ function ContractEditModal({
               onChange={(e) => setNote(e.target.value)}
               rows={2}
               placeholder="例：2026-05-08 LINE 同意追加"
-              className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
         </div>

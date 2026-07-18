@@ -13,6 +13,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { X } from "lucide-react";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import { createExtraOrUnsignedAction } from "@/app/(app)/cases/[id]/work-items-actions";
 
 export type AddTempCreated = {
@@ -57,14 +58,9 @@ export function AddTempWorkItemDialog({
     setErrorMsg(null);
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // 鎖背景捲動 + ESC 關閉(pending 中不關)
+  useBodyScrollLock(open);
+  useEscToClose(open, onClose, !isPending);
 
   if (!open) return null;
 
@@ -105,25 +101,31 @@ export function AddTempWorkItemDialog({
   const title = kind === "extra" ? "新增合約外項目" : "新增未簽約項目";
 
   return (
+    // 手機 bottom sheet、桌機置中;點背景可關(欄位少、丟失成本低)。
+    // 內容可捲 + 送出鈕固定底部:展開「更多選項」+ 鍵盤彈出也搆得到。
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:p-4"
       role="dialog"
       aria-modal="true"
+      onClick={isPending ? undefined : onClose}
     >
-      <div className="w-full max-w-md rounded-lg border border-[#E0DCD6] bg-card">
-        <div className="flex items-center justify-between border-b border-[#E0DCD6] px-5 py-3">
+      <div
+        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-2xl border border-[#E0DCD6] bg-card md:rounded-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[#E0DCD6] py-2 pl-5 pr-2">
           <h3 className="text-base font-semibold text-primary">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground"
+            className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F5F1EC] hover:text-foreground"
             aria-label="關閉"
           >
-            <X className="size-4" />
+            <X className="size-5" />
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
           {/* 主角：名稱欄 + 大送出鈕。屋主臨時加項，現場 supervisor 直接打名字就好。 */}
           <div>
             <p className="mb-2 text-sm font-medium text-primary">
@@ -141,7 +143,7 @@ export function AddTempWorkItemDialog({
 
           {/* 配角：其他選填欄位包進 details 摺疊起來，降低視覺壓力 */}
           <details className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2]/40">
-            <summary className="cursor-pointer list-none px-3 py-2 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer list-none px-3 py-3 text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-1">
                 <span aria-hidden>＋</span>
                 更多選項（單位 / 數量 / 單價 / 備註，辦公室之後可補）
@@ -155,7 +157,7 @@ export function AddTempWorkItemDialog({
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
                     placeholder="式 / 組 / ㎡"
-                    className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                    className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
                   />
                 </Field>
                 <Field label="預計總量">
@@ -165,7 +167,7 @@ export function AddTempWorkItemDialog({
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
                     placeholder="例：1"
-                    className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                    className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
                   />
                 </Field>
               </div>
@@ -175,7 +177,7 @@ export function AddTempWorkItemDialog({
                   step="any"
                   value={unitPrice}
                   onChange={(e) => setUnitPrice(e.target.value)}
-                  className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                  className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
                 />
               </Field>
               <Field label="備註">
@@ -184,7 +186,7 @@ export function AddTempWorkItemDialog({
                   value={brandNote}
                   onChange={(e) => setBrandNote(e.target.value)}
                   placeholder="例：屋主臨時要求 / 等業主決定材質"
-                  className="h-9 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent"
+                  className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
                 />
               </Field>
             </div>
@@ -201,7 +203,7 @@ export function AddTempWorkItemDialog({
             type="button"
             onClick={onClose}
             disabled={isPending}
-            className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded-md border border-[#E0DCD6] bg-white px-4 text-sm transition-colors hover:border-accent disabled:opacity-50"
           >
             取消
           </button>

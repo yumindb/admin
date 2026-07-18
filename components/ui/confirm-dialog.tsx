@@ -21,7 +21,9 @@
  *   />
  */
 
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 
 export type ConfirmDetail = { label: string; value: string };
 
@@ -51,6 +53,16 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  useBodyScrollLock(open);
+  useEscToClose(open, onCancel, !pending);
+
+  // 開啟時把 focus 移進 dialog(預設落在「取消」,危險操作不該預選確認),
+  // 鍵盤使用者才不會 Tab 到背景元素
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open) cancelRef.current?.focus();
+  }, [open]);
+
   if (!open) return null;
 
   return (
@@ -61,13 +73,13 @@ export function ConfirmDialog({
       aria-modal="true"
     >
       <div
-        className="w-full max-w-md rounded-lg border border-[#E0DCD6] bg-card shadow-lg"
+        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-lg border border-[#E0DCD6] bg-card shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-[#E0DCD6] px-5 py-3">
           <h2 className="text-base font-semibold text-primary">{title}</h2>
         </div>
-        <div className="space-y-3 px-5 py-4 text-sm leading-relaxed text-foreground">
+        <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain px-5 py-4 text-sm leading-relaxed text-foreground">
           {description && (
             <p className="whitespace-pre-line">{description}</p>
           )}
@@ -89,6 +101,7 @@ export function ConfirmDialog({
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
           <Button
+            ref={cancelRef}
             type="button"
             variant="outline"
             onClick={onCancel}

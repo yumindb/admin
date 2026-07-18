@@ -317,10 +317,12 @@ function Row({
             style={{ paddingLeft: `${node.depth * 14}px` }}
           >
             {hasChildren ? (
+              // 視覺維持小箭頭,但用 before 偽元素把觸控熱區擴到 ~44px
+              // (箭頭本體 16px,手機上根本戳不到)
               <button
                 type="button"
                 onClick={() => onToggle(node.id)}
-                className="mt-0.5 inline-flex size-4 items-center justify-center text-muted-foreground hover:text-accent"
+                className="relative mt-0.5 inline-flex size-4 items-center justify-center text-muted-foreground before:absolute before:-inset-3.5 before:content-[''] hover:text-accent"
                 aria-label={isOpen ? "收起" : "展開"}
               >
                 {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -394,12 +396,15 @@ function Row({
               title={isSection ? "略過此分類及所有子項" : "略過此項"}
             />
           ) : editable ? (
-            <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            // 觸控裝置沒有 hover:編輯鈕常駐顯示(否則永遠不知道能編輯,
+            // 而且 opacity-0 不擋 pointer events = 隱形按鈕還點得到);
+            // 桌機維持 hover 才浮現,保持表格乾淨
+            <div className="flex items-center justify-end gap-0.5 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               {showAdd && (
                 <button
                   type="button"
                   onClick={() => onAdd?.(node.id)}
-                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white hover:text-accent"
+                  className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-white md:size-7 hover:text-accent"
                   aria-label="在此分類下新增工項"
                   title="在此分類下新增工項"
                 >
@@ -410,7 +415,7 @@ function Row({
                 <button
                   type="button"
                   onClick={() => onEdit?.(node.id)}
-                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white hover:text-accent"
+                  className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-white md:size-7 hover:text-accent"
                   aria-label="編輯工項"
                   title="編輯"
                 >
@@ -421,7 +426,7 @@ function Row({
                 <button
                   type="button"
                   onClick={() => onDelete?.(node.id)}
-                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-white hover:text-[#B91C1C]"
+                  className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-white md:size-7 hover:text-[#B91C1C]"
                   aria-label="刪除工項"
                   title="刪除"
                 >

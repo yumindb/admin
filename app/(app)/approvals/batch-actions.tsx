@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -131,7 +132,7 @@ export function BatchApprovalsList({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="案件名稱、案號、工地主任"
-          className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted-foreground">快速篩選：</span>
@@ -360,6 +361,9 @@ function BatchApprovalModal({
     failed: { logId: string; reason: string }[];
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  // 鎖背景捲動 + ESC 關閉(pending 中不關)
+  useBodyScrollLock(true);
+  useEscToClose(true, onClose, !isPending);
 
   // 點開即還原(若 60 分鐘內有記住的簽名)
   useEffect(() => {
@@ -424,7 +428,7 @@ function BatchApprovalModal({
         if (e.target === e.currentTarget && !isPending) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-t-lg bg-white p-5 shadow-xl md:rounded-lg md:p-6">
+      <div className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-lg bg-white p-5 shadow-xl md:rounded-lg md:p-6">
         <div className="mb-3 flex items-start justify-between gap-2">
           <h2 className="text-lg font-semibold text-primary md:text-xl">
             批簽 {logIds.length} 份
@@ -606,6 +610,9 @@ function ForceActionModal({
   const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [isPending, startTransition] = useTransition();
+  // 鎖背景捲動 + ESC 關閉(pending 中不關)
+  useBodyScrollLock(true);
+  useEscToClose(true, onClose, !isPending);
   const canDelete = stuckDays >= STUCK_DELETABLE_DAYS;
   const caseLabel = log.cases?.name ?? "（未命名案件）";
   const dateLabel = formatDateTW(log.log_date);
@@ -649,7 +656,7 @@ function ForceActionModal({
         if (e.target === e.currentTarget && !isPending) onClose();
       }}
     >
-      <div className="w-full max-w-lg rounded-t-lg bg-white p-5 shadow-xl md:rounded-lg md:p-6">
+      <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-lg bg-white p-5 shadow-xl md:rounded-lg md:p-6">
         <div className="mb-3 flex items-start justify-between gap-2">
           <h2 className="text-lg font-semibold text-primary md:text-xl">
             強制處理（卡 {stuckDays} 天）
@@ -758,7 +765,7 @@ function ForceActionModal({
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder="刪除"
-              className="mb-4 h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-[#B91C1C] focus-visible:ring-2 focus-visible:ring-[#FCA5A5]"
+              className="mb-4 h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-[#B91C1C] focus-visible:ring-2 focus-visible:ring-[#FCA5A5]"
             />
             <div className="flex flex-wrap justify-end gap-2">
               <Button

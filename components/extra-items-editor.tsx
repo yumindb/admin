@@ -104,7 +104,7 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                         onChange={(e) =>
                           patch(idx, { [col.key]: e.target.value || undefined } as Partial<T>)
                         }
-                        className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                        className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                       >
                         <option value="">{col.selectEmptyLabel ?? "—"}</option>
                         {col.selectOptions
@@ -136,7 +136,7 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                           } as Partial<T>);
                         }}
                         placeholder={col.placeholder}
-                        className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                        className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                       />
                     ) : (
                       <>
@@ -149,7 +149,7 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                             } as Partial<T>)
                           }
                           placeholder={col.placeholder}
-                          className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                          className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                         />
                         {/* 快速選 chips：只在值為空時顯示，避免擠版面 */}
                         {col.suggestions && col.suggestions.length > 0 &&

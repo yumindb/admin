@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useBodyScrollLock } from "@/lib/use-modal-behavior";
 
 /**
  * 首次登入的角色歡迎小卡 —— 依角色列出「最基本的 3-4 件事」,讓人不被系統嚇到。
@@ -118,6 +119,8 @@ export function RoleWelcomeCard({
     }
   }, [card, storageKey]);
 
+  useBodyScrollLock(open && !!card);
+
   if (!card || !open) return null;
 
   function close() {
@@ -155,7 +158,7 @@ export function RoleWelcomeCard({
         </div>
 
         {/* 3-4 件基本的事(中段可捲,手機小螢幕才不會把按鈕擠出畫面) */}
-        <div className="min-h-0 overflow-y-auto px-6 py-5">
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-5">
           <div className="mb-3 text-sm font-medium text-muted-foreground">
             你平常只要做這幾件事：
           </div>

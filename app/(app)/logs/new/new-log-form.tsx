@@ -29,6 +29,7 @@ import { Plus } from "lucide-react";
 import { NextStepHint } from "@/components/next-step-hint";
 import { getCompanyShort } from "@/lib/companies";
 import { PhotoLightbox } from "@/components/photo-lightbox";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import { saveLogAction } from "./actions";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
 import {
@@ -221,6 +222,8 @@ export function NewLogForm({
   const [mergedReportIds, setMergedReportIds] = useState<string[]>([]);
   // post-submission 編輯儲存前的確認 modal
   const [showPostEditConfirm, setShowPostEditConfirm] = useState(false);
+  useBodyScrollLock(showPostEditConfirm);
+  useEscToClose(showPostEditConfirm, () => setShowPostEditConfirm(false));
   // 已合併進來的回報快照(含照片) — 用來支援使用者刪掉照片後可以加回來
   const [mergedReportSnapshots, setMergedReportSnapshots] = useState<
     PendingFieldReport[]
@@ -1538,7 +1541,7 @@ export function NewLogForm({
                   value={p.caption}
                   onChange={(e) => setPhotoCaption(p.path, e.target.value)}
                   placeholder="說明（選填，例：三樓鋼樑焊接）"
-                  className="block w-full border-t border-[#F0EBE4] bg-white px-2 py-1.5 text-xs outline-none placeholder:text-[#9C9088] focus-visible:bg-[#FAF7F2]"
+                  className="block w-full border-t border-[#F0EBE4] bg-white px-2 py-2 text-base outline-none placeholder:text-[#9C9088] focus-visible:bg-[#FAF7F2]"
                 />
               </div>
             ))}
@@ -1844,7 +1847,7 @@ function CasePicker({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`搜尋案件編號或名稱（共 ${cases.length} 個）`}
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           )}
           <div className="max-h-[60vh] divide-y divide-[#F0EBE4] overflow-y-auto rounded-md border border-[#E0DCD6] bg-white">
@@ -2146,6 +2149,8 @@ function OverflowSplitDialog({
   onCancel: () => void;
 }) {
   const { item, requested, cap, mode } = attempt;
+  useBodyScrollLock(true);
+  useEscToClose(true, onCancel, !isPending);
   const overflow = Math.max(0, requested - cap);
   const fmt = (n: number) =>
     mode === "percent" ? `${Math.round(n * 100)}%` : `${n}${item.unit ?? ""}`;

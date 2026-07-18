@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import { formatDistance, haversineMeters } from "@/lib/geo";
 
 export type CasePickerOption = {
@@ -79,19 +80,9 @@ export function CasePicker({
     return formatDistance(d);
   };
 
-  // ESC / 點背景關閉 + 鎖捲動
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open]);
+  // ESC / 點背景關閉 + 鎖捲動(共用 hook)
+  useBodyScrollLock(open);
+  useEscToClose(open, () => setOpen(false));
 
   return (
     <>
@@ -140,7 +131,7 @@ export function CasePicker({
           onClick={() => setOpen(false)}
         >
           <div
-            className="mt-auto max-h-[85vh] overflow-y-auto rounded-t-2xl bg-card shadow-xl md:m-auto md:max-h-[80vh] md:max-w-lg md:rounded-2xl"
+            className="mt-auto max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-2xl bg-card shadow-xl md:m-auto md:max-h-[80dvh] md:max-w-lg md:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 flex items-center justify-between border-b border-[#E0DCD6] bg-card px-5 py-4">

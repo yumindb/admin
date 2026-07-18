@@ -11,6 +11,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { X } from "lucide-react";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import {
   createWorkItemAction,
   createExtraOrUnsignedAction,
@@ -99,15 +100,9 @@ export function WorkItemEditModal({
     }
   }, [open, mode, target, initialParentId]);
 
-  // ESC 關閉
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // 鎖背景捲動 + ESC 關閉(pending 中不關,避免處理到一半)
+  useBodyScrollLock(open);
+  useEscToClose(open, onClose, !isPending);
 
   if (!open) return null;
 
@@ -169,14 +164,16 @@ export function WorkItemEditModal({
   const title = mode === "create" ? `新增${kindLabel}` : `編輯${kindLabel}`;
 
   return (
+    // 手機 bottom sheet(貼底、圓上角)、桌機置中:鍵盤彈出時內容區可捲,
+    // 儲存鈕固定在 sheet 底部,不會被鍵盤蓋住搆不到
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="work-item-modal-title"
     >
-      <div className="w-full max-w-lg rounded-lg border border-[#E0DCD6] bg-card">
-        <div className="flex items-center justify-between border-b border-[#E0DCD6] px-5 py-3">
+      <div className="flex max-h-[85dvh] w-full max-w-lg flex-col rounded-t-2xl border border-[#E0DCD6] bg-card md:rounded-lg">
+        <div className="flex items-center justify-between border-b border-[#E0DCD6] py-2 pl-5 pr-2">
           <h2
             id="work-item-modal-title"
             className="text-base font-semibold text-primary"
@@ -186,14 +183,14 @@ export function WorkItemEditModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground"
+            className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F5F1EC] hover:text-foreground"
             aria-label="關閉"
           >
-            <X className="size-4" />
+            <X className="size-5" />
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
           {/* 上層分類：
                 - create 模式 + 非 extra/unsigned → 顯示
                 - edit 模式 + manual 項目 → 也顯示（允許搬到不同 section 底下）
@@ -204,12 +201,12 @@ export function WorkItemEditModal({
               <select
                 value={parentId}
                 onChange={(e) => setParentId(e.target.value)}
-                className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
               >
                 <option value="">（不指定 — 放在最上層）</option>
                 {sectionOptions.map((opt) => (
                   <option key={opt.id} value={opt.id}>
-                    {"  ".repeat(opt.depth)}
+                    {"  ".repeat(opt.depth)}
                     {opt.label}
                   </option>
                 ))}
@@ -223,7 +220,7 @@ export function WorkItemEditModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
 
@@ -234,7 +231,7 @@ export function WorkItemEditModal({
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
                 placeholder="M / 式 / 組"
-                className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
               />
             </Field>
             <Field label="契約數量">
@@ -243,7 +240,7 @@ export function WorkItemEditModal({
                 step="any"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
               />
             </Field>
           </div>
@@ -254,7 +251,7 @@ export function WorkItemEditModal({
               step="any"
               value={unitPrice}
               onChange={(e) => setUnitPrice(e.target.value)}
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
 
@@ -263,7 +260,7 @@ export function WorkItemEditModal({
               type="text"
               value={brandNote}
               onChange={(e) => setBrandNote(e.target.value)}
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </Field>
 
@@ -285,7 +282,7 @@ export function WorkItemEditModal({
             type="button"
             onClick={onClose}
             disabled={isPending}
-            className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm text-foreground transition-colors hover:border-accent disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded-md border border-[#E0DCD6] bg-white px-4 text-sm text-foreground transition-colors hover:border-accent disabled:opacity-50"
           >
             取消
           </button>
@@ -293,7 +290,7 @@ export function WorkItemEditModal({
             type="button"
             onClick={submit}
             disabled={isPending || !name.trim()}
-            className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
             {isPending ? "儲存中…" : "儲存"}
           </button>

@@ -53,7 +53,10 @@ export default function MapPicker({ center, point, radius, onPick }: Props) {
       center: [start.lat, start.lng],
       zoom: point ? 17 : 13,
       zoomControl: true,
-      scrollWheelZoom: false, // 避免使用者捲頁時被地圖搶走
+      scrollWheelZoom: false, // 避免使用者捲頁時被地圖搶走(桌機滾輪)
+      // 手機同理:單指在全寬地圖上滑 = 拖地圖,頁面捲到這裡就卡住出不來。
+      // 觸控裝置關掉單指拖曳(捲頁恢復正常),移動地圖靠點選/搜尋地址/雙指縮放。
+      dragging: !L.Browser.mobile,
     });
     mapRef.current = map;
 
@@ -129,10 +132,17 @@ export default function MapPicker({ center, point, radius, onPick }: Props) {
   }, [point, radius]);
 
   return (
-    <div
-      ref={containerRef}
-      className="h-[280px] w-full rounded-md border border-[#E0DCD6] bg-white"
-      style={{ zIndex: 0 }}
-    />
+    <div>
+      <div
+        ref={containerRef}
+        className="h-[280px] w-full rounded-md border border-[#E0DCD6] bg-white"
+        style={{ zIndex: 0 }}
+      />
+      {L.Browser.mobile && (
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          手機上直接點地圖選位置、雙指縮放；要移動地圖請用上方搜尋地址。
+        </p>
+      )}
+    </div>
   );
 }

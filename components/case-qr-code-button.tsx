@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import { QRCodeSVG } from "qrcode.react";
 import { X, QrCode } from "lucide-react";
 
@@ -12,6 +13,8 @@ export function CaseQrCodeButton({
   caseName: string;
 }) {
   const [open, setOpen] = useState(false);
+  useBodyScrollLock(open);
+  useEscToClose(open, () => setOpen(false));
 
   const url =
     typeof window !== "undefined"

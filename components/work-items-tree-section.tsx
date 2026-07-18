@@ -180,7 +180,7 @@ export function WorkItemsTreeSection({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`搜尋 ${leafCount} 個工項`}
-            className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white pl-9 pr-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+            className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white pl-9 pr-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

@@ -209,7 +209,7 @@ export function CaseLocationPicker({
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
           placeholder="貼上 Google Maps 連結，或直接輸入 25.0337,121.5645"
-          className="flex h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm text-foreground outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          className="flex h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-base text-foreground outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
         {urlError && (
           <p className="text-xs text-[#B91C1C]">{urlError}</p>

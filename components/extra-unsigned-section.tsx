@@ -18,6 +18,7 @@
  */
 
 import { useMemo, useState, useTransition } from "react";
+import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, FilePlus2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -432,6 +433,9 @@ function BundleContractDialog({
   const [bundlePrice, setBundlePrice] = useState("");
   const [note, setNote] = useState("");
   const [isPending, startTransition] = useTransition();
+  // 鎖背景捲動 + ESC 關閉(pending 中不關)
+  useBodyScrollLock(true);
+  useEscToClose(true, onClose, !isPending);
 
   function submit() {
     if (!name.trim()) {
@@ -508,7 +512,7 @@ function BundleContractDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </div>
 
@@ -522,7 +526,7 @@ function BundleContractDialog({
               value={bundlePrice}
               onChange={(e) => setBundlePrice(e.target.value)}
               placeholder="留空 = 用各品項複價加總"
-              className="h-10 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
             {showBundleDelta && (
               <p className="mt-1 text-xs text-muted-foreground">
@@ -544,7 +548,7 @@ function BundleContractDialog({
               onChange={(e) => setNote(e.target.value)}
               rows={2}
               placeholder="例：2026-05-08 LINE 同意追加，業主要求"
-              className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
             />
           </div>
 
