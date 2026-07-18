@@ -12,7 +12,9 @@
  *   - 頂部深邃海軍藍品牌横幅:銅金 badge + 思源宋體白字「裕民工務管理系統」
  *     (横幅本身也是按鈕 → 系統首頁)
  *   - 格區暖米白 + 海軍藍 8% 細格線(工程圖紙感),不用浮動卡片
- *   - 標題字思源宋體 Heavy(工藝感),說明字思源黑體;銅金只出現在 logo(品牌鐵則:每頁最多一次)
+ *   - 横幅字標維持思源宋體(工藝感);按鈕標籤用思源黑體 Bold —
+ *     宋體當小尺寸按鈕字不夠清楚(Evelyn 2026-07-18 拍板),仍只有兩個字族
+ *   - 銅金只出現在 logo(品牌鐵則:每頁最多一次)
  *   - 每個角色的主行動格 = 海軍藍實底反白
  *   - 需要系統已安裝 Source Han Serif TW(思源宋體)與 Noto Sans TC,
  *     Evelyn 的機器已確認有;沒有的機器跑 render 字體會 fallback,請先裝字體
@@ -200,8 +202,8 @@ async function roleMenuSvg(menu) {
     }
     cells += `
       ${iconSvg(cell.icon, fg, 168, x + w / 2 - 84, y + 118)}
-      <text x="${x + w / 2}" y="${y + 468}" text-anchor="middle" font-family="${SERIF}" font-weight="900" font-size="108" fill="${fg}" letter-spacing="6">${cell.label}</text>
-      <text x="${x + w / 2}" y="${y + 588}" text-anchor="middle" font-family="${SANS}" font-size="44" fill="${subFg}" letter-spacing="6">${cell.sub}</text>`;
+      <text x="${x + w / 2}" y="${y + 464}" text-anchor="middle" font-family="${SANS}" font-weight="700" font-size="102" fill="${fg}" letter-spacing="8">${cell.label}</text>
+      <text x="${x + w / 2}" y="${y + 586}" text-anchor="middle" font-family="${SANS}" font-size="44" fill="${subFg}" letter-spacing="6">${cell.sub}</text>`;
   });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${ROLE_W}" height="${ROLE_H}" viewBox="0 0 ${ROLE_W} ${ROLE_H}">
@@ -232,7 +234,7 @@ async function defaultMenuSvg(menu) {
     }
     cells += `
       ${iconSvg(cell.icon, fg, 160, x + 625 - 80, y + 92)}
-      <text x="${x + 625}" y="${y + 428}" text-anchor="middle" font-family="${SERIF}" font-weight="900" font-size="112" fill="${fg}" letter-spacing="8">${cell.label}</text>
+      <text x="${x + 625}" y="${y + 424}" text-anchor="middle" font-family="${SANS}" font-weight="700" font-size="106" fill="${fg}" letter-spacing="10">${cell.label}</text>
       <text x="${x + 625}" y="${y + 540}" text-anchor="middle" font-family="${SANS}" font-size="46" fill="${subFg}" letter-spacing="6">${cell.sub}</text>`;
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${DEF_W}" height="${DEF_H}" viewBox="0 0 ${DEF_W} ${DEF_H}">
