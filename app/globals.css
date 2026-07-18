@@ -112,3 +112,24 @@ h1, h2, h3 {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
 }
+
+/* 照片 lightbox(yet-another-react-lightbox)手機優先調整:
+   caption 字放大到 base/lg 讓現場拿手機看的人不用瞇眼;
+   計數字級同步放大並墊高,避免貼齊螢幕邊緣 */
+.yarl__slide_description {
+  font-size: 1rem;
+  line-height: 1.625;
+  white-space: pre-line;
+}
+@media (min-width: 768px) {
+  .yarl__slide_description {
+    font-size: 1.125rem;
+  }
+}
+.yarl__counter {
+  font-size: 0.875rem;
+  margin: 0 0.75rem 0.75rem 0;
+  padding: 0.25rem 0.75rem;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 9999px;
+}
