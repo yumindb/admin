@@ -153,7 +153,7 @@ export function ApprovalActions({
         <button
           type="button"
           onClick={() => setMode("approve")}
-          className={`rounded-sm px-4 py-1.5 text-sm transition-colors ${
+          className={`inline-flex min-h-11 items-center rounded-sm px-5 text-sm transition-colors ${
             mode === "approve"
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -164,7 +164,7 @@ export function ApprovalActions({
         <button
           type="button"
           onClick={() => setMode("reject")}
-          className={`rounded-sm px-4 py-1.5 text-sm transition-colors ${
+          className={`inline-flex min-h-11 items-center rounded-sm px-5 text-sm transition-colors ${
             mode === "reject"
               ? "bg-[#B91C1C] text-white"
               : "text-muted-foreground hover:text-foreground"
@@ -221,7 +221,7 @@ export function ApprovalActions({
             <button
               type="button"
               onClick={clearSig}
-              className="text-xs text-muted-foreground hover:text-accent"
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent"
             >
               清除重簽
             </button>

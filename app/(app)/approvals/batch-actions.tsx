@@ -151,7 +151,7 @@ export function BatchApprovalsList({
                 key={key}
                 type="button"
                 onClick={() => setQuickFilter(key)}
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 transition-colors ${
+                className={`inline-flex min-h-9 items-center gap-1 rounded-full border px-3 py-1.5 transition-colors ${
                   active
                     ? "border-accent bg-[#F5F1EC] text-primary"
                     : "border-[#E0DCD6] bg-white text-foreground hover:border-accent"
@@ -175,7 +175,7 @@ export function BatchApprovalsList({
               if (el) el.indeterminate = someChecked;
             }}
             onChange={toggleAll}
-            className="size-4 cursor-pointer accent-[#003153]"
+            className="size-5 cursor-pointer accent-[#003153]"
             aria-label="全選"
           />
           <span>全選</span>
@@ -216,7 +216,7 @@ export function BatchApprovalsList({
                   : "border-[#E0DCD6] hover:border-accent"
               }`}
             >
-              <label className="absolute left-3 top-3 z-10 inline-flex cursor-pointer items-center md:left-4 md:top-4">
+              <label className="absolute left-0 top-0 z-10 inline-flex size-12 cursor-pointer items-center justify-center md:size-14">
                 <input
                   type="checkbox"
                   checked={checked}
@@ -485,7 +485,7 @@ function BatchApprovalModal({
                 type="button"
                 onClick={clearSig}
                 disabled={isPending}
-                className="text-xs text-muted-foreground hover:text-accent disabled:opacity-50"
+                className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent disabled:opacity-50"
               >
                 清除重簽
               </button>

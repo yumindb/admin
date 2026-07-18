@@ -13,7 +13,7 @@
  *   - 標題列右側顯示「+ 新增工項」按鈕
  *   - tree 每列 hover 顯示「編輯」「刪除」「+ 加子項」icon
  *   - 開啟共用 WorkItemEditModal 處理新增 / 編輯
- *   - 刪除走原生 confirm(); server action 內統計 dangling 後仍回 ok 但帶 warning
+ *   - 刪除走站內 ConfirmDialog; server action 內統計 dangling 後仍回 ok 但帶 warning
  */
 
 import { useMemo, useState, useTransition } from "react";
@@ -30,6 +30,7 @@ import {
   type WorkItemEditTarget,
 } from "@/components/work-item-edit-modal";
 import { deleteWorkItemAction } from "@/app/(app)/cases/[id]/work-items-actions";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const PILLS: { key: TreeFilterMode; label: string }[] = [
   { key: "all", label: "全部" },
@@ -67,7 +68,13 @@ export function WorkItemsTreeSection({
     | { tone: "info" | "warn" | "error"; msg: string }
     | null
   >(null);
-  const [, startDelete] = useTransition();
+  const [deletePending, startDelete] = useTransition();
+  // 站內 ConfirmDialog 取代原生 confirm()(手機樣式突兀、\n 不換行、放不下細節)
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    label: string;
+    isSection: boolean;
+  } | null>(null);
 
   function togglePill(k: TreeFilterMode) {
     setModes((prev) => {
@@ -148,16 +155,17 @@ export function WorkItemsTreeSection({
     const it = itemsById.get(id);
     if (!it) return;
     const label = it.tenderCode ? `${it.tenderCode}  ${it.name}` : it.name;
-    const isSection = it.itemType === "section";
-    const msg = isSection
-      ? `確定要刪除分類「${label}」嗎？\n\n此分類下的所有子工項與細項會一併刪除，此動作無法復原。`
-      : `確定要刪除「${label}」嗎？此動作無法復原。`;
-    if (!confirm(msg)) return;
+    setDeleteTarget({ id, label, isSection: it.itemType === "section" });
+  }
 
+  function confirmDelete() {
+    const target = deleteTarget;
+    if (!target) return;
     startDelete(async () => {
       const fd = new FormData();
-      fd.set("work_item_id", id);
+      fd.set("work_item_id", target.id);
       const result = await deleteWorkItemAction(fd);
+      setDeleteTarget(null);
       if (!result.ok) {
         setFeedback({ tone: "error", msg: result.error });
         return;
@@ -278,6 +286,27 @@ export function WorkItemsTreeSection({
           mode={modalMode}
           initialParentId={modalParentId}
           target={modalTarget}
+        />
+      )}
+
+      {editable && caseId && (
+        <ConfirmDialog
+          open={deleteTarget !== null}
+          title={
+            deleteTarget?.isSection
+              ? `刪除分類「${deleteTarget.label}」？`
+              : `刪除「${deleteTarget?.label ?? ""}」？`
+          }
+          description={
+            deleteTarget?.isSection
+              ? "此分類下的所有子工項與細項會一併刪除。此動作無法復原。"
+              : "此動作無法復原。已在日誌填過的進度紀錄會保留，但會失去對應工項。"
+          }
+          confirmText="確認刪除"
+          danger
+          pending={deletePending}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </div>

@@ -311,7 +311,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
       });
       await refreshPending();
       toast.warning("回報已離線存檔", {
-        description: `${reason} — 連上網路會自動送出`,
+        description: `${reason} — 連上網路後回到「現場回報」頁會自動補送`,
       });
       // 排隊成功 — 清掉表單 + 草稿讓使用者繼續寫下一筆
       clearDraft();

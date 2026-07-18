@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { formatDateTW } from "@/lib/datetime";
 import {
@@ -75,8 +75,27 @@ export function CasesOverviewList({
   const extraFilter: ExtraFilter =
     sp.get("filter") === "behind" ? "behind" : null;
 
-  const [companyFilter, setCompanyFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  // company 與搜尋字串也進 URL:點進案件再返回,篩選才不會歸零
+  // (status/sort/filter 本來就在 URL,這兩個是漏網之魚)
+  const companyFilter = sp.get("company") ?? "all";
+  const [searchQuery, setSearchQuery] = useState<string>(
+    () => sp.get("q") ?? "",
+  );
+
+  // 搜尋是打字即濾,用 debounce + replace(不塞 history)同步回 URL
+  useEffect(() => {
+    const current = sp.get("q") ?? "";
+    if (searchQuery === current) return;
+    const t = setTimeout(() => {
+      const next = new URLSearchParams(sp.toString());
+      if (searchQuery.trim()) next.set("q", searchQuery);
+      else next.delete("q");
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   // 動態撈 distinct company(避免 hardcode);保留出現順序但去重
   const companies = useMemo(() => {
@@ -113,6 +132,14 @@ export function CasesOverviewList({
 
   function clearExtraFilter() {
     router.push(buildHref({ filter: null }));
+  }
+
+  function setCompanyInUrl(company: string) {
+    const next = new URLSearchParams(sp.toString());
+    if (company === "all") next.delete("company");
+    else next.set("company", company);
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
   // 套 company filter
@@ -184,7 +211,7 @@ export function CasesOverviewList({
               label="全部"
               count={cases.length}
               active={companyFilter === "all"}
-              onClick={() => setCompanyFilter("all")}
+              onClick={() => setCompanyInUrl("all")}
             />
             {companies.map((co) => {
               const count = cases.filter((c) => (c.company ?? "") === co).length;
@@ -194,7 +221,7 @@ export function CasesOverviewList({
                   label={getCompanyShort(co)}
                   count={count}
                   active={companyFilter === co}
-                  onClick={() => setCompanyFilter(co)}
+                  onClick={() => setCompanyInUrl(co)}
                 />
               );
             })}
@@ -211,7 +238,7 @@ export function CasesOverviewList({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="案件名稱、案號、業主或施工地點"
-            className="h-10 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+            className="h-11 flex-1 rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
           {searchQuery && (
             <button

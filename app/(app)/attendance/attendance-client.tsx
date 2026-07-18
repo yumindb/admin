@@ -62,16 +62,23 @@ export function AttendanceClient({
   cases,
   initialToday,
   role,
+  initialCaseId,
 }: {
   cases: CaseOption[];
   initialToday: AttendanceItem[];
   /** 用來判斷是否在下班打卡 toast 加「順手填日誌」action — 只 supervisor / owner 寫日誌 */
   role?: string | null;
+  /** 從案場卡「打卡」按鈕帶進來的預選案件(?case=)— 免去再選一次 */
+  initialCaseId?: string;
 }) {
   const router = useRouter();
   const canWriteLog = role === "site_supervisor" || role === "owner";
   const geo = useGeolocation({ autoFetch: true });
-  const [selectedCaseId, setSelectedCaseId] = useState<string>("");
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(() =>
+    initialCaseId && cases.some((c) => c.id === initialCaseId)
+      ? initialCaseId
+      : "",
+  );
   const [autoPickedId, setAutoPickedId] = useState<string>("");
   const [note, setNote] = useState("");
   const [submitting, startTransition] = useTransition();
@@ -408,7 +415,16 @@ export function AttendanceClient({
       })()}
 
       {/* 離線排隊 — 有待送出時顯示 */}
-      <PendingQueueCard pending={pending} flushing={flushing} onRetry={flushQueue} />
+      <PendingQueueCard
+        pending={pending}
+        flushing={flushing}
+        onRetry={flushQueue}
+        onRemove={async (id) => {
+          await remove(id);
+          await refreshPending();
+          toast.success("已移除");
+        }}
+      />
 
       {/* 5) 今日打卡時間軸 */}
       <TodayTimeline items={initialToday} />
@@ -420,10 +436,12 @@ function PendingQueueCard({
   pending,
   flushing,
   onRetry,
+  onRemove,
 }: {
   pending: PendingClock[];
   flushing: boolean;
   onRetry: () => void;
+  onRemove: (id: string) => void;
 }) {
   if (pending.length === 0) return null;
   const failed = pending.filter((p) => p.attempts >= MAX_ATTEMPTS);
@@ -463,6 +481,38 @@ function PendingQueueCard({
           <li className="text-muted-foreground">…還有 {pending.length - 5} 筆</li>
         )}
       </ul>
+      <p className="mt-2 text-xs text-[#92400E]/80">
+        連上網路後回到本頁會自動補送。
+      </p>
+      {failed.length > 0 && (
+        <ul className="mt-2 space-y-2">
+          {failed.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-start justify-between gap-3 rounded-md border border-[#FCA5A5] bg-white px-3 py-2 text-xs"
+            >
+              <div className="min-w-0">
+                <div className="text-foreground">
+                  {TIME_FMT.format(new Date(p.client_created_at))}{" "}
+                  {p.event_type === "clock_in" ? "上班" : "下班"} — 補送失敗
+                </div>
+                {p.last_error && (
+                  <div className="mt-0.5 break-words text-[#B91C1C]">
+                    原因:{p.last_error}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                className="inline-flex min-h-11 shrink-0 items-center rounded-md border border-[#E0DCD6] bg-white px-3 text-sm text-[#B91C1C] hover:border-[#B91C1C]"
+              >
+                移除
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

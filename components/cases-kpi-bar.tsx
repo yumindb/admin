@@ -12,7 +12,7 @@
  * KPI 數值由 server 端傳入(複用已撈的 cases/logs);這裡只負責呈現與導航。
  */
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { TrendingUp, AlertTriangle, FileText, FileWarning } from "lucide-react";
 
@@ -24,30 +24,28 @@ export type CasesKpis = {
 };
 
 export function CasesKpiBar({ kpis }: { kpis: CasesKpis }) {
-  const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
 
-  function applyBehindFilter() {
-    const next = new URLSearchParams(sp.toString());
-    next.set("filter", "behind");
-    router.push(`${pathname}?${next.toString()}`);
-  }
+  // 全部用 <Link>:button + router.push 不會觸發 RouteProgress 光條,
+  // 慢網路點了像沒反應會被連點
+  const behindParams = new URLSearchParams(sp.toString());
+  behindParams.set("filter", "behind");
 
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-      <KpiCard
+      <KpiCardLink
         label="進行中案件"
         value={kpis.activeCount}
         icon={<TrendingUp className="size-4" />}
-        onClick={() => router.push(`${pathname}?status=active`)}
+        href={`${pathname}?status=active`}
       />
-      <KpiCard
+      <KpiCardLink
         label="進度落後"
         value={kpis.behindCount}
         tone="danger"
         icon={<AlertTriangle className="size-4" />}
-        onClick={applyBehindFilter}
+        href={`${pathname}?${behindParams.toString()}`}
         hint="< 30% 且開工 > 60 天"
       />
       <KpiCardLink
@@ -67,27 +65,27 @@ export function CasesKpiBar({ kpis }: { kpis: CasesKpis }) {
   );
 }
 
-function KpiCard({
+
+function KpiCardLink({
   label,
   value,
   icon,
-  tone,
-  onClick,
+  href,
   hint,
+  tone,
 }: {
   label: string;
   value: number;
   icon?: React.ReactNode;
-  tone?: "danger";
-  onClick?: () => void;
+  href: string;
   hint?: string;
+  tone?: "danger";
 }) {
   const danger = tone === "danger" && value > 0;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group flex flex-col items-start rounded-lg border px-4 py-3.5 text-left transition-colors md:px-5 md:py-4 ${
+    <Link
+      href={href}
+      className={`group flex flex-col items-start rounded-lg border px-4 py-3.5 transition-colors md:px-5 md:py-4 ${
         danger
           ? "border-[#FCA5A5] bg-[#FEF2F2] hover:border-[#B91C1C]"
           : "border-[#E0DCD6] bg-card hover:border-accent"
@@ -116,38 +114,6 @@ function KpiCard({
         >
           {hint}
         </div>
-      )}
-    </button>
-  );
-}
-
-function KpiCardLink({
-  label,
-  value,
-  icon,
-  href,
-  hint,
-}: {
-  label: string;
-  value: number;
-  icon?: React.ReactNode;
-  href: string;
-  hint?: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group flex flex-col items-start rounded-lg border border-[#E0DCD6] bg-card px-4 py-3.5 transition-colors hover:border-accent md:px-5 md:py-4"
-    >
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums text-primary md:text-3xl">
-        {value}
-      </div>
-      {hint && (
-        <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>
       )}
     </Link>
   );

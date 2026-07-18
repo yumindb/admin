@@ -6,9 +6,14 @@ import { AttendanceClient, type CaseOption, type AttendanceItem } from "./attend
 
 export const dynamic = "force-dynamic";
 
-export default async function AttendancePage() {
+export default async function AttendancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ case?: string }>;
+}) {
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
+  const sp = await searchParams;
 
   const supabase = await createClient();
 
@@ -83,6 +88,7 @@ export default async function AttendancePage() {
         cases={cases}
         initialToday={todayEvents}
         role={actor.role}
+        initialCaseId={sp.case}
       />
     </div>
   );

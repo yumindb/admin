@@ -578,7 +578,7 @@ function DashCard({
         <div className="mt-3">
           <Link
             href={cta.href}
-            className={`inline-flex h-9 items-center rounded-md border ${toneClasses.border} bg-white px-3 text-sm font-medium ${toneClasses.text} hover:bg-white/70`}
+            className={`inline-flex h-11 items-center rounded-md border ${toneClasses.border} bg-white px-4 text-sm font-medium ${toneClasses.text} hover:bg-white/70`}
           >
             {cta.label} →
           </Link>

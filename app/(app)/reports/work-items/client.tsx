@@ -7,7 +7,8 @@
  *   - 進度區間 radio:全部 / <50% / 50-99% / =100% / >100%
  *   - 「下載 Excel」按鈕(把選中的 case ids 傳給 server action)
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getCompanyShort } from "@/lib/companies";
 import { ExcelDownloadButton } from "@/components/excel-download-button";
@@ -38,11 +39,42 @@ export function WorkItemsReportClient({
   rows: CrossCaseSummaryRow[];
   cases: CaseLite[];
 }) {
-  const [selectedCases, setSelectedCases] = useState<Set<string>>(
-    () => new Set(cases.map((c) => c.id)),
-  );
-  const [search, setSearch] = useState("");
-  const [pctRange, setPctRange] = useState<PctRange>("all");
+  const sp = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // 篩選同步進 URL:每列連到案件/日誌,返回時篩選不歸零
+  const [selectedCases, setSelectedCases] = useState<Set<string>>(() => {
+    const validIds = new Set(cases.map((c) => c.id));
+    const raw = sp.get("cases");
+    if (!raw) return validIds;
+    const picked = raw.split(",").filter((id) => validIds.has(id));
+    return picked.length > 0 ? new Set(picked) : validIds;
+  });
+  const [search, setSearch] = useState(() => sp.get("q") ?? "");
+  const [pctRange, setPctRange] = useState<PctRange>(() => {
+    const v = sp.get("pct");
+    return PCT_OPTIONS.some((o) => o.key === v) ? (v as PctRange) : "all";
+  });
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = new URLSearchParams(sp.toString());
+      const setOrDel = (k: string, v: string) =>
+        v ? next.set(k, v) : next.delete(k);
+      setOrDel("q", search.trim());
+      setOrDel("pct", pctRange === "all" ? "" : pctRange);
+      setOrDel(
+        "cases",
+        selectedCases.size === cases.length ? "" : [...selectedCases].join(","),
+      );
+      if (next.toString() === sp.toString()) return;
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }, 300); // 搜尋打字即濾,debounce 避免每個字元都 replace
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, pctRange, selectedCases]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

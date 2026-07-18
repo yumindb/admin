@@ -196,7 +196,7 @@ export default async function MyCasesPage() {
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
-                    href={`/attendance`}
+                    href={`/attendance?case=${c.id}`}
                     className="inline-flex h-11 items-center rounded-md border border-primary px-4 text-sm text-primary hover:bg-primary/5"
                   >
                     打卡

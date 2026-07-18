@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 
 /** 光條顯示後至少要停留多久才能消失。本機 dev 切頁常常 <100ms,
  *  沒有最短顯示時間人眼根本看不到。設 600ms 才足夠看到動畫真的有在動。 */
@@ -21,9 +21,21 @@ const MIN_VISIBLE_MS = 600;
  *   - useLinkStatus 是 per-Link hook,要包每個 Link 才能用,不適合全站
  */
 export function RouteProgress() {
+  // useSearchParams 需要 Suspense boundary(否則整個 layout 變 client-side render)
+  return (
+    <Suspense fallback={null}>
+      <RouteProgressInner />
+    </Suspense>
+  );
+}
+
+function RouteProgressInner() {
   const [active, setActive] = useState(false);
   const startedAtRef = useRef<number | null>(null);
   const pathname = usePathname();
+  // 同 pathname 換 query(例:/logs?scope=all 的範圍切換)也是一次 navigation,
+  // 只看 pathname 的話光條會空轉到 8 秒安全網才熄
+  const search = useSearchParams().toString();
 
   // 監聽點擊內部連結。
   // ⚠ 必須用 capture phase:Next.js <Link> 的 onClick 會 preventDefault 自己接管,
@@ -69,7 +81,7 @@ export function RouteProgress() {
     return () => document.removeEventListener("click", onClick, { capture: true });
   }, []);
 
-  // pathname 改變 = navigation 結束。但本機切頁很快,加最短顯示時間。
+  // pathname 或 query 改變 = navigation 結束。但本機切頁很快,加最短顯示時間。
   useEffect(() => {
     if (startedAtRef.current === null) {
       setActive(false);
@@ -82,7 +94,7 @@ export function RouteProgress() {
       startedAtRef.current = null;
     }, remaining);
     return () => clearTimeout(t);
-  }, [pathname]);
+  }, [pathname, search]);
 
   // 安全網
   useEffect(() => {

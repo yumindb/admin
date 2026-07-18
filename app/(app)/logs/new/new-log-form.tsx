@@ -1493,7 +1493,7 @@ export function NewLogForm({
                   <button
                     type="button"
                     onClick={() => removeFailedUpload(f.id)}
-                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-[#FEE2E2] hover:text-[#B91C1C]"
+                    className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-[#FEE2E2] hover:text-[#B91C1C]"
                     aria-label="放棄這張"
                   >
                     ×
@@ -1639,7 +1639,7 @@ export function NewLogForm({
             <button
               type="button"
               onClick={clearSig}
-              className="text-xs text-muted-foreground hover:text-accent"
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent"
             >
               清除重簽
             </button>
@@ -1834,7 +1834,7 @@ function CasePicker({
           <button
             type="button"
             onClick={() => setBrowseOpen(true)}
-            className="shrink-0 text-xs text-accent hover:underline"
+            className="inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-sm text-accent hover:bg-[#F5F1EC] hover:underline"
           >
             換一個
           </button>

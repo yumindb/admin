@@ -17,6 +17,11 @@ export type GalleryPhoto = {
  *
  * 點任何一張照片都會開 lightbox(共用 photos 清單),可上下張切換。
  */
+/** 首批 render 的張數 — 案件頁全案照片可能好幾百張,一次全 render
+ *  = 幾百個同時請求 + 手機記憶體爆炸;先出 24 張,要看更多再按。 */
+const INITIAL_BATCH = 24;
+const BATCH_SIZE = 48;
+
 export function PhotoGallery({
   photos,
   layout = "grid",
@@ -25,7 +30,11 @@ export function PhotoGallery({
   layout?: "grid" | "row";
 }) {
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
+  const visible = photos.slice(0, visibleCount);
+  const hasMore = photos.length > visibleCount;
 
+  // lightbox 拿完整清單:已顯示的縮圖點進去仍可一路滑到底
   const lightbox = (
     <PhotoLightbox
       photos={photos}
@@ -34,11 +43,21 @@ export function PhotoGallery({
     />
   );
 
+  const loadMore = hasMore && (
+    <button
+      type="button"
+      onClick={() => setVisibleCount((n) => n + BATCH_SIZE)}
+      className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-md border border-[#E0DCD6] bg-card text-sm text-foreground transition-colors hover:border-accent"
+    >
+      顯示更多照片（還有 {photos.length - visibleCount} 張）
+    </button>
+  );
+
   if (layout === "row") {
     return (
       <>
         <ul className="space-y-3">
-          {photos.map((p, idx) => (
+          {visible.map((p, idx) => (
             <li
               key={p.path + idx}
               className="grid grid-cols-[8rem_1fr] items-start gap-3 rounded-md border border-[#E0DCD6] bg-card p-3"
@@ -53,6 +72,7 @@ export function PhotoGallery({
                 <img
                   src={p.path}
                   alt=""
+                  loading="lazy"
                   className="h-full w-full object-cover"
                 />
               </button>
@@ -64,6 +84,7 @@ export function PhotoGallery({
             </li>
           ))}
         </ul>
+        {loadMore}
         {lightbox}
       </>
     );
@@ -72,7 +93,7 @@ export function PhotoGallery({
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        {photos.map((p, i) => (
+        {visible.map((p, i) => (
           <figure
             key={`${p.path}-${i}`}
             className="overflow-hidden rounded-md border border-[#E0DCD6] bg-white"
@@ -87,6 +108,7 @@ export function PhotoGallery({
               <img
                 src={p.path}
                 alt={p.caption || ""}
+                loading="lazy"
                 className="aspect-square w-full object-cover"
               />
             </button>
@@ -98,6 +120,7 @@ export function PhotoGallery({
           </figure>
         ))}
       </div>
+      {loadMore}
       {lightbox}
     </>
   );

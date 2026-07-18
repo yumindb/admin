@@ -10,7 +10,8 @@
  *   - period=month 預設把 from/to 設為本月
  */
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatDateTW } from "@/lib/datetime";
 import { getCompanyShort } from "@/lib/companies";
 
@@ -72,13 +73,45 @@ export function UnsignedReportClient({
   cases: CaseLite[];
   initialPeriod: "all" | "month";
 }) {
+  const sp = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // 篩選同步進 URL:每列都是連到日誌/案件的 Link,點進明細再返回,
+  // 月底核對到一半的篩選不能歸零
   const initRange = initialPeriod === "month" ? getMonthRange() : null;
-  const [from, setFrom] = useState<string>(initRange?.from ?? "");
-  const [to, setTo] = useState<string>(initRange?.to ?? "");
-  const [selectedCases, setSelectedCases] = useState<Set<string>>(
-    () => new Set(cases.map((c) => c.id)),
+  const [from, setFrom] = useState<string>(
+    () => sp.get("from") ?? initRange?.from ?? "",
   );
-  const [kind, setKind] = useState<KindFilter>("all");
+  const [to, setTo] = useState<string>(() => sp.get("to") ?? initRange?.to ?? "");
+  const [selectedCases, setSelectedCases] = useState<Set<string>>(() => {
+    const validIds = new Set(cases.map((c) => c.id));
+    const raw = sp.get("cases");
+    if (!raw) return validIds;
+    const picked = raw.split(",").filter((id) => validIds.has(id));
+    return picked.length > 0 ? new Set(picked) : validIds;
+  });
+  const [kind, setKind] = useState<KindFilter>(() => {
+    const v = sp.get("kind");
+    return KIND_OPTIONS.some((o) => o.key === v) ? (v as KindFilter) : "all";
+  });
+
+  useEffect(() => {
+    const next = new URLSearchParams(sp.toString());
+    const setOrDel = (k: string, v: string) =>
+      v ? next.set(k, v) : next.delete(k);
+    setOrDel("from", from);
+    setOrDel("to", to);
+    setOrDel("kind", kind === "all" ? "" : kind);
+    setOrDel(
+      "cases",
+      selectedCases.size === cases.length ? "" : [...selectedCases].join(","),
+    );
+    if (next.toString() === sp.toString()) return;
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, kind, selectedCases]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { approveLeaveAction, rejectLeaveAction } from "../actions";
 
 export function ApprovalButtons({ requestId }: { requestId: string }) {
@@ -32,6 +33,8 @@ export function ApprovalButtons({ requestId }: { requestId: string }) {
         setError(res.error);
         return;
       }
+      // 慢網路下 refresh 靜靜結束會像沒反應 — 給明確回饋
+      toast.success(mode === "approve" ? "已通過" : "已退回");
       router.refresh();
       setComment("");
     });
@@ -43,7 +46,7 @@ export function ApprovalButtons({ requestId }: { requestId: string }) {
         <button
           type="button"
           onClick={() => setMode("approve")}
-          className={`rounded-sm px-4 py-1.5 text-sm transition-colors ${
+          className={`inline-flex min-h-11 items-center rounded-sm px-5 text-sm transition-colors ${
             mode === "approve"
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -54,7 +57,7 @@ export function ApprovalButtons({ requestId }: { requestId: string }) {
         <button
           type="button"
           onClick={() => setMode("reject")}
-          className={`rounded-sm px-4 py-1.5 text-sm transition-colors ${
+          className={`inline-flex min-h-11 items-center rounded-sm px-5 text-sm transition-colors ${
             mode === "reject"
               ? "bg-[#B91C1C] text-white"
               : "text-muted-foreground hover:text-foreground"

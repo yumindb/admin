@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { ChevronDown, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkItemAggregate } from "@/lib/work-item-aggregates";
@@ -295,8 +296,19 @@ export function WorkItemsPicker({
             </h3>
             <button
               type="button"
-              onClick={() => onChange([])}
-              className="text-xs text-muted-foreground transition-colors hover:text-[#B91C1C]"
+              onClick={() => {
+                // 一鍵清空十幾項填好的數量太危險 — 給 8 秒「復原」後路
+                const prev = value;
+                onChange([]);
+                toast("已移除全部工項", {
+                  duration: 8000,
+                  action: {
+                    label: "復原",
+                    onClick: () => onChange(prev),
+                  },
+                });
+              }}
+              className="inline-flex min-h-11 items-center rounded-md px-2 text-sm text-muted-foreground transition-colors hover:text-[#B91C1C]"
             >
               全部移除
             </button>
@@ -423,6 +435,10 @@ function SelectedItemCard({
   onHighlightConsumed?: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  // 數量輸入的編輯中字串:null = 非編輯中(顯示正式值)。
+  // 沒有這層的話 Number("")=0 會把「清空重打」變成「顯示 0 再打字 → 05」,
+  // 想從 12 改 3 得先全選。編輯中放行任何字串,onBlur 才歸位。
+  const [qtyDraft, setQtyDraft] = useState<string | null>(null);
   // 高亮被觸發時 scroll into view + 2.5 秒後通知父元件清掉(避免一直閃)
   useEffect(() => {
     if (!highlight) return;
@@ -574,12 +590,16 @@ function SelectedItemCard({
             max={inputMax}
             step="any"
             inputMode="decimal"
-            value={display}
+            value={qtyDraft ?? display}
             onChange={(e) => {
-              const n = Number(e.target.value);
+              const raw = e.target.value;
+              setQtyDraft(raw);
+              if (raw === "") return; // 清空中,先不 commit
+              const n = Number(raw);
               if (!Number.isFinite(n)) return;
               onChangeQty(clampStored(isPct ? n / 100 : n));
             }}
+            onBlur={() => setQtyDraft(null)}
             className="h-11 w-20 rounded-md border border-[#E0DCD6] bg-white px-1 text-center text-base tabular-nums outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
           <button
@@ -899,7 +919,7 @@ function MobileBrowseView({
             <button
               type="button"
               onClick={() => setPath((p) => p.slice(0, -1))}
-              className="inline-flex min-h-[36px] items-center gap-1.5 text-sm font-medium text-accent active:opacity-70"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-md pr-3 text-sm font-medium text-accent active:opacity-70"
             >
               <ChevronLeft className="size-4" /> 上一層
             </button>

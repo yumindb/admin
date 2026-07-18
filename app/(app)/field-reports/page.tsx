@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronDown, Plus } from "lucide-react";
+import { PendingReportsCard } from "./pending-reports-card";
 import { createClient } from "@/lib/supabase/server";
 import { formatTW } from "@/lib/datetime";
 import { getSignedUrls } from "@/lib/supabase/storage";
@@ -193,6 +194,9 @@ export default async function FieldReportsPage({
           </Link>
         )}
       </div>
+
+      {/* 離線佇列:列表頁也要能補送 + 看得到排隊中/失敗的回報 */}
+      {canCreate && <PendingReportsCard />}
 
       {error && (
         <p className="mb-4 rounded-lg border-2 border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-base text-[#B91C1C]">

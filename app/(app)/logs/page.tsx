@@ -310,7 +310,7 @@ export default async function LogsPage({
                         >
                           <Link
                             href={`/logs/${l.id}`}
-                            className="flex items-start justify-between gap-2 px-3.5 py-2.5 transition-colors hover:bg-[#F5F1EC] md:gap-3 md:px-5 md:py-3"
+                            className="flex items-start justify-between gap-2 py-2.5 pl-3.5 pr-14 transition-colors hover:bg-[#F5F1EC] md:gap-3 md:py-3 md:pl-5 md:pr-16"
                           >
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-foreground">
@@ -354,7 +354,7 @@ export default async function LogsPage({
                               href={`/logs/new?from=${l.id}`}
                               aria-label={`複製 ${formatDateTW(l.log_date)} 的日誌為新日誌`}
                               title="複製為新日誌"
-                              className="absolute right-1.5 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-[#E0DCD6] hover:bg-white hover:text-accent md:right-3"
+                              className="absolute right-1 top-1/2 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-[#E0DCD6] hover:bg-white hover:text-accent md:right-2"
                             >
                               <CopyIcon />
                             </Link>

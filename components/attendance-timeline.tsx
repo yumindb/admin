@@ -125,7 +125,7 @@ export function AttendanceTimeline({
                         href={googleMapsLink({ lat: e.lat, lng: e.lng })}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="ml-auto text-accent underline-offset-2 hover:underline"
+                        className="ml-auto inline-flex min-h-11 items-center rounded-md px-2 text-accent underline-offset-2 hover:underline"
                       >
                         地圖 ↗
                       </a>

@@ -162,7 +162,7 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                                   onClick={() =>
                                     patch(idx, { [col.key]: s } as Partial<T>)
                                   }
-                                  className="min-h-[36px] rounded-md border border-[#E0DCD6] bg-white px-2.5 text-xs text-foreground transition-colors hover:border-accent hover:bg-[#FAF7F2] active:bg-[#F0EBE4]"
+                                  className="min-h-11 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm text-foreground transition-colors hover:border-accent hover:bg-[#FAF7F2] active:bg-[#F0EBE4]"
                                 >
                                   {s}
                                 </button>
@@ -178,7 +178,7 @@ export function ExtraItemsEditor<T extends Record<string, unknown>>({
                 <button
                   type="button"
                   onClick={() => remove(idx)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-xs text-[#B91C1C] transition-colors hover:bg-[#FEF2F2]"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm text-[#B91C1C] transition-colors hover:bg-[#FEF2F2]"
                 >
                   <Trash2 className="size-3.5" />
                   移除
