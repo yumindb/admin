@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { usernameSchema, usernameToEmail } from "@/lib/auth/username";
@@ -125,6 +126,23 @@ export async function updateStaffAction(
     })
     .eq("id", data.user_id);
   if (upd.error) return { ok: false, error: upd.error.message };
+
+  // 角色可能變了 → 已綁定 LINE 的人把 Rich Menu 換成新角色的(失敗只 log)
+  after(async () => {
+    try {
+      const { data: binding } = await admin
+        .from("line_bindings")
+        .select("line_user_id")
+        .eq("profile_id", data.user_id)
+        .maybeSingle();
+      if (binding?.line_user_id) {
+        const { linkRoleRichMenu } = await import("@/lib/line/richmenu");
+        await linkRoleRichMenu(binding.line_user_id as string, data.role);
+      }
+    } catch (e) {
+      console.error("[staff] rich menu 重掛失敗:", e);
+    }
+  });
 
   revalidatePath("/staff");
   return { ok: true };

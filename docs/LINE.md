@@ -68,6 +68,19 @@ server actions(簽核/請假/回報成功後)
    - /account 綁定卡會顯示本人目前會收到哪些分類(唯讀);
      /staff 名單有「LINE 已綁定/未綁定」欄位
 
+## Rich Menu(依角色選單)
+
+- 由 `scripts/line-rich-menu.mjs` 產生與部署:
+  `node scripts/line-rich-menu.mjs render`(只產 PNG 預覽)/ `deploy`(需
+  `LINE_CHANNEL_ACCESS_TOKEN` env;冪等,重跑會換新圖並清舊選單)
+- 5 個選單:4 個角色(2×3 格,URI 按鈕連現有頁面)+ 1 個未綁定預設
+  (完成綁定 / 使用說明書)。每個角色選單的 alias 固定
+  (`yumin-role-<role>`),runtime 由 alias 解析 id(`lib/line/richmenu.ts`)
+- 掛載時機:綁定成功 → webhook 掛角色選單;傳「解除綁定」→ 退回預設;
+  /staff 改角色 → 自動重掛。**Rich Menu 免費,點擊不計訊息額度**
+- 改選單內容:編輯 script 裡的 `ROLE_MENUS` 後重跑 deploy;已綁定使用者
+  的選單指到 alias 背後的新 id,無需重綁(個人 link 指舊 id 的,重綁一次即可)
+
 ## ⚠ 訊息額度(成本)
 
 - **推播(push)計入官方帳號每月訊息數;回覆(reply)免費。**

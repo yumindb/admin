@@ -8,6 +8,8 @@ import {
 import { looksLikeBindingCode } from "@/lib/line/binding";
 import { UNBIND_KEYWORD } from "@/lib/line/constants";
 import { textMessage } from "@/lib/line/flex";
+import { linkRoleRichMenu, unlinkRichMenu } from "@/lib/line/richmenu";
+import type { UserRole } from "@/lib/types";
 
 /**
  * LINE 官方帳號 webhook 入口。
@@ -106,6 +108,10 @@ async function handleEvent(event: LineEvent): Promise<void> {
       .update({ line_user_id: null, bound_at: null })
       .eq("line_user_id", userId)
       .select("profile_id");
+    if (rows && rows.length > 0) {
+      // 解綁 → 退回未綁定預設選單
+      await unlinkRichMenu(userId);
+    }
     if (replyToken) {
       await replyLineMessage(replyToken, [
         textMessage(
@@ -201,15 +207,20 @@ async function handleBindingCode(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name")
+    .select("full_name, role")
     .eq("id", binding.profile_id)
     .maybeSingle();
   const name = (profile?.full_name as string | undefined) ?? "";
 
+  // 依角色掛 Rich Menu(失敗不影響綁定)
+  if (profile?.role) {
+    await linkRoleRichMenu(userId, profile.role as UserRole);
+  }
+
   if (replyToken) {
     await replyLineMessage(replyToken, [
       textMessage(
-        `${name ? name + ",": ""}綁定成功!之後簽核、請假、回報的通知都會傳到這裡。\n想暫停通知可以到系統「我的帳號」關閉,或傳「${UNBIND_KEYWORD}」。`,
+        `${name ? name + ",": ""}綁定成功!之後簽核、請假、回報的通知都會傳到這裡,下方選單也換成你的常用功能了。\n想暫停通知可以到系統「我的帳號」關閉,或傳「${UNBIND_KEYWORD}」。`,
       ),
     ]);
   }

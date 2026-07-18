@@ -53,3 +53,4 @@ _work/
 *-secrets.*
 nas-backup-secrets*
 cloudflare-r2-secrets*
+scripts/rich-menu-out/
