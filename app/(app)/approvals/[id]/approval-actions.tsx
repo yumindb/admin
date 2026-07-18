@@ -188,6 +188,8 @@ export function ApprovalActions({
               penColor="#003153"
               minWidth={2}
               maxWidth={4}
+              // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
+              clearOnResize={false}
               canvasProps={{
                 className: "w-full",
                 style: {

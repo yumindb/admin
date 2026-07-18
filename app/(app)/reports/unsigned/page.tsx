@@ -8,6 +8,7 @@ import type {
   DailyLogExtraItem,
   DailyLogUnsignedItem,
 } from "@/lib/types";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import { UnsignedReportClient, type UnsignedRow } from "./client";
 
 /**
@@ -41,19 +42,22 @@ export default async function UnsignedReportPage({
 
   const supabase = await createClient();
 
-  let query = supabase
-    .from("daily_logs")
-    .select(
-      "id, case_id, supervisor_id, log_date, extra_items, unsigned_items, cases(name, code, company), supervisor:profiles!supervisor_id(full_name)",
-    )
-    .in("status", ["submitted", "approved"])
-    .order("log_date", { ascending: false });
-
-  if (actor.role === "site_supervisor") {
-    query = query.eq("supervisor_id", actor.id);
-  }
-
-  const { data: rawLogs } = await query;
+  // 分頁撈全部:PostgREST 單次查詢預設 1000 筆靜默截斷,這張報表是
+  // 月底核對追加報價用的,漏掉舊項目 = 漏收錢,不能截
+  const { data: rawLogs, truncated } = await fetchAllRows((from, to) => {
+    let query = supabase
+      .from("daily_logs")
+      .select(
+        "id, case_id, supervisor_id, log_date, extra_items, unsigned_items, cases(name, code, company), supervisor:profiles!supervisor_id(full_name)",
+      )
+      .in("status", ["submitted", "approved"])
+      .order("log_date", { ascending: false })
+      .range(from, to);
+    if (actor.role === "site_supervisor") {
+      query = query.eq("supervisor_id", actor.id);
+    }
+    return query;
+  });
   const logs = (rawLogs ?? []) as unknown as RawLog[];
 
   // 額外案件清單(給 filter 用)— 從 logs 裡 distinct
@@ -135,6 +139,12 @@ export default async function UnsignedReportPage({
           所有日誌中登記的合約外、點工、變更追加項目 — 月底用來核對追加報價
         </p>
       </div>
+
+      {truncated && (
+        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          日誌量已超過一次可載入的上限，以下清單只包含較新的部分——請縮小日期範圍或聯絡系統管理員。
+        </div>
+      )}
 
       <UnsignedReportClient
         rows={rows}

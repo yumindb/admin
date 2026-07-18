@@ -33,6 +33,7 @@ import { saveLogAction } from "./actions";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
 import {
   deletePhotoAction,
+  refreshPhotoUrlsAction,
   uploadPhotoAction,
   uploadSignatureAction,
 } from "../[id]/photo-actions";
@@ -234,6 +235,11 @@ export function NewLogForm({
   const [uploading, setUploading] = useState(false);
   // 點照片放大檢視用 — 為 null 時不顯示;設成 path 時開啟 lightbox 顯示該張
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
+  // 待整合回報的照片預覽(每則回報自帶照片清單,和上面表單照片的 lightbox 分開)
+  const [reportPreview, setReportPreview] = useState<{
+    photos: { path: string; caption?: string | null }[];
+    path: string;
+  } | null>(null);
   const [autosaved, setAutosaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -293,6 +299,51 @@ export function NewLogForm({
       if (draft.mergedReportSnapshots !== undefined)
         setMergedReportSnapshots(draft.mergedReportSnapshots);
       setAutosaved(true);
+
+      // 草稿裡的照片存的是 signed URL(6h 效期):隔天回來已過期,整批重簽;
+      // 檔案已被 orphan cron 清掉的(>72h 未送出)從草稿移除並提醒重傳,
+      // 不然送出時會把死路徑寫進 DB
+      const draftPhotos = draft.photos ?? [];
+      const snapPhotos = (draft.mergedReportSnapshots ?? []).flatMap(
+        (s) => s.photos ?? [],
+      );
+      const staleUrls = [...draftPhotos, ...snapPhotos]
+        .map((p) => p.path)
+        .filter(Boolean);
+      if (staleUrls.length > 0) {
+        void refreshPhotoUrlsAction(staleUrls)
+          .then((res) => {
+            if (!res.ok) return; // 簽名服務失敗 → 保留原 URL,寧可破圖不誤刪
+            const fresh = res.urls;
+            const gone = new Set(res.missing);
+            const removedCount = draftPhotos.filter((p) =>
+              gone.has(p.path),
+            ).length;
+            if (removedCount > 0) {
+              toast.error(
+                `草稿裡有 ${removedCount} 張照片放超過三天已被系統清理，請重新上傳`,
+              );
+            }
+            setPhotos((prev) =>
+              prev
+                .filter((p) => !gone.has(p.path))
+                .map((p) =>
+                  fresh[p.path] ? { ...p, path: fresh[p.path] } : p,
+                ),
+            );
+            setMergedReportSnapshots((prev) =>
+              prev.map((s) => ({
+                ...s,
+                photos: (s.photos ?? []).map((p) =>
+                  fresh[p.path] ? { ...p, path: fresh[p.path] } : p,
+                ),
+              })),
+            );
+          })
+          .catch(() => {
+            // 離線還原草稿是正常情境 — 靜默保留原 URL
+          });
+      }
     } else if (!initial?.logDate) {
       // 沒草稿、也沒帶初始值 → logDate 設為今天
       setLogDate(new Date().toISOString().slice(0, 10));
@@ -1085,14 +1136,18 @@ export function NewLogForm({
                         {r.photos.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {r.photos.slice(0, 6).map((p, idx) => (
-                              <a
+                              <button
                                 key={p.path + idx}
-                                href={p.path}
-                                target="_blank"
-                                rel="noreferrer"
+                                type="button"
                                 title={p.caption || undefined}
-                                className="block size-14 overflow-hidden rounded border border-[#E0DCD6] bg-[#F5F1EC]"
-                                onClick={(e) => e.stopPropagation()}
+                                className="block size-14 cursor-zoom-in overflow-hidden rounded border border-[#E0DCD6] bg-[#F5F1EC]"
+                                onClick={(e) => {
+                                  // 在 checkbox 的 label 裡,擋掉勾選 toggle
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setReportPreview({ photos: r.photos, path: p.path });
+                                }}
+                                aria-label="放大檢視"
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
@@ -1100,7 +1155,7 @@ export function NewLogForm({
                                   alt=""
                                   className="h-full w-full object-cover"
                                 />
-                              </a>
+                              </button>
                             ))}
                             {r.photos.length > 6 && (
                               <span className="inline-flex size-14 items-center justify-center rounded border border-[#E0DCD6] bg-white text-xs text-muted-foreground">
@@ -1374,11 +1429,12 @@ export function NewLogForm({
       )}
 
       <Section title={`照片區${photos.length > 0 ? ` (${photos.length})` : ""}`}>
+        {/* 不加 capture:主任多半白天拍照、傍晚坐下來從相簿選;
+            系統選單本來就有「拍照」選項,加了反而鎖死只能開相機且不能多選 */}
         <input
           type="file"
           accept="image/*"
           multiple
-          capture="environment"
           onChange={(e) => onUploadPhoto(e.target.files)}
           disabled={uploading}
           className="block w-full rounded-md border border-[#E0DCD6] bg-white p-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
@@ -1548,6 +1604,8 @@ export function NewLogForm({
               penColor="#003153"
               minWidth={2}
               maxWidth={4}
+              // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
+              clearOnResize={false}
               canvasProps={{
                 className: "w-full",
                 style: {
@@ -1649,6 +1707,17 @@ export function NewLogForm({
         photos={photos}
         path={lightboxPath}
         onChange={setLightboxPath}
+      />
+
+      {/* 待整合回報的照片 lightbox — 開著時 photos 換成該則回報的清單 */}
+      <PhotoLightbox
+        photos={reportPreview?.photos ?? []}
+        path={reportPreview?.path ?? null}
+        onChange={(next) =>
+          setReportPreview((prev) =>
+            next && prev ? { ...prev, path: next } : null,
+          )
+        }
       />
 
       {showPostEditConfirm && (

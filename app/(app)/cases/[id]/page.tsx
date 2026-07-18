@@ -12,7 +12,7 @@ import {
 import { WorkItemsTreeSection } from "@/components/work-items-tree-section";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { getCompanyShort } from "@/lib/companies";
-import { undoImportAction } from "./import/actions";
+import { UndoImportButton } from "./undo-import-button";
 import { DeleteCaseButton } from "./delete-case-button";
 import { CloseCaseButton } from "./close-case-button";
 import {
@@ -593,16 +593,12 @@ export default async function CaseDetailPage({
             </span>
           </div>
           {canEditWorkItems && (
-            <form action={undoImportAction}>
-              <input type="hidden" name="caseId" value={c.id} />
-              <input type="hidden" name="importId" value={lastImport.id} />
-              <button
-                type="submit"
-                className="text-sm text-[#B91C1C] underline-offset-2 hover:underline"
-              >
-                撤銷此次匯入
-              </button>
-            </form>
+            <UndoImportButton
+              caseId={c.id}
+              importId={lastImport.id}
+              fileName={lastImport.file_name}
+              importedCount={lastImport.imported_count}
+            />
           )}
         </div>
       )}

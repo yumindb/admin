@@ -6,6 +6,7 @@ import { formatDateTW } from "@/lib/datetime";
 import { ApprovalActions } from "./approval-actions";
 import { SignSection } from "./sign-section";
 import { ExtraItemsTable } from "@/components/extra-items-table";
+import { PhotoGallery } from "@/components/photo-gallery";
 import { NextStepHint } from "@/components/next-step-hint";
 import {
   buildReportNumber,
@@ -451,28 +452,9 @@ export default async function ApprovalDetailPage({
         {!logPhotos.length ? (
           <p className="text-sm text-muted-foreground">無</p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            {logPhotos.map((p, i) => (
-              <figure
-                key={`${p.path}-${i}`}
-                className="overflow-hidden rounded-md border border-[#E0DCD6] bg-white"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <a href={p.path} target="_blank" rel="noreferrer">
-                  <img
-                    src={p.path}
-                    alt={p.caption || ""}
-                    className="aspect-square w-full object-cover"
-                  />
-                </a>
-                {p.caption && (
-                  <figcaption className="border-t border-[#F0EBE4] bg-[#FAF7F2] px-2 py-1.5 text-xs text-foreground">
-                    {p.caption}
-                  </figcaption>
-                )}
-              </figure>
-            ))}
-          </div>
+          // PhotoGallery 自帶 lightbox:核定看照片可以左右滑、縮放,
+          // 不再開新分頁(signed URL 過 5 分鐘會 400,斷簽核流程)
+          <PhotoGallery photos={logPhotos} />
         )}
       </SignSection>
 

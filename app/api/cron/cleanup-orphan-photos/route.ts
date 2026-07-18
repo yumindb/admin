@@ -11,12 +11,17 @@ export const maxDuration = 60;
  * 觸發:每天台灣時間 23:30 由 Vercel Cron 打進來(UTC 15:30,見 vercel.json)。
  *
  * 「孤兒」定義:
- *   - 上傳時間超過 24 小時(避免誤殺正在編輯中的草稿)
+ *   - 上傳時間超過 72 小時(避免誤殺正在編輯中的草稿)
  *   - 沒有任何 daily_logs.photos 或 field_reports.photos 引用
  *
- * 為什麼用 24h 而不是日期切:
+ * 為什麼用時數而不是日期切:
  *   使用者可能 23:25 上傳、23:31 才送出。用「昨天以前」這種日期界線會 race;
- *   用「>= 24h 前 + 沒被引用」就有足夠緩衝,任何已送出的記錄都會保住它的檔。
+ *   用「>= N 小時前 + 沒被引用」就有足夠緩衝,任何已送出的記錄都會保住它的檔。
+ *
+ * 為什麼是 72h(2026-07 從 24h 放寬):
+ *   日誌 localStorage 草稿和離線回報佇列都會引用「已上傳但尚未進 DB」的照片,
+ *   主任週五存草稿、週一回來是真實情境;24h 會把草稿照片從腳下抽走。
+ *   代價只是孤兒檔多留兩天,storage 成本可忽略。
  *
  * 為什麼用 service-role:
  *   要跨所有使用者掃 bucket 與兩張表,RLS 擋的就是這種跨人讀取。
@@ -27,7 +32,7 @@ const BUCKET = "daily-photos";
 // 兩種 URL 格式都要吃: public(歷史)/ sign(轉 private 後新存的)
 const PUBLIC_MARKER = `/object/public/${BUCKET}/`;
 const SIGN_MARKER = `/object/sign/${BUCKET}/`;
-const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
+const ORPHAN_AGE_MS = 72 * 60 * 60 * 1000;
 const DELETE_BATCH = 100;
 
 export async function GET(request: Request) {
