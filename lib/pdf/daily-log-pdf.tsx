@@ -1,13 +1,20 @@
 /**
  * 施工日誌 PDF 元件 — 給 @react-pdf/renderer 用。
  *
- * 字型：Noto Sans CJK TC（自架在 Supabase Storage `fonts` public bucket，
+ * 字型：Noto Sans CJK TC subset（自架在 Supabase Storage `fonts` public bucket，
  * 避免 jsdelivr 偶發不穩、避免 bundle 大檔到 Vercel function）。
  * 第一次產 PDF 時 react-pdf 會 fetch 字型並 cache 到 process memory，
  * 之後同 process 重用不會再下載。
  *
+ * `-sub.woff2` 是裁剪過的字集（兩檔共 18.6MB，原版 OTF 33MB）：保留完整
+ * URO+ExtA 漢字區、注音、假名、全形、CJK 符號單位（㎡℃①■→ 等），
+ * 只砍掉韓文與 ExtB+ 罕字 — 台灣人名罕字（堃喆玥㨗…）都還在。
+ * 再瘦身（如只留 Big5）會有人名缺字風險，不要做。
+ * 產生方式見 bucket 內原版 OTF + fonttools pyftsubset（unicode ranges 記錄在
+ * git log 此行的 commit message）。原版 OTF 仍留在 bucket 供 rollback。
+ *
  * react-pdf 嵌入 PDF 時會自動只 embed 用到的 glyphs（PDF 標準 subset），
- * 所以最終 PDF 檔案不會塞完整 ~33MB 字型。
+ * 所以最終 PDF 檔案不會塞完整字型。
  */
 import {
   Document,
@@ -45,11 +52,11 @@ function ensureFont() {
     family: "Noto Sans TC",
     fonts: [
       {
-        src: `${fontBase}/NotoSansCJKtc-Regular.otf`,
+        src: `${fontBase}/NotoSansCJKtc-Regular-sub.woff2`,
         fontWeight: "normal",
       },
       {
-        src: `${fontBase}/NotoSansCJKtc-Bold.otf`,
+        src: `${fontBase}/NotoSansCJKtc-Bold-sub.woff2`,
         fontWeight: "bold",
       },
     ],
