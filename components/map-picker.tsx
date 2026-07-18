@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { LatLng } from "@/lib/geo";
+import { NextStepHint } from "@/components/next-step-hint";
 
 // Leaflet default icon 的圖路徑在 webpack/Next 環境會壞掉,
 // 改成 inline data URI(深海軍藍針 icon,與品牌一致)。
@@ -139,9 +140,9 @@ export default function MapPicker({ center, point, radius, onPick }: Props) {
         style={{ zIndex: 0 }}
       />
       {L.Browser.mobile && (
-        <p className="mt-1.5 text-xs text-muted-foreground">
+        <NextStepHint tone="muted" className="mt-1.5">
           手機上直接點地圖選位置、雙指縮放；要移動地圖請用上方搜尋地址。
-        </p>
+        </NextStepHint>
       )}
     </div>
   );

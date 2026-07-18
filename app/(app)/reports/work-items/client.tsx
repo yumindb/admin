@@ -8,7 +8,7 @@
  *   - 「下載 Excel」按鈕(把選中的 case ids 傳給 server action)
  */
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getCompanyShort } from "@/lib/companies";
 import { ExcelDownloadButton } from "@/components/excel-download-button";
@@ -40,7 +40,6 @@ export function WorkItemsReportClient({
   cases: CaseLite[];
 }) {
   const sp = useSearchParams();
-  const router = useRouter();
   const pathname = usePathname();
 
   // 篩選同步進 URL:每列連到案件/日誌,返回時篩選不歸零
@@ -70,7 +69,8 @@ export function WorkItemsReportClient({
       );
       if (next.toString() === sp.toString()) return;
       const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      // shallow update(見 unsigned/client.tsx 同處註解):不重跑 server page
+      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
     }, 300); // 搜尋打字即濾,debounce 避免每個字元都 replace
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

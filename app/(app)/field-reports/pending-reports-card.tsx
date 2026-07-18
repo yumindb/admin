@@ -11,13 +11,13 @@
  *   3. 重試 5 次失敗的死信提供「移除」出口(server 驗證拒絕的永遠不會成功)
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  flushPendingReports,
   listPendingReports,
   removeReport,
-  bumpReportAttempts,
   MAX_REPORT_ATTEMPTS,
   type PendingReport,
 } from "@/lib/offline-report-queue";
@@ -29,6 +29,9 @@ export function PendingReportsCard() {
   const [pending, setPending] = useState<PendingReport[]>([]);
   const [flushing, setFlushing] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<PendingReport | null>(null);
+  // 防重入用 ref 而非 state:online 事件 handler 是 mount 時的舊 closure,
+  // 讀 state 永遠是 false,連續 offline→online 會跑兩輪造成重複送出
+  const flushingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -39,46 +42,35 @@ export function PendingReportsCard() {
   }, []);
 
   const flush = useCallback(async () => {
-    if (flushing) return;
+    if (flushingRef.current) return;
+    flushingRef.current = true;
     setFlushing(true);
     try {
-      const list = await listPendingReports();
-      let sent = 0;
-      for (const item of list) {
-        if (item.attempts >= MAX_REPORT_ATTEMPTS) continue;
-        try {
-          const res = await createFieldReportAction({
-            caseId: item.case_id,
-            note: item.note,
-            photos: item.photos,
-            submitLocation:
-              item.submit_lat !== null && item.submit_lng !== null
-                ? {
-                    lat: item.submit_lat,
-                    lng: item.submit_lng,
-                    accuracy_m: item.submit_accuracy_m,
-                  }
-                : null,
-          });
-          if (res.ok) {
-            await removeReport(item.id);
-            sent += 1;
-          } else {
-            await bumpReportAttempts(item.id, res.error ?? "未知錯誤");
-          }
-        } catch (e) {
-          await bumpReportAttempts(item.id, (e as Error).message ?? "未知錯誤");
-        }
-      }
+      const { sent } = await flushPendingReports((item) =>
+        createFieldReportAction({
+          caseId: item.case_id,
+          note: item.note,
+          photos: item.photos,
+          submitLocation:
+            item.submit_lat !== null && item.submit_lng !== null
+              ? {
+                  lat: item.submit_lat,
+                  lng: item.submit_lng,
+                  accuracy_m: item.submit_accuracy_m,
+                }
+              : null,
+        }),
+      );
       await refresh();
       if (sent > 0) {
         toast.success(`已補送 ${sent} 筆離線回報`);
         router.refresh();
       }
     } finally {
+      flushingRef.current = false;
       setFlushing(false);
     }
-  }, [flushing, refresh, router]);
+  }, [refresh, router]);
 
   useEffect(() => {
     void refresh();

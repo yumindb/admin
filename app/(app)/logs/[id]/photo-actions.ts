@@ -110,7 +110,15 @@ export async function refreshPhotoUrlsAction(urls: string[]) {
   const pathByInput = new Map(
     capped.map((u) => [u, extractStoragePath(u, BUCKET)]),
   );
-  const paths = [...new Set(pathByInput.values())].filter(Boolean);
+  // extractStoragePath 解析不出來的(舊格式/怪 URL)不能當「檔案沒了」處理,
+  // 一律保留原值讓呼叫端自行 fallback
+  const looksLikeKey = (p: string) => p.includes("/") && !p.startsWith("http");
+  const paths = [...new Set(pathByInput.values())].filter(
+    (p) => p && looksLikeKey(p),
+  );
+  if (paths.length === 0) {
+    return { ok: false as const, error: "重簽失敗" };
+  }
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .createSignedUrls(paths, PREVIEW_TTL);
@@ -118,15 +126,26 @@ export async function refreshPhotoUrlsAction(urls: string[]) {
     return { ok: false as const, error: "重簽失敗" };
   }
   const signedByPath = new Map<string, string>();
+  const notFoundPaths = new Set<string>();
   for (const row of data) {
-    if (row.path && row.signedUrl) signedByPath.set(row.path, row.signedUrl);
+    if (row.path && row.signedUrl) {
+      signedByPath.set(row.path, row.signedUrl);
+    } else if (
+      row.path &&
+      /not.?found|does not exist/i.test(row.error ?? "")
+    ) {
+      // 只有明確 Object not found 才算「檔案真的沒了」;
+      // 暫時性簽名錯誤誤判成已刪 = 把還活著的照片從草稿抹掉,不可回復
+      notFoundPaths.add(row.path);
+    }
   }
   const out: Record<string, string> = {};
   const missing: string[] = [];
   for (const [input, path] of pathByInput) {
     const signed = signedByPath.get(path);
     if (signed) out[input] = signed;
-    else missing.push(input); // 逐檔回報 Object not found → 檔案真的沒了
+    else if (notFoundPaths.has(path)) missing.push(input);
+    // 其他情況(解析失敗/暫時性錯誤):兩個清單都不進 → 呼叫端保留原 URL
   }
   return { ok: true as const, urls: out, missing };
 }
@@ -144,21 +163,8 @@ export async function deletePhotoAction(publicUrl: string) {
   }
 
   // 同時吃 public URL(舊資料)、signed URL(新)和裸 storage path(未來)
-  let path: string | null = null;
-  for (const marker of [
-    `/object/public/${BUCKET}/`,
-    `/object/sign/${BUCKET}/`,
-  ]) {
-    const idx = publicUrl.indexOf(marker);
-    if (idx >= 0) {
-      const after = publicUrl.slice(idx + marker.length);
-      const q = after.indexOf("?");
-      path = q >= 0 ? after.slice(0, q) : after;
-      break;
-    }
-  }
-  // 沒命中 marker → 視作裸 path
-  if (!path) path = publicUrl;
+  // — 交給共用 extractStoragePath,避免兩份 parser 各自演化
+  const path = extractStoragePath(publicUrl, BUCKET);
   if (!path) return { ok: false as const, error: "URL 缺少路徑" };
 
   const supabase = await createClient();

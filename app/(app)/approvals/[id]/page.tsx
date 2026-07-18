@@ -173,7 +173,10 @@ export default async function ApprovalDetailPage({
   const rawLogPhotos = normalizeLogPhotos(l.photos);
   const photoSignedMap = await getSignedUrls(
     "daily-photos",
-    rawLogPhotos.map((p) => p.path)
+    rawLogPhotos.map((p) => p.path),
+    // 1h:照片牆有 lazy/分批載入,使用者看頁面超過 5 分鐘再展開,
+    // 縮圖才請求 — 5 分鐘效期會 400 破圖
+    3600,
   );
   const logPhotos = rawLogPhotos.map((p) => ({
     ...p,
@@ -453,8 +456,9 @@ export default async function ApprovalDetailPage({
           <p className="text-sm text-muted-foreground">無</p>
         ) : (
           // PhotoGallery 自帶 lightbox:核定看照片可以左右滑、縮放,
-          // 不再開新分頁(signed URL 過 5 分鐘會 400,斷簽核流程)
-          <PhotoGallery photos={logPhotos} />
+          // 不再開新分頁(signed URL 過 5 分鐘會 400,斷簽核流程)。
+          // initialCount=Infinity:簽核是法律行為,全部照片必須直接可見
+          <PhotoGallery photos={logPhotos} initialCount={Infinity} />
         )}
       </SignSection>
 

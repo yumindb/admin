@@ -25,12 +25,16 @@ const BATCH_SIZE = 48;
 export function PhotoGallery({
   photos,
   layout = "grid",
+  initialCount = INITIAL_BATCH,
 }: {
   photos: GalleryPhoto[];
   layout?: "grid" | "row";
+  /** 首批張數 — 簽核頁傳 Infinity(核定人必須一眼看到全部照片,不能被
+   *  「顯示更多」藏住);案件頁全案照片用預設分批 */
+  initialCount?: number;
 }) {
   const [lightboxPath, setLightboxPath] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
+  const [visibleCount, setVisibleCount] = useState(initialCount);
   const visible = photos.slice(0, visibleCount);
   const hasMore = photos.length > visibleCount;
 

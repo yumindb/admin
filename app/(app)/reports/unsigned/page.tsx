@@ -9,6 +9,7 @@ import type {
   DailyLogUnsignedItem,
 } from "@/lib/types";
 import { fetchAllRows } from "@/lib/db/fetch-all";
+import { NextStepHint } from "@/components/next-step-hint";
 import { UnsignedReportClient, type UnsignedRow } from "./client";
 
 /**
@@ -52,6 +53,9 @@ export default async function UnsignedReportPage({
       )
       .in("status", ["submitted", "approved"])
       .order("log_date", { ascending: false })
+      // 同一天多份日誌很常見 — 分頁必須有唯一 tiebreaker,
+      // 否則跨頁順序不穩會重複/漏列(fetch-all.ts 的契約)
+      .order("id", { ascending: true })
       .range(from, to);
     if (actor.role === "site_supervisor") {
       query = query.eq("supervisor_id", actor.id);
@@ -141,9 +145,9 @@ export default async function UnsignedReportPage({
       </div>
 
       {truncated && (
-        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          日誌量已超過一次可載入的上限，以下清單只包含較新的部分——請縮小日期範圍或聯絡系統管理員。
-        </div>
+        <NextStepHint tone="warning" className="mb-4">
+          日誌量已超過一次可載入的上限，以下清單只包含較新的部分——請縮小日期範圍，或聯絡系統管理員。
+        </NextStepHint>
       )}
 
       <UnsignedReportClient

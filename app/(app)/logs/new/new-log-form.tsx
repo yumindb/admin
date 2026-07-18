@@ -304,8 +304,10 @@ export function NewLogForm({
       setAutosaved(true);
 
       // 草稿裡的照片存的是 signed URL(6h 效期):隔天回來已過期,整批重簽;
-      // 檔案已被 orphan cron 清掉的(>72h 未送出)從草稿移除並提醒重傳,
-      // 不然送出時會把死路徑寫進 DB
+      // 檔案已被 orphan cron 清掉的(>72h 未送出)從草稿與回報快照移除並提醒,
+      // 不然送出(或按快照的「加回來」)會把死路徑寫進 DB。
+      // savedAt 距今 < 4h 的草稿 URL 一定還活著(6h 效期),跳過重簽省一趟
+      // service-role round-trip — 主任同一天反覆進出表單是最常見情境。
       const draftPhotos = draft.photos ?? [];
       const snapPhotos = (draft.mergedReportSnapshots ?? []).flatMap(
         (s) => s.photos ?? [],
@@ -313,15 +315,15 @@ export function NewLogForm({
       const staleUrls = [...draftPhotos, ...snapPhotos]
         .map((p) => p.path)
         .filter(Boolean);
-      if (staleUrls.length > 0) {
+      const draftAgeMs =
+        typeof draft.savedAt === "number" ? Date.now() - draft.savedAt : Infinity;
+      if (staleUrls.length > 0 && draftAgeMs > 4 * 60 * 60 * 1000) {
         void refreshPhotoUrlsAction(staleUrls)
           .then((res) => {
             if (!res.ok) return; // 簽名服務失敗 → 保留原 URL,寧可破圖不誤刪
             const fresh = res.urls;
             const gone = new Set(res.missing);
-            const removedCount = draftPhotos.filter((p) =>
-              gone.has(p.path),
-            ).length;
+            const removedCount = staleUrls.filter((u) => gone.has(u)).length;
             if (removedCount > 0) {
               toast.error(
                 `草稿裡有 ${removedCount} 張照片放超過三天已被系統清理，請重新上傳`,
@@ -337,9 +339,13 @@ export function NewLogForm({
             setMergedReportSnapshots((prev) =>
               prev.map((s) => ({
                 ...s,
-                photos: (s.photos ?? []).map((p) =>
-                  fresh[p.path] ? { ...p, path: fresh[p.path] } : p,
-                ),
+                // 已刪的也要從快照移除 — 否則會出現在「加回來」清單,
+                // 一按又把死路徑塞回 photos
+                photos: (s.photos ?? [])
+                  .filter((p) => !gone.has(p.path))
+                  .map((p) =>
+                    fresh[p.path] ? { ...p, path: fresh[p.path] } : p,
+                  ),
               })),
             );
           })
@@ -368,6 +374,7 @@ export function NewLogForm({
             extras, unsigned,
             photos, vendorNotices, notes,
             mergedReportIds, mergedReportSnapshots,
+            savedAt: Date.now(), // 還原時判斷照片 signed URL 是否仍在效期內
           })
         );
         setAutosaved(true);
@@ -1973,6 +1980,7 @@ type StoredDraft = {
   notes?: string;
   mergedReportIds?: string[];
   mergedReportSnapshots?: PendingFieldReport[];
+  savedAt?: number;
 };
 
 function readStoredDraft(draftKey: string | null): StoredDraft | null {

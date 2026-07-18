@@ -220,7 +220,10 @@ export default async function LogDetailPage({
   // 新資料是 storage path,helper 同時吃兩種。
   const photoSignedMap = await getSignedUrls(
     "daily-photos",
-    rawLogPhotos.map((p) => p.path)
+    rawLogPhotos.map((p) => p.path),
+    // 1h:照片牆有 lazy/分批載入,使用者看頁面超過 5 分鐘再展開,
+    // 縮圖才請求 — 5 分鐘效期會 400 破圖
+    3600,
   );
   const logPhotos = rawLogPhotos.map((p) => ({
     ...p,

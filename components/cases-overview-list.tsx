@@ -91,7 +91,8 @@ export function CasesOverviewList({
       if (searchQuery.trim()) next.set("q", searchQuery);
       else next.delete("q");
       const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      // shallow update:搜尋是純 client 過濾,不需要重跑 server page
+      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,7 +140,9 @@ export function CasesOverviewList({
     if (company === "all") next.delete("company");
     else next.set("company", company);
     const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // shallow update:company 是純 client 過濾;router.replace 會重跑 server
+    // page(全案件 stats),點個 tab 要等 RSC 繞一圈才有反應
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
   }
 
   // 套 company filter

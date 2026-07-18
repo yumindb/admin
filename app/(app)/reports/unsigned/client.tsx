@@ -11,7 +11,7 @@
  */
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { formatDateTW } from "@/lib/datetime";
 import { getCompanyShort } from "@/lib/companies";
 
@@ -74,7 +74,6 @@ export function UnsignedReportClient({
   initialPeriod: "all" | "month";
 }) {
   const sp = useSearchParams();
-  const router = useRouter();
   const pathname = usePathname();
 
   // 篩選同步進 URL:每列都是連到日誌/案件的 Link,點進明細再返回,
@@ -109,7 +108,10 @@ export function UnsignedReportClient({
     );
     if (next.toString() === sp.toString()) return;
     const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // shallow update:篩選是純 client 過濾,router.replace 會重跑 server page
+    // (這頁是 fetchAllRows 全表撈),每勾一個 checkbox 打一次 DB 太貴。
+    // history.replaceState 有跟 Next router 整合,useSearchParams 會同步。
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, kind, selectedCases]);
 

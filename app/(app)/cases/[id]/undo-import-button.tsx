@@ -27,8 +27,13 @@ export function UndoImportButton({
       const fd = new FormData();
       fd.set("caseId", caseId);
       fd.set("importId", importId);
-      await undoImportAction(fd);
-      setOpen(false);
+      try {
+        await undoImportAction(fd);
+      } finally {
+        // action 以 redirect() 結束 = throw NEXT_REDIRECT,不走 await 後面;
+        // 不關的話 re-render 後 dialog 會黏在「上一筆匯入」上,一按就連鎖撤銷
+        setOpen(false);
+      }
     });
   }
 

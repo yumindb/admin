@@ -12,10 +12,9 @@ import { useSilentLocationOnce } from "@/lib/use-geolocation";
 import { evaluateGeofence } from "@/lib/geo";
 import { isOfflineErrorMessage } from "@/lib/offline-clock-queue";
 import {
+  flushPendingReports,
   enqueueReport,
   listPendingReports,
-  removeReport,
-  bumpReportAttempts,
   MAX_REPORT_ATTEMPTS,
   type PendingReport,
 } from "@/lib/offline-report-queue";
@@ -142,44 +141,36 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     }
   }, []);
 
+  // 補送語意(離線守門、重試上限、網路錯誤不 bump)統一在
+  // lib/offline-report-queue.flushPendingReports — 與列表頁的待送卡片共用
+  const flushingRef = useRef(false);
   const flushQueue = useCallback(async () => {
-    if (flushing) return;
-    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    if (flushingRef.current) return;
+    flushingRef.current = true;
     setFlushing(true);
     try {
-      const list = await listPendingReports();
-      for (const item of list) {
-        if (item.attempts >= MAX_REPORT_ATTEMPTS) continue;
-        try {
-          const res = await createFieldReportAction({
-            caseId: item.case_id,
-            note: item.note,
-            photos: item.photos,
-            submitLocation:
-              item.submit_lat !== null && item.submit_lng !== null
-                ? {
-                    lat: item.submit_lat,
-                    lng: item.submit_lng,
-                    accuracy_m: item.submit_accuracy_m,
-                  }
-                : null,
-          });
-          if (res.ok) {
-            await removeReport(item.id);
-          } else {
-            // server validation 失敗 — 不會再成功,記下 + 停止重試
-            await bumpReportAttempts(item.id, res.error ?? "未知錯誤");
-          }
-        } catch (e) {
-          await bumpReportAttempts(item.id, (e as Error).message ?? "未知錯誤");
-        }
-      }
+      await flushPendingReports((item) =>
+        createFieldReportAction({
+          caseId: item.case_id,
+          note: item.note,
+          photos: item.photos,
+          submitLocation:
+            item.submit_lat !== null && item.submit_lng !== null
+              ? {
+                  lat: item.submit_lat,
+                  lng: item.submit_lng,
+                  accuracy_m: item.submit_accuracy_m,
+                }
+              : null,
+        }),
+      );
       await refreshPending();
       router.refresh();
     } finally {
+      flushingRef.current = false;
       setFlushing(false);
     }
-  }, [flushing, refreshPending, router]);
+  }, [refreshPending, router]);
 
   useEffect(() => {
     void refreshPending();

@@ -90,6 +90,22 @@ export function WorkItemsPicker({
   const [query, setQuery] = useState("");
   const [browserOpen, setBrowserOpen] = useState(value.length === 0);
 
+  // 「全部移除」undo toast 的支援 refs:
+  //  - valueRef:復原時拿「當下」的 value 合併(toast callback 是舊 closure)
+  //  - undoToastRef:切換案件(items 整組換掉)時撤掉 toast — 不然 8 秒內
+  //    按復原會把 A 案的工項 id 塞進 B 案的日誌
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+  const undoToastRef = useRef<string | number | null>(null);
+  useEffect(() => {
+    if (undoToastRef.current !== null) {
+      toast.dismiss(undoToastRef.current);
+      undoToastRef.current = null;
+    }
+  }, [items]);
+
   const itemMap = useMemo(() => {
     const m = new Map<string, PickerItem>();
     for (const it of items) m.set(it.id, it);
@@ -297,14 +313,25 @@ export function WorkItemsPicker({
             <button
               type="button"
               onClick={() => {
-                // 一鍵清空十幾項填好的數量太危險 — 給 8 秒「復原」後路
+                // 一鍵清空十幾項填好的數量太危險 — 給 8 秒「復原」後路。
+                // 復原用「合併」不是覆蓋:8 秒內使用者可能又勾了新工項,
+                // 直接 onChange(prev) 會把新勾的默默吃掉
                 const prev = value;
                 onChange([]);
-                toast("已移除全部工項", {
+                undoToastRef.current = toast("已移除全部工項", {
                   duration: 8000,
                   action: {
                     label: "復原",
-                    onClick: () => onChange(prev),
+                    onClick: () => {
+                      const current = valueRef.current;
+                      const currentIds = new Set(
+                        current.map((v) => v.work_item_id),
+                      );
+                      onChange([
+                        ...prev.filter((v) => !currentIds.has(v.work_item_id)),
+                        ...current,
+                      ]);
+                    },
                   },
                 });
               }}

@@ -11,6 +11,7 @@
  */
 
 import type { FieldReportPhoto } from "@/lib/types";
+import { isOfflineErrorMessage } from "@/lib/offline-clock-queue";
 
 const DB_NAME = "yumin-offline-field-reports";
 const DB_VERSION = 1;
@@ -140,3 +141,38 @@ export async function bumpReportAttempts(id: string, errMsg: string): Promise<vo
 }
 
 export const MAX_REPORT_ATTEMPTS = 5;
+
+/**
+ * 共用的補送迴圈 — 「新增回報」表單頁與 /field-reports 列表頁的待送卡片
+ * 都走這裡,重試語意只有一份。
+ *
+ * 規則:
+ *   - 離線時直接不試:fetch 失敗會 bump attempts,五次後被當死信,
+ *     但 server 根本沒收到過 — 純網路問題不該燒重試次數
+ *   - send() throw 且訊息像網路錯誤 → 不 bump、中斷整輪(斷網了)
+ *   - send() 回 ok:false(server 驗證拒絕)→ bump(這筆重試也不會過)
+ */
+export async function flushPendingReports(
+  send: (item: PendingReport) => Promise<{ ok: boolean; error?: string }>,
+): Promise<{ sent: number }> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return { sent: 0 };
+  const list = await listPendingReports();
+  let sent = 0;
+  for (const item of list) {
+    if (item.attempts >= MAX_REPORT_ATTEMPTS) continue;
+    try {
+      const res = await send(item);
+      if (res.ok) {
+        await removeReport(item.id);
+        sent += 1;
+      } else {
+        await bumpReportAttempts(item.id, res.error ?? "未知錯誤");
+      }
+    } catch (e) {
+      const msg = (e as Error).message ?? "未知錯誤";
+      if (isOfflineErrorMessage(msg)) break; // 網路問題:不 bump,下次連線再試
+      await bumpReportAttempts(item.id, msg);
+    }
+  }
+  return { sent };
+}

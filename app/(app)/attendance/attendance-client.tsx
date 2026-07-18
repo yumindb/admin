@@ -208,7 +208,7 @@ export function AttendanceClient({
       await refreshPending();
       const label = eventType === "clock_in" ? "上班" : "下班";
       toast.warning(`${label}打卡已離線存檔`, {
-        description: `${reason} — 連上網路會自動送出`,
+        description: `${reason} — 連上網路後回到本頁會自動補送`,
       });
       setNote("");
     } catch {
@@ -498,7 +498,7 @@ function PendingQueueCard({
                 </div>
                 {p.last_error && (
                   <div className="mt-0.5 break-words text-[#B91C1C]">
-                    原因:{p.last_error}
+                    原因：{p.last_error}
                   </div>
                 )}
               </div>
