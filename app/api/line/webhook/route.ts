@@ -129,15 +129,35 @@ async function handleEvent(event: LineEvent): Promise<void> {
     return;
   }
 
-  // 其他訊息:未綁定的人給引導;已綁定的人不回,避免每句話都被機器人回嘴
+  // 其他訊息:未綁定的人給引導;已綁定的人不回嘴,但順手重掛 Rich Menu
+  // (自癒:綁定當下若選單掛失敗〔部署時間差、LINE 暫時性錯誤〕,
+  //  之後本人隨便傳一句話就會補掛,不用解綁重綁)
   const supabase = createServiceClient();
   const { data: bound } = await supabase
     .from("line_bindings")
     .select("profile_id")
     .eq("line_user_id", userId)
     .maybeSingle();
-  if (!bound && replyToken) {
-    await replyLineMessage(replyToken, [textMessage(GUIDE_TEXT)]);
+  if (!bound) {
+    if (replyToken) {
+      await replyLineMessage(replyToken, [textMessage(GUIDE_TEXT)]);
+    }
+    return;
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", bound.profile_id)
+    .maybeSingle();
+  if (profile?.role) {
+    await linkRoleRichMenu(userId, profile.role as UserRole);
+  }
+  // 明確喊「選單」的人給個回饋,其他訊息保持安靜
+  if (text === "選單" && replyToken) {
+    await replyLineMessage(replyToken, [
+      textMessage("已重新整理你的選單。看不到的話,把聊天室關掉再打開一次。"),
+    ]);
   }
 }
 

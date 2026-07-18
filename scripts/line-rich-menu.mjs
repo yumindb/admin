@@ -8,51 +8,50 @@
  * deploy 需要 env LINE_CHANNEL_ACCESS_TOKEN(long-lived)。
  * 冪等:重跑會建新選單、把 alias 重新指向、設新預設,再刪掉舊的 yumin- 選單。
  *
- * 設計:
- *   - 4 個角色選單(2500×1686,2×3 格)+ 1 個未綁定預設選單(2500×843,2 格)
- *   - 綁定完成時 webhook 依角色掛選單(lib/line/richmenu.ts);解綁退回預設
- *   - 品牌:暖米白底 #F5F1EC、深海軍藍 #003153、邊框 #E0DCD6;
- *     每個選單一格主行動用海軍藍實底(反白)
+ * 視覺(v2,依品牌書):
+ *   - 頂部深邃海軍藍品牌横幅:銅金 badge + 思源宋體白字「裕民工務管理系統」
+ *     (横幅本身也是按鈕 → 系統首頁)
+ *   - 格區暖米白 + 海軍藍 8% 細格線(工程圖紙感),不用浮動卡片
+ *   - 標題字思源宋體 Heavy(工藝感),說明字思源黑體;銅金只出現在 logo(品牌鐵則:每頁最多一次)
+ *   - 每個角色的主行動格 = 海軍藍實底反白
+ *   - 需要系統已安裝 Source Han Serif TW(思源宋體)與 Noto Sans TC,
+ *     Evelyn 的機器已確認有;沒有的機器跑 render 字體會 fallback,請先裝字體
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
-const require = createRequire(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
-);
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(path.join(SCRIPT_DIR, "..", "package.json"));
 const sharp = require("sharp");
 
 const BASE_URL = process.env.APP_BASE_URL ?? "https://yumin-admin.vercel.app";
-const OUT_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "rich-menu-out",
-);
+const OUT_DIR = path.join(SCRIPT_DIR, "rich-menu-out");
+/** 銅金 badge(品牌定稿素材;在專案 parent 資料夾) */
+const BADGE_PNG = "D:/Evelyn/yumin/Logo/yumin-badge-png.png";
 
 const NAVY = "#003153";
 const CREAM = "#F5F1EC";
-const BORDER = "#E0DCD6";
 const INK = "#5A5050";
-const FONT = "Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif";
+const NAVY_ON_NAVY_SUB = "#AFC2CF"; // 海軍藍底上的次要字
+const SERIF = "Source Han Serif TW"; // 思源宋體(標題)
+const SANS = "Noto Sans TC"; // 思源黑體(說明)
 
 // ---------------------------------------------------------------------------
 // 圖示(簡單線條 glyph;viewBox 0 0 48 48,stroke 繪製)
 // ---------------------------------------------------------------------------
 const ICONS = {
-  clock:
-    '<circle cx="24" cy="24" r="17"/><path d="M24 13v11l8 5"/>',
+  clock: '<circle cx="24" cy="24" r="17"/><path d="M24 13v11l8 5"/>',
   pencil:
     '<path d="M10 38v-7L31 10l7 7-21 21h-7z"/><path d="M27 14l7 7"/>',
   camera:
     '<rect x="8" y="15" width="32" height="24" rx="3"/><path d="M18 15l3-5h6l3 5"/><circle cx="24" cy="27" r="7"/>',
   calendar:
     '<rect x="9" y="11" width="30" height="28" rx="3"/><path d="M9 20h30M17 7v8M31 7v8"/>',
-  folder:
-    '<path d="M8 12h12l4 5h16v21H8V12z"/>',
-  book:
-    '<path d="M24 12c-3-3-8-4-14-4v28c6 0 11 1 14 4 3-3 8-4 14-4V8c-6 0-11 1-14 4z"/><path d="M24 12v28"/>',
+  folder: '<path d="M8 12h12l4 5h16v21H8V12z"/>',
+  book: '<path d="M24 12c-3-3-8-4-14-4v28c6 0 11 1 14 4 3-3 8-4 14-4V8c-6 0-11 1-14 4z"/><path d="M24 12v28"/>',
   check:
     '<rect x="9" y="9" width="30" height="30" rx="4"/><path d="M17 24l5 6 10-12"/>',
   gauge:
@@ -63,26 +62,24 @@ const ICONS = {
     '<circle cx="18" cy="18" r="6"/><path d="M7 39c1-7 5-10 11-10s10 3 11 10"/><circle cx="33" cy="17" r="5"/><path d="M31 27c5 0 9 3 10 9"/>',
   person:
     '<circle cx="24" cy="16" r="8"/><path d="M9 41c2-9 7-13 15-13s13 4 15 13"/>',
-  link:
-    '<path d="M20 28l8-8"/><path d="M14 26l-4 4a7 7 0 0 0 10 10l4-4"/><path d="M34 22l4-4a7 7 0 0 0-10-10l-4 4"/>',
+  link: '<path d="M20 28l8-8"/><path d="M14 26l-4 4a7 7 0 0 0 10 10l4-4"/><path d="M34 22l4-4a7 7 0 0 0-10-10l-4 4"/>',
 };
 
 // ---------------------------------------------------------------------------
-// 選單定義
+// 選單定義(label 大字、sub 一行說明)
 // ---------------------------------------------------------------------------
-/** @type {Array<{key:string,alias:string,name:string,cells:Array<{label:string,icon:keyof typeof ICONS,path:string,primary?:boolean}>}>} */
 const ROLE_MENUS = [
   {
     key: "site_supervisor",
     alias: "yumin-role-site-supervisor",
     name: "yumin-主任選單",
     cells: [
-      { label: "打卡", icon: "clock", path: "/attendance", primary: true },
-      { label: "寫日誌", icon: "pencil", path: "/logs/new" },
-      { label: "現場回報", icon: "camera", path: "/field-reports" },
-      { label: "請假", icon: "calendar", path: "/leaves" },
-      { label: "我的案件", icon: "folder", path: "/my-cases" },
-      { label: "說明書", icon: "book", path: "/manual.html" },
+      { label: "打卡", sub: "GPS 上下班", icon: "clock", path: "/attendance", primary: true },
+      { label: "寫日誌", sub: "今日施工紀錄", icon: "pencil", path: "/logs/new" },
+      { label: "現場回報", sub: "拍照即時回報", icon: "camera", path: "/field-reports" },
+      { label: "請假", sub: "申請與簽核進度", icon: "calendar", path: "/leaves" },
+      { label: "我的案件", sub: "工地進度總覽", icon: "folder", path: "/my-cases" },
+      { label: "說明書", sub: "操作教學", icon: "book", path: "/manual.html" },
     ],
   },
   {
@@ -90,12 +87,12 @@ const ROLE_MENUS = [
     alias: "yumin-role-field-assistant",
     name: "yumin-現場人員選單",
     cells: [
-      { label: "打卡", icon: "clock", path: "/attendance", primary: true },
-      { label: "新增回報", icon: "camera", path: "/field-reports/new" },
-      { label: "我的回報", icon: "folder", path: "/field-reports" },
-      { label: "請假", icon: "calendar", path: "/leaves" },
-      { label: "我的帳號", icon: "person", path: "/account" },
-      { label: "說明書", icon: "book", path: "/manual.html" },
+      { label: "打卡", sub: "GPS 上下班", icon: "clock", path: "/attendance", primary: true },
+      { label: "新增回報", sub: "拍照即時回報", icon: "camera", path: "/field-reports/new" },
+      { label: "我的回報", sub: "送出過的紀錄", icon: "folder", path: "/field-reports" },
+      { label: "請假", sub: "申請與簽核進度", icon: "calendar", path: "/leaves" },
+      { label: "我的帳號", sub: "綁定與通知設定", icon: "person", path: "/account" },
+      { label: "說明書", sub: "操作教學", icon: "book", path: "/manual.html" },
     ],
   },
   {
@@ -103,12 +100,12 @@ const ROLE_MENUS = [
     alias: "yumin-role-office-staff",
     name: "yumin-助理選單",
     cells: [
-      { label: "待審核", icon: "check", path: "/approvals", primary: true },
-      { label: "案件", icon: "folder", path: "/cases" },
-      { label: "請假", icon: "calendar", path: "/leaves" },
-      { label: "報表", icon: "chart", path: "/reports" },
-      { label: "人員管理", icon: "people", path: "/staff" },
-      { label: "說明書", icon: "book", path: "/manual.html" },
+      { label: "待審核", sub: "日誌簽核", icon: "check", path: "/approvals", primary: true },
+      { label: "案件", sub: "開案與管理", icon: "folder", path: "/cases" },
+      { label: "請假", sub: "申請與簽核", icon: "calendar", path: "/leaves" },
+      { label: "報表", sub: "出勤與進度匯出", icon: "chart", path: "/reports" },
+      { label: "人員管理", sub: "帳號與通知", icon: "people", path: "/staff" },
+      { label: "說明書", sub: "操作教學", icon: "book", path: "/manual.html" },
     ],
   },
   {
@@ -116,12 +113,12 @@ const ROLE_MENUS = [
     alias: "yumin-role-owner",
     name: "yumin-老闆選單",
     cells: [
-      { label: "待核定", icon: "check", path: "/approvals", primary: true },
-      { label: "總覽", icon: "gauge", path: "/dashboard" },
-      { label: "案件", icon: "folder", path: "/cases" },
-      { label: "請假", icon: "calendar", path: "/leaves" },
-      { label: "報表", icon: "chart", path: "/reports" },
-      { label: "說明書", icon: "book", path: "/manual.html" },
+      { label: "待核定", sub: "簽名核定", icon: "check", path: "/approvals", primary: true },
+      { label: "總覽", sub: "全公司健康燈號", icon: "gauge", path: "/dashboard" },
+      { label: "案件", sub: "所有工地", icon: "folder", path: "/cases" },
+      { label: "請假", sub: "簽核", icon: "calendar", path: "/leaves" },
+      { label: "報表", sub: "出勤與進度", icon: "chart", path: "/reports" },
+      { label: "說明書", sub: "操作教學", icon: "book", path: "/manual.html" },
     ],
   },
 ];
@@ -131,7 +128,7 @@ const DEFAULT_MENU = {
   alias: "yumin-default",
   name: "yumin-未綁定預設選單",
   cells: [
-    { label: "完成綁定", sub: "收系統通知", icon: "link", path: "/account", primary: true },
+    { label: "完成綁定", sub: "收通知・開啟專屬選單", icon: "link", path: "/account", primary: true },
     { label: "使用說明書", sub: "操作教學", icon: "book", path: "/manual.html" },
   ],
 };
@@ -139,94 +136,155 @@ const DEFAULT_MENU = {
 // ---------------------------------------------------------------------------
 // SVG 產生
 // ---------------------------------------------------------------------------
-function iconSvg(name, color, size, x, y) {
-  return `<g transform="translate(${x},${y}) scale(${size / 48})" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</g>`;
+let badgeDataUri = null;
+async function loadBadge() {
+  if (badgeDataUri) return badgeDataUri;
+  const buf = await readFile(BADGE_PNG);
+  badgeDataUri = `data:image/png;base64,${buf.toString("base64")}`;
+  return badgeDataUri;
 }
 
-/** 2×3 角色選單(2500×1686) */
-function roleMenuSvg(menu) {
-  const W = 2500;
-  const H = 1686;
-  const COLS = 3;
-  const cw = [833, 833, 834];
-  const ch = 843;
+function iconSvg(name, color, size, x, y, strokeWidth = 2.6) {
+  return `<g transform="translate(${x},${y}) scale(${size / 48})" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</g>`;
+}
+
+/** 品牌横幅:海軍藍底 + 銅金 badge + 思源宋體白字 */
+function brandBar(badge, W, barH, opts = {}) {
+  const badgeH = opts.badgeH ?? Math.round(barH * 0.6);
+  const badgeW = Math.round(badgeH * (335 / 460)); // badge 原始比例約 335:460
+  const bx = opts.pad ?? 64;
+  const by = Math.round((barH - badgeH) / 2);
+  const titleSize = opts.titleSize ?? Math.round(barH * 0.4);
+  const tx = bx + badgeW + 44;
+  const ty = Math.round(barH / 2 + titleSize * 0.36);
+  const en = opts.en ?? true;
+  return `
+  <rect width="${W}" height="${barH}" fill="${NAVY}"/>
+  <image href="${badge}" x="${bx}" y="${by}" width="${badgeW}" height="${badgeH}"/>
+  <text x="${tx}" y="${ty}" font-family="${SERIF}" font-weight="900" font-size="${titleSize}" fill="#F5F1EC" letter-spacing="10">裕民工務管理系統</text>
+  ${
+    en
+      ? `<text x="${W - 64}" y="${ty - 4}" text-anchor="end" font-family="Noto Serif" font-size="${Math.round(titleSize * 0.42)}" fill="#7E97AC" letter-spacing="10">YU MIN DESIGN &amp; BUILD</text>`
+      : ""
+  }`;
+}
+
+/** 2×3 角色選單(2500×1686;頂部 150 品牌横幅) */
+const ROLE_W = 2500;
+const ROLE_H = 1686;
+const ROLE_BAR_H = 150;
+const ROLE_ROW_H = (ROLE_H - ROLE_BAR_H) / 2; // 768
+const COL_X = [0, 833, 1666];
+const COL_W = [833, 833, 834];
+
+async function roleMenuSvg(menu) {
+  const badge = await loadBadge();
   let cells = "";
-  menu.cells.forEach((cell, i) => {
-    const col = i % COLS;
-    const row = Math.floor(i / COLS);
-    const x = col === 0 ? 0 : col === 1 ? 833 : 1666;
-    const y = row * ch;
-    const w = cw[col];
-    const pad = 26;
-    const bg = cell.primary ? NAVY : "#FFFFFF";
-    const fg = cell.primary ? "#FFFFFF" : NAVY;
-    cells += `
-      <rect x="${x + pad}" y="${y + pad}" width="${w - pad * 2}" height="${ch - pad * 2}" rx="20" fill="${bg}" stroke="${cell.primary ? NAVY : BORDER}" stroke-width="3"/>
-      ${iconSvg(cell.icon, fg, 220, x + w / 2 - 110, y + 150)}
-      <text x="${x + w / 2}" y="${y + 570}" text-anchor="middle" font-family="${FONT}" font-size="104" font-weight="700" fill="${fg}">${cell.label}</text>
-      <text x="${x + w / 2}" y="${y + 680}" text-anchor="middle" font-family="${FONT}" font-size="44" fill="${cell.primary ? "#B8C7D1" : INK}">裕民工務管理系統</text>`;
-  });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${CREAM}"/>${cells}</svg>`;
-}
-
-/** 未綁定預設選單(2500×843,左右兩格) */
-function defaultMenuSvg(menu) {
-  const W = 2500;
-  const H = 843;
-  let cells = "";
-  menu.cells.forEach((cell, i) => {
-    const x = i * 1250;
-    const pad = 30;
-    const bg = cell.primary ? NAVY : "#FFFFFF";
-    const fg = cell.primary ? "#FFFFFF" : NAVY;
-    cells += `
-      <rect x="${x + pad}" y="${pad}" width="${1250 - pad * 2}" height="${H - pad * 2}" rx="24" fill="${bg}" stroke="${cell.primary ? NAVY : BORDER}" stroke-width="3"/>
-      ${iconSvg(cell.icon, fg, 240, x + 250, H / 2 - 120)}
-      <text x="${x + 560}" y="${H / 2 - 20}" text-anchor="start" font-family="${FONT}" font-size="120" font-weight="700" fill="${fg}">${cell.label}</text>
-      <text x="${x + 560}" y="${H / 2 + 110}" text-anchor="start" font-family="${FONT}" font-size="56" fill="${cell.primary ? "#B8C7D1" : INK}">${cell.sub}</text>`;
-  });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="${CREAM}"/>${cells}</svg>`;
-}
-
-function menuAreas(menu) {
-  if (menu.key === "default") {
-    return menu.cells.map((cell, i) => ({
-      bounds: { x: i * 1250, y: 0, width: 1250, height: 843 },
-      action: { type: "uri", uri: `${BASE_URL}${cell.path}` },
-    }));
+  // 細格線(工程圖紙感)
+  let grid = "";
+  for (const gx of [833, 1666]) {
+    grid += `<line x1="${gx}" y1="${ROLE_BAR_H}" x2="${gx}" y2="${ROLE_H}" stroke="${NAVY}" stroke-opacity="0.10" stroke-width="2"/>`;
   }
-  return menu.cells.map((cell, i) => {
+  grid += `<line x1="0" y1="${ROLE_BAR_H + ROLE_ROW_H}" x2="${ROLE_W}" y2="${ROLE_BAR_H + ROLE_ROW_H}" stroke="${NAVY}" stroke-opacity="0.10" stroke-width="2"/>`;
+
+  menu.cells.forEach((cell, i) => {
     const col = i % 3;
     const row = Math.floor(i / 3);
-    return {
-      bounds: {
-        x: col === 0 ? 0 : col === 1 ? 833 : 1666,
-        y: row * 843,
-        width: col === 2 ? 834 : 833,
-        height: 843,
-      },
-      action: { type: "uri", uri: `${BASE_URL}${cell.path}` },
-    };
+    const x = COL_X[col];
+    const y = ROLE_BAR_H + row * ROLE_ROW_H;
+    const w = COL_W[col];
+    const fg = cell.primary ? "#FFFFFF" : NAVY;
+    const subFg = cell.primary ? NAVY_ON_NAVY_SUB : INK;
+    if (cell.primary) {
+      cells += `<rect x="${x}" y="${y}" width="${w}" height="${ROLE_ROW_H}" fill="${NAVY}"/>`;
+    }
+    cells += `
+      ${iconSvg(cell.icon, fg, 168, x + w / 2 - 84, y + 118)}
+      <text x="${x + w / 2}" y="${y + 468}" text-anchor="middle" font-family="${SERIF}" font-weight="900" font-size="108" fill="${fg}" letter-spacing="6">${cell.label}</text>
+      <text x="${x + w / 2}" y="${y + 588}" text-anchor="middle" font-family="${SANS}" font-size="44" fill="${subFg}" letter-spacing="6">${cell.sub}</text>`;
   });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${ROLE_W}" height="${ROLE_H}" viewBox="0 0 ${ROLE_W} ${ROLE_H}">
+  <rect width="${ROLE_W}" height="${ROLE_H}" fill="${CREAM}"/>
+  ${grid}
+  ${brandBar(badge, ROLE_W, ROLE_BAR_H)}
+  ${cells}
+</svg>`;
+}
+
+/** 未綁定預設選單(2500×843;頂部 120 品牌横幅 + 兩格) */
+const DEF_W = 2500;
+const DEF_H = 843;
+const DEF_BAR_H = 120;
+const DEF_CELL_H = DEF_H - DEF_BAR_H; // 723
+
+async function defaultMenuSvg(menu) {
+  const badge = await loadBadge();
+  let cells = "";
+  cells += `<line x1="1250" y1="${DEF_BAR_H}" x2="1250" y2="${DEF_H}" stroke="${NAVY}" stroke-opacity="0.10" stroke-width="2"/>`;
+  menu.cells.forEach((cell, i) => {
+    const x = i * 1250;
+    const y = DEF_BAR_H;
+    const fg = cell.primary ? "#FFFFFF" : NAVY;
+    const subFg = cell.primary ? NAVY_ON_NAVY_SUB : INK;
+    if (cell.primary) {
+      cells += `<rect x="${x}" y="${y}" width="1250" height="${DEF_CELL_H}" fill="${NAVY}"/>`;
+    }
+    cells += `
+      ${iconSvg(cell.icon, fg, 160, x + 625 - 80, y + 92)}
+      <text x="${x + 625}" y="${y + 428}" text-anchor="middle" font-family="${SERIF}" font-weight="900" font-size="112" fill="${fg}" letter-spacing="8">${cell.label}</text>
+      <text x="${x + 625}" y="${y + 540}" text-anchor="middle" font-family="${SANS}" font-size="46" fill="${subFg}" letter-spacing="6">${cell.sub}</text>`;
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${DEF_W}" height="${DEF_H}" viewBox="0 0 ${DEF_W} ${DEF_H}">
+  <rect width="${DEF_W}" height="${DEF_H}" fill="${CREAM}"/>
+  ${brandBar(badge, DEF_W, DEF_BAR_H, { titleSize: 52 })}
+  ${cells}
+</svg>`;
+}
+
+/** 點擊區域:品牌横幅 → 系統首頁;其餘格照排 */
+function menuAreas(menu) {
+  const uri = (p) => ({ type: "uri", uri: `${BASE_URL}${p}` });
+  if (menu.key === "default") {
+    return [
+      { bounds: { x: 0, y: 0, width: DEF_W, height: DEF_BAR_H }, action: uri("/") },
+      ...menu.cells.map((cell, i) => ({
+        bounds: { x: i * 1250, y: DEF_BAR_H, width: 1250, height: DEF_CELL_H },
+        action: uri(cell.path),
+      })),
+    ];
+  }
+  return [
+    { bounds: { x: 0, y: 0, width: ROLE_W, height: ROLE_BAR_H }, action: uri("/") },
+    ...menu.cells.map((cell, i) => {
+      const col = i % 3;
+      const row = Math.floor(i / 3);
+      return {
+        bounds: {
+          x: COL_X[col],
+          y: ROLE_BAR_H + row * ROLE_ROW_H,
+          width: COL_W[col],
+          height: ROLE_ROW_H,
+        },
+        action: uri(cell.path),
+      };
+    }),
+  ];
 }
 
 async function renderAll() {
   await mkdir(OUT_DIR, { recursive: true });
   const files = new Map();
   for (const menu of ROLE_MENUS) {
-    const svg = roleMenuSvg(menu);
-    const png = await sharp(Buffer.from(svg)).png().toBuffer();
-    const file = path.join(OUT_DIR, `${menu.key}.png`);
-    await writeFile(file, png);
+    const png = await sharp(Buffer.from(await roleMenuSvg(menu))).png().toBuffer();
+    await writeFile(path.join(OUT_DIR, `${menu.key}.png`), png);
     files.set(menu.key, png);
-    console.log(`rendered ${file} (${Math.round(png.length / 1024)} KB)`);
+    console.log(`rendered ${menu.key}.png (${Math.round(png.length / 1024)} KB)`);
   }
-  const svg = defaultMenuSvg(DEFAULT_MENU);
-  const png = await sharp(Buffer.from(svg)).png().toBuffer();
-  const file = path.join(OUT_DIR, "default.png");
-  await writeFile(file, png);
+  const png = await sharp(Buffer.from(await defaultMenuSvg(DEFAULT_MENU))).png().toBuffer();
+  await writeFile(path.join(OUT_DIR, "default.png"), png);
   files.set("default", png);
-  console.log(`rendered ${file} (${Math.round(png.length / 1024)} KB)`);
+  console.log(`rendered default.png (${Math.round(png.length / 1024)} KB)`);
   return files;
 }
 
@@ -262,16 +320,11 @@ async function deploy() {
   }
   const images = await renderAll();
 
-  // 現有選單(等會兒刪掉舊的 yumin- 開頭)
-  const existing = await lineApi(
-    "GET",
-    "https://api.line.me/v2/bot/richmenu/list",
-  );
+  const existing = await lineApi("GET", "https://api.line.me/v2/bot/richmenu/list");
   const oldIds = (existing.richmenus ?? [])
     .filter((m) => (m.name ?? "").startsWith("yumin-"))
     .map((m) => m.richMenuId);
 
-  // 現有 alias
   const aliasList = await lineApi(
     "GET",
     "https://api.line.me/v2/bot/richmenu/alias/list",
@@ -285,14 +338,14 @@ async function deploy() {
   for (const menu of allMenus) {
     const size =
       menu.key === "default"
-        ? { width: 2500, height: 843 }
-        : { width: 2500, height: 1686 };
+        ? { width: DEF_W, height: DEF_H }
+        : { width: ROLE_W, height: ROLE_H };
     const { richMenuId } = await lineApi(
       "POST",
       "https://api.line.me/v2/bot/richmenu",
       {
         size,
-        selected: true, // 預設展開
+        selected: true,
         name: menu.name,
         chatBarText: "功能選單",
         areas: menuAreas(menu),
@@ -304,7 +357,6 @@ async function deploy() {
       images.get(menu.key),
       "image/png",
     );
-    // alias:存在就重新指向,不存在就建立
     if (existingAliases.has(menu.alias)) {
       await lineApi(
         "POST",
@@ -321,21 +373,21 @@ async function deploy() {
     console.log(`created ${menu.name} → ${richMenuId} (alias ${menu.alias})`);
   }
 
-  // 未綁定者的預設選單
   await lineApi(
     "POST",
     `https://api.line.me/v2/bot/user/all/richmenu/${created.default}`,
   );
   console.log("default rich menu set for all users");
 
-  // 清舊選單(alias 已重新指向,舊的可以放心刪)
   for (const id of oldIds) {
     if (Object.values(created).includes(id)) continue;
     await lineApi("DELETE", `https://api.line.me/v2/bot/richmenu/${id}`);
     console.log(`deleted old menu ${id}`);
   }
 
-  console.log("\ndeploy 完成。已綁定的使用者要「解除綁定→重新綁定」或等程式重掛才會換角色選單。");
+  console.log(
+    "\ndeploy 完成。已綁定使用者的個人選單指向舊 id 的,傳任何訊息給官方帳號即自動換新(webhook 自癒)。",
+  );
 }
 
 const cmd = process.argv[2];
