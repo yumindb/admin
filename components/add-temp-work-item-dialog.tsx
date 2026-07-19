@@ -13,7 +13,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { X } from "lucide-react";
-import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { createExtraOrUnsignedAction } from "@/app/(app)/cases/[id]/work-items-actions";
 
 export type AddTempCreated = {
@@ -58,10 +58,6 @@ export function AddTempWorkItemDialog({
     setErrorMsg(null);
   }, [open]);
 
-  // 鎖背景捲動 + ESC 關閉(pending 中不關)
-  useBodyScrollLock(open);
-  useEscToClose(open, onClose, !isPending);
-
   if (!open) return null;
 
   function submit() {
@@ -101,123 +97,121 @@ export function AddTempWorkItemDialog({
   const title = kind === "extra" ? "新增合約外項目" : "新增未簽約項目";
 
   return (
-    // 手機 bottom sheet、桌機置中;點背景可關(欄位少、丟失成本低)。
+    // 點背景可關(欄位少、丟失成本低)。
     // 內容可捲 + 送出鈕固定底部:展開「更多選項」+ 鍵盤彈出也搆得到。
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:p-4"
-      role="dialog"
-      aria-modal="true"
-      onClick={isPending ? undefined : onClose}
+    <ModalShell
+      variant="sheet"
+      onClose={onClose}
+      pending={isPending}
+      ariaLabelledby="add-temp-item-title"
+      panelClassName="max-w-md"
     >
-      <div
-        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-2xl border border-[#E0DCD6] bg-card md:rounded-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-[#E0DCD6] py-2 pl-5 pr-2">
-          <h3 className="text-base font-semibold text-primary">{title}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F5F1EC] hover:text-foreground"
-            aria-label="關閉"
-          >
-            <X className="size-5" />
-          </button>
+      <div className="flex items-center justify-between border-b border-[#E0DCD6] py-2 pl-5 pr-2">
+        <h3 id="add-temp-item-title" className="text-base font-semibold text-primary">
+          {title}
+        </h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-[#F5F1EC] hover:text-foreground"
+          aria-label="關閉"
+        >
+          <X className="size-5" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
+        {/* 主角：名稱欄 + 大送出鈕。屋主臨時加項，現場 supervisor 直接打名字就好。 */}
+        <div>
+          <p className="mb-2 text-sm font-medium text-primary">
+            屋主臨時加項嗎？打個名字就好，其他欄位辦公室之後幫您補。
+          </p>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            placeholder="例：配電盤升級"
+            className="h-12 w-full rounded-md border-2 border-[#A07850]/40 bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
-          {/* 主角：名稱欄 + 大送出鈕。屋主臨時加項，現場 supervisor 直接打名字就好。 */}
-          <div>
-            <p className="mb-2 text-sm font-medium text-primary">
-              屋主臨時加項嗎？打個名字就好，其他欄位辦公室之後幫您補。
-            </p>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-              placeholder="例：配電盤升級"
-              className="h-12 w-full rounded-md border-2 border-[#A07850]/40 bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </div>
-
-          {/* 配角：其他選填欄位包進 details 摺疊起來，降低視覺壓力 */}
-          <details className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2]/40">
-            <summary className="cursor-pointer list-none px-3 py-3 text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-              <span className="inline-flex items-center gap-1">
-                <span aria-hidden>＋</span>
-                更多選項（單位 / 數量 / 單價 / 備註，辦公室之後可補）
-              </span>
-            </summary>
-            <div className="space-y-2.5 border-t border-dashed border-[#E0DCD6] px-3 py-3">
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="單位">
-                  <input
-                    type="text"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    placeholder="式 / 組 / ㎡"
-                    className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
-                  />
-                </Field>
-                <Field label="預計總量">
-                  <input
-                    type="number"
-                    step="any"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    placeholder="例：1"
-                    className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
-                  />
-                </Field>
-              </div>
-              <Field label="單價">
+        {/* 配角：其他選填欄位包進 details 摺疊起來，降低視覺壓力 */}
+        <details className="rounded-md border border-dashed border-[#E0DCD6] bg-[#FAF7F2]/40">
+          <summary className="cursor-pointer list-none px-3 py-3 text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden>＋</span>
+              更多選項（單位 / 數量 / 單價 / 備註，辦公室之後可補）
+            </span>
+          </summary>
+          <div className="space-y-2.5 border-t border-dashed border-[#E0DCD6] px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="單位">
                 <input
-                  type="number"
-                  step="any"
-                  value={unitPrice}
-                  onChange={(e) => setUnitPrice(e.target.value)}
+                  type="text"
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  placeholder="式 / 組 / ㎡"
                   className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
                 />
               </Field>
-              <Field label="備註">
+              <Field label="預計總量">
                 <input
-                  type="text"
-                  value={brandNote}
-                  onChange={(e) => setBrandNote(e.target.value)}
-                  placeholder="例：屋主臨時要求 / 等業主決定材質"
+                  type="number"
+                  step="any"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  placeholder="例：1"
                   className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
                 />
               </Field>
             </div>
-          </details>
+            <Field label="單價">
+              <input
+                type="number"
+                step="any"
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(e.target.value)}
+                className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
+              />
+            </Field>
+            <Field label="備註">
+              <input
+                type="text"
+                value={brandNote}
+                onChange={(e) => setBrandNote(e.target.value)}
+                placeholder="例：屋主臨時要求 / 等業主決定材質"
+                className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-2 text-base outline-none focus-visible:border-accent"
+              />
+            </Field>
+          </div>
+        </details>
 
-          {errorMsg && (
-            <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
-              {errorMsg}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="inline-flex min-h-11 items-center rounded-md border border-[#E0DCD6] bg-white px-4 text-sm transition-colors hover:border-accent disabled:opacity-50"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={isPending || !name.trim()}
-            className="inline-flex h-11 items-center rounded-md bg-primary px-5 text-base font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "新增中…" : "新增並打勾"}
-          </button>
-        </div>
+        {errorMsg && (
+          <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
+            {errorMsg}
+          </p>
+        )}
       </div>
-    </div>
+      <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isPending}
+          className="inline-flex min-h-11 items-center rounded-md border border-[#E0DCD6] bg-white px-4 text-sm transition-colors hover:border-accent disabled:opacity-50"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={isPending || !name.trim()}
+          className="inline-flex h-11 items-center rounded-md bg-primary px-5 text-base font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {isPending ? "新增中…" : "新增並打勾"}
+        </button>
+      </div>
+    </ModalShell>
   );
 }
 

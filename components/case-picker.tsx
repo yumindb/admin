@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
-import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { formatDistance, haversineMeters } from "@/lib/geo";
 
 export type CasePickerOption = {
@@ -80,10 +80,6 @@ export function CasePicker({
     return formatDistance(d);
   };
 
-  // ESC / 點背景關閉 + 鎖捲動(共用 hook)
-  useBodyScrollLock(open);
-  useEscToClose(open, () => setOpen(false));
-
   return (
     <>
       <button
@@ -123,138 +119,133 @@ export function CasePicker({
       </button>
 
       {open && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="選擇案場"
-          className="fixed inset-0 z-50 flex flex-col bg-black/40"
-          onClick={() => setOpen(false)}
+        // 整片 panel 就是捲動容器(sticky 標題列貼在頂端)
+        <ModalShell
+          variant="sheet"
+          onClose={() => setOpen(false)}
+          ariaLabel="選擇案場"
+          panelClassName="md:max-w-lg overflow-y-auto overscroll-contain"
         >
-          <div
-            className="mt-auto max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-2xl bg-card shadow-xl md:m-auto md:max-h-[80dvh] md:max-w-lg md:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 flex items-center justify-between border-b border-[#E0DCD6] bg-card px-5 py-4">
-              <h3 className="text-xl font-semibold text-primary">選案場</h3>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="inline-flex size-12 items-center justify-center rounded-full text-2xl text-muted-foreground hover:bg-[#F5F1EC]"
-                aria-label="關閉"
-              >
-                ×
-              </button>
-            </div>
-            {extraOptions && extraOptions.length > 0 && (
-              <ul className="border-b border-[#E0DCD6]">
-                {extraOptions.map((ex) => {
-                  const isSel = ex.id === value;
+          <div className="sticky top-0 flex items-center justify-between border-b border-[#E0DCD6] bg-card px-5 py-4">
+            <h3 className="text-xl font-semibold text-primary">選案場</h3>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="inline-flex size-12 items-center justify-center rounded-full text-2xl text-muted-foreground hover:bg-[#F5F1EC]"
+              aria-label="關閉"
+            >
+              ×
+            </button>
+          </div>
+          {extraOptions && extraOptions.length > 0 && (
+            <ul className="border-b border-[#E0DCD6]">
+              {extraOptions.map((ex) => {
+                const isSel = ex.id === value;
+                return (
+                  <li key={ex.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange(ex.id);
+                        setOpen(false);
+                      }}
+                      className={`flex w-full items-start gap-3 px-5 py-5 text-left transition-colors ${
+                        isSel
+                          ? "bg-[#FAF7F2]"
+                          : "hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border-2 ${
+                          isSel
+                            ? "border-accent bg-accent text-white"
+                            : "border-[#E0DCD6] bg-white"
+                        }`}
+                        aria-hidden
+                      >
+                        {isSel ? "✓" : ""}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-lg font-semibold text-primary">
+                          {ex.icon ? `${ex.icon} ` : ""}
+                          {ex.label}
+                        </span>
+                        {ex.description && (
+                          <span className="mt-0.5 block text-sm text-muted-foreground">
+                            {ex.description}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {cases.length === 0 ? (
+            <p className="px-5 py-12 text-center text-base text-muted-foreground">
+              {emptyText}
+            </p>
+          ) : (
+            <>
+              {myLoc && sortByDistance && (
+                <p className="px-5 pt-3 text-xs text-muted-foreground">
+                  已依離你最近排序
+                </p>
+              )}
+              <ul>
+                {orderedCases.map((c, idx) => {
+                  const isSelected = c.id === value;
+                  const dist = distanceLabelOf(c);
                   return (
-                    <li key={ex.id}>
+                    <li key={c.id}>
                       <button
                         type="button"
                         onClick={() => {
-                          onChange(ex.id);
+                          onChange(c.id);
                           setOpen(false);
                         }}
                         className={`flex w-full items-start gap-3 px-5 py-5 text-left transition-colors ${
-                          isSel
+                          idx > 0 ? "border-t border-[#F0EBE4]" : ""
+                        } ${
+                          isSelected
                             ? "bg-[#FAF7F2]"
                             : "hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
                         }`}
                       >
                         <span
                           className={`mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border-2 ${
-                            isSel
+                            isSelected
                               ? "border-accent bg-accent text-white"
                               : "border-[#E0DCD6] bg-white"
                           }`}
                           aria-hidden
                         >
-                          {isSel ? "✓" : ""}
+                          {isSelected ? "✓" : ""}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-lg font-semibold text-primary">
-                            {ex.icon ? `${ex.icon} ` : ""}
-                            {ex.label}
-                          </span>
-                          {ex.description && (
-                            <span className="mt-0.5 block text-sm text-muted-foreground">
-                              {ex.description}
+                          <span className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {c.code ?? "未編號"}
                             </span>
-                          )}
+                            {dist && (
+                              <span className="rounded-md bg-[#F5F1EC] px-1.5 py-0.5 font-mono text-xs tabular-nums text-foreground">
+                                {dist}
+                              </span>
+                            )}
+                          </span>
+                          <span className="mt-0.5 block text-lg font-semibold text-primary">
+                            {c.name}
+                          </span>
                         </span>
                       </button>
                     </li>
                   );
                 })}
               </ul>
-            )}
-            {cases.length === 0 ? (
-              <p className="px-5 py-12 text-center text-base text-muted-foreground">
-                {emptyText}
-              </p>
-            ) : (
-              <>
-                {myLoc && sortByDistance && (
-                  <p className="px-5 pt-3 text-xs text-muted-foreground">
-                    已依離你最近排序
-                  </p>
-                )}
-                <ul>
-                  {orderedCases.map((c, idx) => {
-                    const isSelected = c.id === value;
-                    const dist = distanceLabelOf(c);
-                    return (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onChange(c.id);
-                            setOpen(false);
-                          }}
-                          className={`flex w-full items-start gap-3 px-5 py-5 text-left transition-colors ${
-                            idx > 0 ? "border-t border-[#F0EBE4]" : ""
-                          } ${
-                            isSelected
-                              ? "bg-[#FAF7F2]"
-                              : "hover:bg-[#F5F1EC] active:bg-[#F0EBE4]"
-                          }`}
-                        >
-                          <span
-                            className={`mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border-2 ${
-                              isSelected
-                                ? "border-accent bg-accent text-white"
-                                : "border-[#E0DCD6] bg-white"
-                            }`}
-                            aria-hidden
-                          >
-                            {isSelected ? "✓" : ""}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-baseline justify-between gap-2">
-                              <span className="text-sm text-muted-foreground">
-                                {c.code ?? "未編號"}
-                              </span>
-                              {dist && (
-                                <span className="rounded-md bg-[#F5F1EC] px-1.5 py-0.5 font-mono text-xs tabular-nums text-foreground">
-                                  {dist}
-                                </span>
-                              )}
-                            </span>
-                            <span className="mt-0.5 block text-lg font-semibold text-primary">
-                              {c.name}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
-          </div>
-        </div>
+            </>
+          )}
+        </ModalShell>
       )}
     </>
   );

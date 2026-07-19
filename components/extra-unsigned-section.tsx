@@ -18,7 +18,7 @@
  */
 
 import { useMemo, useState, useTransition } from "react";
-import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, FilePlus2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -433,9 +433,6 @@ function BundleContractDialog({
   const [bundlePrice, setBundlePrice] = useState("");
   const [note, setNote] = useState("");
   const [isPending, startTransition] = useTransition();
-  // 鎖背景捲動 + ESC 關閉(pending 中不關)
-  useBodyScrollLock(true);
-  useEscToClose(true, onClose, !isPending);
 
   function submit() {
     if (!name.trim()) {
@@ -465,114 +462,115 @@ function BundleContractDialog({
   const bundleDelta = bundleNum - itemsSum;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
+    // 表單類 modal:不開放點背景關閉,誤觸不丟輸入
+    <ModalShell
+      onClose={onClose}
+      pending={isPending}
+      dismissOnBackdrop={false}
+      ariaLabelledby="bundle-contract-title"
+      panelClassName="max-w-2xl"
     >
-      <div className="w-full max-w-2xl rounded-lg border border-[#E0DCD6] bg-card max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="border-b border-[#E0DCD6] px-5 py-3">
-          <h3 className="text-base font-semibold text-primary">
-            建立追加合約 — {rows.length} 筆工項
-          </h3>
-        </div>
-
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {/* 將被打包的工項清單 */}
-          <div>
-            <div className="mb-1 text-xs font-medium text-muted-foreground">
-              將打包的工項
-            </div>
-            <ul className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2] divide-y divide-[#E0DCD6]">
-              {rows.map((r) => (
-                <li key={r.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
-                  <span className="break-words font-medium">{r.name}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">
-                    {r.unitPrice !== null
-                      ? `${r.unitPrice.toLocaleString("zh-TW")}${r.quantity !== null ? ` × ${r.quantity}${r.unit ?? ""}` : ""} = ${(r.totalPrice ?? 0).toLocaleString("zh-TW")}`
-                      : "未報價"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-1 text-right text-xs text-muted-foreground">
-              工項複價加總：
-              <span className="ml-1 tabular-nums text-foreground">
-                {itemsSum.toLocaleString("zh-TW")}
-              </span>
-            </div>
-          </div>
-
-          <div className="block">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">
-              合約名稱<span className="ml-1 text-[#B91C1C]">*</span>
-            </span>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </div>
-
-          <div className="block">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">
-              bundle 優惠價（整份合約金額，可空）
-            </span>
-            <input
-              type="number"
-              step="any"
-              value={bundlePrice}
-              onChange={(e) => setBundlePrice(e.target.value)}
-              placeholder="留空 = 用各品項複價加總"
-              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-            {showBundleDelta && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {bundleDelta < 0
-                  ? `相較工項加總，折讓 ${Math.abs(bundleDelta).toLocaleString("zh-TW")}`
-                  : bundleDelta > 0
-                    ? `相較工項加總，加價 ${bundleDelta.toLocaleString("zh-TW")}`
-                    : "與工項加總相同（無折讓）"}
-              </p>
-            )}
-          </div>
-
-          <div className="block">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">
-              簽約備註
-            </span>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              placeholder="例：2026-05-08 LINE 同意追加，業主要求"
-              className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </div>
-
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={isPending || !name.trim()}
-            className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "建立中…" : "確認建立合約"}
-          </button>
-        </div>
+      <div className="border-b border-[#E0DCD6] px-5 py-3">
+        <h3 id="bundle-contract-title" className="text-base font-semibold text-primary">
+          建立追加合約 — {rows.length} 筆工項
+        </h3>
       </div>
-    </div>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
+        {/* 將被打包的工項清單 */}
+        <div>
+          <div className="mb-1 text-xs font-medium text-muted-foreground">
+            將打包的工項
+          </div>
+          <ul className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2] divide-y divide-[#E0DCD6]">
+            {rows.map((r) => (
+              <li key={r.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                <span className="break-words font-medium">{r.name}</span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {r.unitPrice !== null
+                    ? `${r.unitPrice.toLocaleString("zh-TW")}${r.quantity !== null ? ` × ${r.quantity}${r.unit ?? ""}` : ""} = ${(r.totalPrice ?? 0).toLocaleString("zh-TW")}`
+                    : "未報價"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-1 text-right text-xs text-muted-foreground">
+            工項複價加總：
+            <span className="ml-1 tabular-nums text-foreground">
+              {itemsSum.toLocaleString("zh-TW")}
+            </span>
+          </div>
+        </div>
+
+        <div className="block">
+          <span className="mb-1 block text-xs font-medium text-muted-foreground">
+            合約名稱<span className="ml-1 text-[#B91C1C]">*</span>
+          </span>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+        </div>
+
+        <div className="block">
+          <span className="mb-1 block text-xs font-medium text-muted-foreground">
+            bundle 優惠價（整份合約金額，可空）
+          </span>
+          <input
+            type="number"
+            step="any"
+            value={bundlePrice}
+            onChange={(e) => setBundlePrice(e.target.value)}
+            placeholder="留空 = 用各品項複價加總"
+            className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+          {showBundleDelta && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {bundleDelta < 0
+                ? `相較工項加總，折讓 ${Math.abs(bundleDelta).toLocaleString("zh-TW")}`
+                : bundleDelta > 0
+                  ? `相較工項加總，加價 ${bundleDelta.toLocaleString("zh-TW")}`
+                  : "與工項加總相同（無折讓）"}
+            </p>
+          )}
+        </div>
+
+        <div className="block">
+          <span className="mb-1 block text-xs font-medium text-muted-foreground">
+            簽約備註
+          </span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="例：2026-05-08 LINE 同意追加，業主要求"
+            className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+        </div>
+
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isPending}
+          className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={isPending || !name.trim()}
+          className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {isPending ? "建立中…" : "確認建立合約"}
+        </button>
+      </div>
+    </ModalShell>
   );
 }

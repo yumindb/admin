@@ -13,7 +13,7 @@
  */
 
 import { useState, useTransition } from "react";
-import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { toast } from "sonner";
 import { Pencil, Unlink, ChevronDown, Pencil as PencilIcon, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -454,9 +454,6 @@ function ContractEditModal({
   );
   const [note, setNote] = useState(contract.note ?? "");
   const [isPending, startTransition] = useTransition();
-  // 鎖背景捲動 + ESC 關閉(pending 中不關)
-  useBodyScrollLock(true);
-  useEscToClose(true, onClose, !isPending);
 
   function submit() {
     if (!name.trim()) {
@@ -480,65 +477,68 @@ function ContractEditModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
+    // 表單類 modal:不開放點背景關閉,誤觸不丟輸入
+    <ModalShell
+      onClose={onClose}
+      pending={isPending}
+      dismissOnBackdrop={false}
+      ariaLabelledby="contract-edit-title"
+      panelClassName="max-w-md overflow-y-auto overscroll-contain"
     >
-      <div className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-y-auto overscroll-contain rounded-lg border border-[#E0DCD6] bg-card">
-        <div className="border-b border-[#E0DCD6] px-5 py-3">
-          <h3 className="text-base font-semibold text-primary">編輯追加合約</h3>
-        </div>
-        <div className="space-y-3 px-5 py-4">
-          <Field label="合約名稱" required>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </Field>
-          <Field label="bundle 優惠價（整份合約金額，可空）">
-            <input
-              type="number"
-              step="any"
-              value={bundlePrice}
-              onChange={(e) => setBundlePrice(e.target.value)}
-              placeholder="留空 = 用各品項複價加總"
-              className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </Field>
-          <Field label="簽約備註">
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              placeholder="例：2026-05-08 LINE 同意追加"
-              className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
-            />
-          </Field>
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={isPending || !name.trim()}
-            className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "儲存中…" : "儲存"}
-          </button>
-        </div>
+      <div className="border-b border-[#E0DCD6] px-5 py-3">
+        <h3 id="contract-edit-title" className="text-base font-semibold text-primary">
+          編輯追加合約
+        </h3>
       </div>
-    </div>
+      <div className="space-y-3 px-5 py-4">
+        <Field label="合約名稱" required>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+        </Field>
+        <Field label="bundle 優惠價（整份合約金額，可空）">
+          <input
+            type="number"
+            step="any"
+            value={bundlePrice}
+            onChange={(e) => setBundlePrice(e.target.value)}
+            placeholder="留空 = 用各品項複價加總"
+            className="h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+        </Field>
+        <Field label="簽約備註">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="例：2026-05-08 LINE 同意追加"
+            className="w-full rounded-md border border-[#E0DCD6] bg-white px-3 py-2 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+        </Field>
+      </div>
+      <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isPending}
+          className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={isPending || !name.trim()}
+          className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {isPending ? "儲存中…" : "儲存"}
+        </button>
+      </div>
+    </ModalShell>
   );
 }
 

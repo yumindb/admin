@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type RefObject } from "react";
 
 /**
  * Modal/Dialog 開啟期間鎖定背景頁面捲動。
@@ -39,4 +39,78 @@ export function useEscToClose(
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, enabled, onClose]);
+}
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "summary",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+// 巢狀 modal(確認框疊在 sheet 上)時只有最上層的 trap 生效,
+// 不然外層 trap 會把焦點從內層搶回去。
+const trapStack: HTMLElement[] = [];
+
+/**
+ * Focus trap:開啟時把焦點移進 modal、Tab / Shift+Tab 在 modal 內循環,
+ * 關閉時焦點還給開啟前的元素(通常是觸發按鈕)。
+ *
+ * 初始焦點:若已有元素在 modal 內拿到焦點(例如欄位的 autoFocus、
+ * caller 自己 focus 取消鈕)就尊重它,否則落在第一個可聚焦元素。
+ */
+export function useFocusTrap(
+  open: boolean,
+  rootRef: RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    trapStack.push(root);
+    const prev = document.activeElement as HTMLElement | null;
+
+    const focusables = () =>
+      Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (el) => el.getClientRects().length > 0,
+      );
+
+    if (!root.contains(document.activeElement)) {
+      (focusables()[0] ?? root).focus();
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      if (trapStack[trapStack.length - 1] !== root) return;
+      const list = focusables();
+      if (list.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      const outside = !root.contains(active);
+      if (e.shiftKey) {
+        if (outside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (outside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const i = trapStack.lastIndexOf(root);
+      if (i >= 0) trapStack.splice(i, 1);
+      prev?.focus?.();
+    };
+  }, [open, rootRef]);
 }

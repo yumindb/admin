@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
-import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -361,9 +361,6 @@ function BatchApprovalModal({
     failed: { logId: string; reason: string }[];
   } | null>(null);
   const [isPending, startTransition] = useTransition();
-  // 鎖背景捲動 + ESC 關閉(pending 中不關)
-  useBodyScrollLock(true);
-  useEscToClose(true, onClose, !isPending);
 
   // 點開即還原(若 60 分鐘內有記住的簽名)
   useEffect(() => {
@@ -419,115 +416,111 @@ function BatchApprovalModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="批簽"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isPending) onClose();
-      }}
+    <ModalShell
+      variant="sheet"
+      onClose={onClose}
+      pending={isPending}
+      ariaLabel="批簽"
+      panelClassName="max-w-2xl overflow-y-auto overscroll-contain bg-white p-5 md:p-6"
     >
-      <div className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-lg bg-white p-5 shadow-xl md:rounded-lg md:p-6">
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <h2 className="text-lg font-semibold text-primary md:text-xl">
-            批簽 {logIds.length} 份
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-            aria-label="關閉"
-          >
-            ×
-          </button>
-        </div>
-
-        {!result ? (
-          <>
-            <p className="mb-2 text-sm text-muted-foreground">
-              簽一次，套用到 {logIds.length} 份。每份各自寫一筆紀錄共用同張簽名。
-            </p>
-
-            <div
-              className="rounded-md border border-[#E0DCD6] bg-white"
-              style={{ touchAction: "none" }}
-            >
-              <SignatureCanvas
-                ref={sigRef}
-                penColor="#003153"
-                minWidth={2}
-                maxWidth={4}
-                // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
-                clearOnResize={false}
-                canvasProps={{
-                  className: "w-full",
-                  style: {
-                    width: "100%",
-                    height: "clamp(180px, 28vh, 260px)",
-                    touchAction: "none",
-                  },
-                }}
-              />
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="size-4 cursor-pointer accent-[#003153]"
-                />
-                <span>下次簽核也用這個簽名（60 分鐘內）</span>
-              </label>
-              <button
-                type="button"
-                onClick={clearSig}
-                disabled={isPending}
-                className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent disabled:opacity-50"
-              >
-                清除重簽
-              </button>
-            </div>
-
-            <Textarea
-              rows={2}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="備註（選填，所有勾選日誌共用）"
-              className="mt-3"
-            />
-
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isPending}
-                onClick={onClose}
-                className="border-[#E0DCD6]"
-              >
-                取消
-              </Button>
-              <Button
-                size="xl"
-                onClick={submit}
-                disabled={isPending}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                {isPending ? "批簽中…" : `${VERB[stage]} ${logIds.length} 份`}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <BatchResultView
-            result={result}
-            stage={stage}
-            onClose={onClose}
-          />
-        )}
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">
+          批簽 {logIds.length} 份
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isPending}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+          aria-label="關閉"
+        >
+          ×
+        </button>
       </div>
-    </div>
+
+      {!result ? (
+        <>
+          <p className="mb-2 text-sm text-muted-foreground">
+            簽一次，套用到 {logIds.length} 份。每份各自寫一筆紀錄共用同張簽名。
+          </p>
+
+          <div
+            className="rounded-md border border-[#E0DCD6] bg-white"
+            style={{ touchAction: "none" }}
+          >
+            <SignatureCanvas
+              ref={sigRef}
+              penColor="#003153"
+              minWidth={2}
+              maxWidth={4}
+              // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
+              clearOnResize={false}
+              canvasProps={{
+                className: "w-full",
+                style: {
+                  width: "100%",
+                  height: "clamp(180px, 28vh, 260px)",
+                  touchAction: "none",
+                },
+              }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="size-4 cursor-pointer accent-[#003153]"
+              />
+              <span>下次簽核也用這個簽名（60 分鐘內）</span>
+            </label>
+            <button
+              type="button"
+              onClick={clearSig}
+              disabled={isPending}
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent disabled:opacity-50"
+            >
+              清除重簽
+            </button>
+          </div>
+
+          <Textarea
+            rows={2}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="備註（選填，所有勾選日誌共用）"
+            className="mt-3"
+          />
+
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={onClose}
+              className="border-[#E0DCD6]"
+            >
+              取消
+            </Button>
+            <Button
+              size="xl"
+              onClick={submit}
+              disabled={isPending}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isPending ? "批簽中…" : `${VERB[stage]} ${logIds.length} 份`}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <BatchResultView
+          result={result}
+          stage={stage}
+          onClose={onClose}
+        />
+      )}
+    </ModalShell>
   );
 }
 
@@ -610,9 +603,6 @@ function ForceActionModal({
   const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [isPending, startTransition] = useTransition();
-  // 鎖背景捲動 + ESC 關閉(pending 中不關)
-  useBodyScrollLock(true);
-  useEscToClose(true, onClose, !isPending);
   const canDelete = stuckDays >= STUCK_DELETABLE_DAYS;
   const caseLabel = log.cases?.name ?? "（未命名案件）";
   const dateLabel = formatDateTW(log.log_date);
@@ -647,148 +637,144 @@ function ForceActionModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="強制處理卡住日誌"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isPending) onClose();
-      }}
+    <ModalShell
+      variant="sheet"
+      onClose={onClose}
+      pending={isPending}
+      ariaLabel="強制處理卡住日誌"
+      panelClassName="max-w-lg overflow-y-auto overscroll-contain bg-white p-5 md:p-6"
     >
-      <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-lg bg-white p-5 shadow-xl md:rounded-lg md:p-6">
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <h2 className="text-lg font-semibold text-primary md:text-xl">
-            強制處理（卡 {stuckDays} 天）
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-            aria-label="關閉"
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="mb-4 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm">
-          <div className="font-medium text-primary">{caseLabel}</div>
-          <div className="text-muted-foreground">
-            {dateLabel} · {log.profiles?.full_name ?? "未知填表人"}
-          </div>
-        </div>
-
-        <div
-          role="tablist"
-          aria-label="處理方式"
-          className="mb-4 inline-flex w-full rounded-md border border-[#E0DCD6] bg-card p-1"
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <h2 className="text-lg font-semibold text-primary md:text-xl">
+          強制處理（卡 {stuckDays} 天）
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isPending}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+          aria-label="關閉"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "reject"}
-            onClick={() => setMode("reject")}
-            className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium ${
-              mode === "reject"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-[#F5F1EC]"
-            }`}
-          >
-            退回填表人
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "delete"}
-            onClick={() => canDelete && setMode("delete")}
-            disabled={!canDelete}
-            title={
-              canDelete
-                ? "整份刪除(留 audit 紀錄)"
-                : `卡 ≥ ${STUCK_DELETABLE_DAYS} 天才能刪除`
-            }
-            className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium ${
-              mode === "delete"
-                ? "bg-[#B91C1C] text-white shadow-sm"
-                : "text-muted-foreground hover:bg-[#F5F1EC]"
-            } ${!canDelete ? "cursor-not-allowed opacity-50" : ""}`}
-          >
-            刪除整份
-          </button>
-        </div>
-
-        {mode === "reject" ? (
-          <>
-            <p className="mb-2 text-sm text-muted-foreground">
-              日誌會退回成「草稿」狀態，填表人可以重整或自行刪除。會留一筆退回紀錄。
-            </p>
-            <Textarea
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="退回原因（必填，例：超過 7 天未處理，請填表人確認後重送）"
-              className="mb-4"
-            />
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isPending}
-                onClick={onClose}
-                className="border-[#E0DCD6]"
-              >
-                取消
-              </Button>
-              <Button
-                type="button"
-                onClick={submit}
-                disabled={isPending || !reason.trim()}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                {isPending ? "處理中…" : "強制退回"}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="mb-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2.5 text-sm text-[#B91C1C]">
-              ⚠ 此動作會 <strong>永久刪除整份日誌</strong>（含照片、簽名、簽核紀錄）。
-              系統會在 audit_logs 留下完整紀錄（誰、何時、刪了什麼）。
-              一般情況請選「退回填表人」。
-            </div>
-            <p className="mb-2 text-sm text-muted-foreground">
-              請輸入「<strong>刪除</strong>」二字確認：
-            </p>
-            <input
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="刪除"
-              className="mb-4 h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-[#B91C1C] focus-visible:ring-2 focus-visible:ring-[#FCA5A5]"
-            />
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isPending}
-                onClick={onClose}
-                className="border-[#E0DCD6]"
-              >
-                取消
-              </Button>
-              <Button
-                type="button"
-                onClick={submit}
-                disabled={isPending || confirmText.trim() !== "刪除"}
-                className="bg-[#B91C1C] text-white hover:bg-[#991B1B]"
-              >
-                {isPending ? "刪除中…" : "確認刪除"}
-              </Button>
-            </div>
-          </>
-        )}
+          ×
+        </button>
       </div>
-    </div>
+
+      <div className="mb-4 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2 text-sm">
+        <div className="font-medium text-primary">{caseLabel}</div>
+        <div className="text-muted-foreground">
+          {dateLabel} · {log.profiles?.full_name ?? "未知填表人"}
+        </div>
+      </div>
+
+      <div
+        role="tablist"
+        aria-label="處理方式"
+        className="mb-4 inline-flex w-full rounded-md border border-[#E0DCD6] bg-card p-1"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "reject"}
+          onClick={() => setMode("reject")}
+          className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium ${
+            mode === "reject"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-[#F5F1EC]"
+          }`}
+        >
+          退回填表人
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "delete"}
+          onClick={() => canDelete && setMode("delete")}
+          disabled={!canDelete}
+          title={
+            canDelete
+              ? "整份刪除(留 audit 紀錄)"
+              : `卡 ≥ ${STUCK_DELETABLE_DAYS} 天才能刪除`
+          }
+          className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium ${
+            mode === "delete"
+              ? "bg-[#B91C1C] text-white shadow-sm"
+              : "text-muted-foreground hover:bg-[#F5F1EC]"
+          } ${!canDelete ? "cursor-not-allowed opacity-50" : ""}`}
+        >
+          刪除整份
+        </button>
+      </div>
+
+      {mode === "reject" ? (
+        <>
+          <p className="mb-2 text-sm text-muted-foreground">
+            日誌會退回成「草稿」狀態，填表人可以重整或自行刪除。會留一筆退回紀錄。
+          </p>
+          <Textarea
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="退回原因（必填，例：超過 7 天未處理，請填表人確認後重送）"
+            className="mb-4"
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={onClose}
+              className="border-[#E0DCD6]"
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={isPending || !reason.trim()}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isPending ? "處理中…" : "強制退回"}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2.5 text-sm text-[#B91C1C]">
+            ⚠ 此動作會 <strong>永久刪除整份日誌</strong>（含照片、簽名、簽核紀錄）。
+            系統會在 audit_logs 留下完整紀錄（誰、何時、刪了什麼）。
+            一般情況請選「退回填表人」。
+          </div>
+          <p className="mb-2 text-sm text-muted-foreground">
+            請輸入「<strong>刪除</strong>」二字確認：
+          </p>
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="刪除"
+            className="mb-4 h-11 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-[#B91C1C] focus-visible:ring-2 focus-visible:ring-[#FCA5A5]"
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={onClose}
+              className="border-[#E0DCD6]"
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={isPending || confirmText.trim() !== "刪除"}
+              className="bg-[#B91C1C] text-white hover:bg-[#991B1B]"
+            >
+              {isPending ? "刪除中…" : "確認刪除"}
+            </Button>
+          </div>
+        </>
+      )}
+    </ModalShell>
   );
 }

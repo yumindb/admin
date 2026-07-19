@@ -23,7 +23,7 @@
 
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 export type ConfirmDetail = { label: string; value: string };
 
@@ -53,77 +53,70 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  useBodyScrollLock(open);
-  useEscToClose(open, onCancel, !pending);
-
-  // 開啟時把 focus 移進 dialog(預設落在「取消」,危險操作不該預選確認),
-  // 鍵盤使用者才不會 Tab 到背景元素
+  // 開啟時把 focus 移到「取消」(危險操作不該預選確認)— ModalShell 的
+  // focus trap 會尊重這裡先落好的焦點
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (open) cancelRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={pending ? undefined : onCancel}
-      role="dialog"
-      aria-modal="true"
+    <ModalShell
+      open={open}
+      onClose={onCancel}
+      pending={pending}
+      ariaLabelledby="confirm-dialog-title"
+      panelClassName="max-w-md"
     >
-      <div
-        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-lg border border-[#E0DCD6] bg-card shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-[#E0DCD6] px-5 py-3">
-          <h2 className="text-base font-semibold text-primary">{title}</h2>
-        </div>
-        <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain px-5 py-4 text-sm leading-relaxed text-foreground">
-          {description && (
-            <p className="whitespace-pre-line">{description}</p>
-          )}
-          {details && details.length > 0 && (
-            <ul className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2]/60 divide-y divide-[#E0DCD6]">
-              {details.map((d, i) => (
-                <li
-                  key={i}
-                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
-                >
-                  <span className="text-xs text-muted-foreground">{d.label}</span>
-                  <span className="break-words text-right font-medium tabular-nums">
-                    {d.value}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
-          <Button
-            ref={cancelRef}
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={pending}
-            className="border-[#E0DCD6]"
-          >
-            {cancelText}
-          </Button>
-          <Button
-            type="button"
-            onClick={onConfirm}
-            disabled={pending}
-            className={
-              danger
-                ? "bg-[#B91C1C] text-white hover:bg-[#991B1B]"
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
-            }
-          >
-            {pending ? "處理中…" : confirmText}
-          </Button>
-        </div>
+      <div className="border-b border-[#E0DCD6] px-5 py-3">
+        <h2 id="confirm-dialog-title" className="text-base font-semibold text-primary">
+          {title}
+        </h2>
       </div>
-    </div>
+      <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain px-5 py-4 text-sm leading-relaxed text-foreground">
+        {description && (
+          <p className="whitespace-pre-line">{description}</p>
+        )}
+        {details && details.length > 0 && (
+          <ul className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2]/60 divide-y divide-[#E0DCD6]">
+            {details.map((d, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+              >
+                <span className="text-xs text-muted-foreground">{d.label}</span>
+                <span className="break-words text-right font-medium tabular-nums">
+                  {d.value}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+        <Button
+          ref={cancelRef}
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={pending}
+          className="border-[#E0DCD6]"
+        >
+          {cancelText}
+        </Button>
+        <Button
+          type="button"
+          onClick={onConfirm}
+          disabled={pending}
+          className={
+            danger
+              ? "bg-[#B91C1C] text-white hover:bg-[#991B1B]"
+              : "bg-primary text-primary-foreground hover:bg-primary/90"
+          }
+        >
+          {pending ? "處理中…" : confirmText}
+        </Button>
+      </div>
+    </ModalShell>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useBodyScrollLock } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 
 /**
  * 首次登入的角色歡迎小卡 —— 依角色列出「最基本的 3-4 件事」,讓人不被系統嚇到。
@@ -119,8 +119,6 @@ export function RoleWelcomeCard({
     }
   }, [card, storageKey]);
 
-  useBodyScrollLock(open && !!card);
-
   if (!card || !open) return null;
 
   function close() {
@@ -134,101 +132,96 @@ export function RoleWelcomeCard({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="歡迎使用"
-      onClick={close}
+    // 首登卡內容較長,維持 92dvh(其餘 modal 統一 85dvh)
+    <ModalShell
+      variant="sheet"
+      onClose={close}
+      ariaLabel="歡迎使用"
+      panelClassName="max-w-md max-h-[92dvh] overflow-hidden"
     >
-      <div
-        className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-[#E0DCD6] bg-card shadow-xl sm:rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* header */}
-        <div className="shrink-0 px-6 pt-6 pb-4" style={{ background: card.color }}>
-          <div className="text-sm text-white/80">歡迎，{fullName}</div>
-          <div className="mt-1 flex items-center gap-2">
-            <h2 className="text-2xl font-semibold text-white">{card.title}</h2>
-            <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white">
-              你的角色
-            </span>
-          </div>
-          <p className="mt-2 text-[15px] leading-relaxed text-white/90">{card.line}</p>
+      {/* header */}
+      <div className="shrink-0 px-6 pt-6 pb-4" style={{ background: card.color }}>
+        <div className="text-sm text-white/80">歡迎，{fullName}</div>
+        <div className="mt-1 flex items-center gap-2">
+          <h2 className="text-2xl font-semibold text-white">{card.title}</h2>
+          <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white">
+            你的角色
+          </span>
         </div>
+        <p className="mt-2 text-[15px] leading-relaxed text-white/90">{card.line}</p>
+      </div>
 
-        {/* 3-4 件基本的事(中段可捲,手機小螢幕才不會把按鈕擠出畫面) */}
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-5">
-          <div className="mb-3 text-sm font-medium text-muted-foreground">
-            你平常只要做這幾件事：
-          </div>
-          <ul className="space-y-3">
-            {card.items.map(([label, desc], i) => (
-              <li key={i} className="flex gap-3">
-                <span
-                  className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-                  style={{ background: card.color }}
-                >
-                  {i + 1}
-                </span>
-                <div className="min-w-0">
-                  <div className="text-[15px] font-semibold text-primary">{label}</div>
-                  <div className="text-sm text-muted-foreground">{desc}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {/* 教學影片 — 點了直接原生播放 */}
-          <div className="mt-4 space-y-2">
-            {card.videos.map((v) => (
-              <a
-                key={v.href}
-                href={v.href}
-                target="_blank"
-                rel="noopener"
-                className="flex min-h-11 items-center gap-2.5 rounded-md border border-[#A07850]/40 bg-[#FAF7F2] px-3 py-2.5 text-sm font-medium text-accent transition-colors hover:border-accent active:bg-[#F0EBE4]"
+      {/* 3-4 件基本的事(中段可捲,手機小螢幕才不會把按鈕擠出畫面) */}
+      <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-5">
+        <div className="mb-3 text-sm font-medium text-muted-foreground">
+          你平常只要做這幾件事：
+        </div>
+        <ul className="space-y-3">
+          {card.items.map(([label, desc], i) => (
+            <li key={i} className="flex gap-3">
+              <span
+                className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+                style={{ background: card.color }}
               >
-                <span aria-hidden>▶</span>
-                <span>教學影片：{v.label}</span>
-              </a>
-            ))}
-          </div>
+                {i + 1}
+              </span>
+              <div className="min-w-0">
+                <div className="text-[15px] font-semibold text-primary">{label}</div>
+                <div className="text-sm text-muted-foreground">{desc}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
 
-          <div className="mt-3 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2.5 text-sm text-muted-foreground">
-            需要更詳細的步驟、或用聽的？
+        {/* 教學影片 — 點了直接原生播放 */}
+        <div className="mt-4 space-y-2">
+          {card.videos.map((v) => (
             <a
-              href={`/manual.html#${card.manualHash}`}
+              key={v.href}
+              href={v.href}
               target="_blank"
               rel="noopener"
-              className="ml-1 font-medium text-accent underline underline-offset-2"
+              className="flex min-h-11 items-center gap-2.5 rounded-md border border-[#A07850]/40 bg-[#FAF7F2] px-3 py-2.5 text-sm font-medium text-accent transition-colors hover:border-accent active:bg-[#F0EBE4]"
             >
-              打開完整說明書
+              <span aria-hidden>▶</span>
+              <span>教學影片：{v.label}</span>
             </a>
-            （之後隨時可按右上角的「?」再打開）。
-          </div>
+          ))}
         </div>
 
-        {/* footer */}
-        <div className="flex shrink-0 flex-col gap-3 border-t border-[#E0DCD6] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={dontShow}
-              onChange={(e) => setDontShow(e.target.checked)}
-              className="size-4 accent-primary"
-            />
-            以後不再顯示
-          </label>
-          <button
-            type="button"
-            onClick={close}
-            className="h-11 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90"
+        <div className="mt-3 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-3 py-2.5 text-sm text-muted-foreground">
+          需要更詳細的步驟、或用聽的？
+          <a
+            href={`/manual.html#${card.manualHash}`}
+            target="_blank"
+            rel="noopener"
+            className="ml-1 font-medium text-accent underline underline-offset-2"
           >
-            開始使用
-          </button>
+            打開完整說明書
+          </a>
+          （之後隨時可按右上角的「?」再打開）。
         </div>
       </div>
-    </div>
+
+      {/* footer */}
+      <div className="flex shrink-0 flex-col gap-3 border-t border-[#E0DCD6] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={dontShow}
+            onChange={(e) => setDontShow(e.target.checked)}
+            className="size-4 accent-primary"
+          />
+          以後不再顯示
+        </label>
+        <button
+          type="button"
+          onClick={close}
+          className="h-11 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          開始使用
+        </button>
+      </div>
+    </ModalShell>
   );
 }

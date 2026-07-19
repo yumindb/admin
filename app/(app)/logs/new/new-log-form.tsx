@@ -29,7 +29,7 @@ import { Plus } from "lucide-react";
 import { NextStepHint } from "@/components/next-step-hint";
 import { getCompanyShort } from "@/lib/companies";
 import { PhotoLightbox } from "@/components/photo-lightbox";
-import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { saveLogAction } from "./actions";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
 import {
@@ -220,10 +220,8 @@ export function NewLogForm({
   const [vendorNotices, setVendorNotices] = useState(initial?.vendorNotices ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [mergedReportIds, setMergedReportIds] = useState<string[]>([]);
-  // post-submission 編輯儲存前的確認 modal
+  // post-submission 編輯儲存前的確認 modal(捲動鎖/ESC/focus trap 由 ModalShell 處理)
   const [showPostEditConfirm, setShowPostEditConfirm] = useState(false);
-  useBodyScrollLock(showPostEditConfirm);
-  useEscToClose(showPostEditConfirm, () => setShowPostEditConfirm(false));
   // 已合併進來的回報快照(含照片) — 用來支援使用者刪掉照片後可以加回來
   const [mergedReportSnapshots, setMergedReportSnapshots] = useState<
     PendingFieldReport[]
@@ -1731,50 +1729,43 @@ export function NewLogForm({
       />
 
       {showPostEditConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setShowPostEditConfirm(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="post-edit-confirm-title"
+        <ModalShell
+          onClose={() => setShowPostEditConfirm(false)}
+          ariaLabelledby="post-edit-confirm-title"
+          panelClassName="max-w-md"
         >
-          <div
-            className="w-full max-w-md rounded-lg border border-[#E0DCD6] bg-card shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="border-b border-[#E0DCD6] px-5 py-3">
-              <h2
-                id="post-edit-confirm-title"
-                className="text-base font-semibold text-primary"
-              >
-                確認儲存編輯
-              </h2>
-            </div>
-            <div className="px-5 py-4 text-sm leading-relaxed text-foreground">
-              日誌已在簽核流程中。儲存後若內容有變，流程會自動退回到辦公室助理階段，由助理重新審核再交給老闆。是否仍要儲存？
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowPostEditConfirm(false)}
-                className="border-[#E0DCD6]"
-              >
-                取消
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  setShowPostEditConfirm(false);
-                  submit("post_edit");
-                }}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                仍要儲存
-              </Button>
-            </div>
+          <div className="border-b border-[#E0DCD6] px-5 py-3">
+            <h2
+              id="post-edit-confirm-title"
+              className="text-base font-semibold text-primary"
+            >
+              確認儲存編輯
+            </h2>
           </div>
-        </div>
+          <div className="px-5 py-4 text-sm leading-relaxed text-foreground">
+            日誌已在簽核流程中。儲存後若內容有變，流程會自動退回到辦公室助理階段，由助理重新審核再交給老闆。是否仍要儲存？
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPostEditConfirm(false)}
+              className="border-[#E0DCD6]"
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowPostEditConfirm(false);
+                submit("post_edit");
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              仍要儲存
+            </Button>
+          </div>
+        </ModalShell>
       )}
     </form>
   );
@@ -2157,8 +2148,6 @@ function OverflowSplitDialog({
   onCancel: () => void;
 }) {
   const { item, requested, cap, mode } = attempt;
-  useBodyScrollLock(true);
-  useEscToClose(true, onCancel, !isPending);
   const overflow = Math.max(0, requested - cap);
   const fmt = (n: number) =>
     mode === "percent" ? `${Math.round(n * 100)}%` : `${n}${item.unit ?? ""}`;
@@ -2166,52 +2155,54 @@ function OverflowSplitDialog({
   const capLabel = fmt(cap);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4"
+    // 疊在日誌表單其他 overlay 之上 → z-[60];誤觸背景不該關(要明確二選一)
+    <ModalShell
+      onClose={onCancel}
+      pending={isPending}
+      dismissOnBackdrop={false}
+      ariaLabel="超出契約量"
+      overlayClassName="z-[60] bg-black/45"
+      panelClassName="max-w-md border-[#A07850]/40"
     >
-      <div className="w-full max-w-md rounded-lg border border-[#A07850]/40 bg-card shadow-lg">
-        <div className="border-b border-[#E0DCD6] bg-[#FAF7F2] px-5 py-3">
-          <h3 className="text-lg font-semibold text-primary">超出契約量</h3>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {item.name}
-          </p>
-        </div>
-        <div className="space-y-3 px-5 py-4 text-sm leading-relaxed text-foreground">
-          <div className="flex items-baseline justify-between gap-3 rounded-md border border-[#E0DCD6] bg-white px-3 py-2">
-            <span className="text-xs text-muted-foreground">剩餘可填</span>
-            <span className="font-medium tabular-nums">{capLabel}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2">
-            <span className="text-xs text-[#B91C1C]">超出</span>
-            <span className="font-semibold tabular-nums text-[#B91C1C]">
-              {overflowLabel}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            建立追加工項 = 超出量自動寫到一筆「{item.name} （追加）」，辦公室之後補報價。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isPending}
-            className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
-          >
-            手滑了，只填 {capLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isPending}
-            className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {isPending ? "建立中…" : "建立追加工項"}
-          </button>
-        </div>
+      <div className="border-b border-[#E0DCD6] bg-[#FAF7F2] px-5 py-3">
+        <h3 className="text-lg font-semibold text-primary">超出契約量</h3>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {item.name}
+        </p>
       </div>
-    </div>
+      <div className="space-y-3 px-5 py-4 text-sm leading-relaxed text-foreground">
+        <div className="flex items-baseline justify-between gap-3 rounded-md border border-[#E0DCD6] bg-white px-3 py-2">
+          <span className="text-xs text-muted-foreground">剩餘可填</span>
+          <span className="font-medium tabular-nums">{capLabel}</span>
+        </div>
+        <div className="flex items-baseline justify-between gap-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2">
+          <span className="text-xs text-[#B91C1C]">超出</span>
+          <span className="font-semibold tabular-nums text-[#B91C1C]">
+            {overflowLabel}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          建立追加工項 = 超出量自動寫到一筆「{item.name} （追加）」，辦公室之後補報價。
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isPending}
+          className="inline-flex items-center rounded-md border border-[#E0DCD6] bg-white px-3 py-1.5 text-sm transition-colors hover:border-accent disabled:opacity-50"
+        >
+          手滑了，只填 {capLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isPending}
+          className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {isPending ? "建立中…" : "建立追加工項"}
+        </button>
+      </div>
+    </ModalShell>
   );
 }
