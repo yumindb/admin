@@ -10,8 +10,9 @@
  */
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useSyncFiltersToUrl } from "@/lib/use-sync-filters-to-url";
 import { formatDateTW } from "@/lib/datetime";
 import {
   isCaseBehind,
@@ -82,21 +83,8 @@ export function CasesOverviewList({
     () => sp.get("q") ?? "",
   );
 
-  // 搜尋是打字即濾,用 debounce + replace(不塞 history)同步回 URL
-  useEffect(() => {
-    const current = sp.get("q") ?? "";
-    if (searchQuery === current) return;
-    const t = setTimeout(() => {
-      const next = new URLSearchParams(sp.toString());
-      if (searchQuery.trim()) next.set("q", searchQuery);
-      else next.delete("q");
-      const qs = next.toString();
-      // shallow update:搜尋是純 client 過濾,不需要重跑 server page
-      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
-    }, 300);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  // 搜尋是打字即濾,debounce 300ms 同步回 URL(shallow,不塞 history)
+  useSyncFiltersToUrl({ q: searchQuery.trim() ? searchQuery : "" }, 300);
 
   // 動態撈 distinct company(避免 hardcode);保留出現順序但去重
   const companies = useMemo(() => {

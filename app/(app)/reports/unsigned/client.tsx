@@ -10,8 +10,9 @@
  *   - period=month 預設把 from/to 設為本月
  */
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useSyncFiltersToUrl } from "@/lib/use-sync-filters-to-url";
 import { formatDateTW } from "@/lib/datetime";
 import { getCompanyShort } from "@/lib/companies";
 
@@ -74,7 +75,6 @@ export function UnsignedReportClient({
   initialPeriod: "all" | "month";
 }) {
   const sp = useSearchParams();
-  const pathname = usePathname();
 
   // 篩選同步進 URL:每列都是連到日誌/案件的 Link,點進明細再返回,
   // 月底核對到一半的篩選不能歸零
@@ -95,25 +95,13 @@ export function UnsignedReportClient({
     return KIND_OPTIONS.some((o) => o.key === v) ? (v as KindFilter) : "all";
   });
 
-  useEffect(() => {
-    const next = new URLSearchParams(sp.toString());
-    const setOrDel = (k: string, v: string) =>
-      v ? next.set(k, v) : next.delete(k);
-    setOrDel("from", from);
-    setOrDel("to", to);
-    setOrDel("kind", kind === "all" ? "" : kind);
-    setOrDel(
-      "cases",
+  useSyncFiltersToUrl({
+    from,
+    to,
+    kind: kind === "all" ? "" : kind,
+    cases:
       selectedCases.size === cases.length ? "" : [...selectedCases].join(","),
-    );
-    if (next.toString() === sp.toString()) return;
-    const qs = next.toString();
-    // shallow update:篩選是純 client 過濾,router.replace 會重跑 server page
-    // (這頁是 fetchAllRows 全表撈),每勾一個 checkbox 打一次 DB 太貴。
-    // history.replaceState 有跟 Next router 整合,useSearchParams 會同步。
-    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, kind, selectedCases]);
+  });
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
