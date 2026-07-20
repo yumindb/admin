@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { generatePdfForLog } from "@/lib/pdf/generate";
+import { todayLocalDate } from "@/lib/daily-log";
 
 const PDF_VIEWERS = ["site_supervisor", "office_staff", "owner"] as const;
 
@@ -168,7 +169,7 @@ export async function bulkDownloadPdfsAction(logIds: string[]): Promise<
     return { ok: false, error: "選的日誌沒有可下載的 PDF（可能還沒核定）" };
   }
 
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const today = todayLocalDate().replace(/-/g, "");
   return {
     ok: true,
     items,

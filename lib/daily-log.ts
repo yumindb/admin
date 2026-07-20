@@ -32,6 +32,15 @@ export function sameLocalDate(
 }
 
 /**
+ * 今天在台灣時區的 "YYYY-MM-DD"。
+ * 不能用 toISOString().slice(0, 10):那是 UTC 日期,台灣 00:00–07:59 會拿到前一天
+ * (client 在台灣裝置上踩到,server 在 Vercel UTC 上必踩)。
+ */
+export function todayLocalDate(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+}
+
+/**
  * Daily log 的 photos 欄位歷史上是 string[](僅 path)。新版改成
  * { path, caption }[]。讀取時統一過這個函式,UI 與 PDF 都用 LogPhoto。
  */

@@ -10,6 +10,7 @@ import {
   computeSubcontractorTotalsByCase,
   computeMachineTotalsByCase,
   parseWeather,
+  todayLocalDate,
 } from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
 import type { DailyLog, DailyLogWorkItem, FieldReport } from "@/lib/types";
@@ -232,7 +233,8 @@ export default async function NewLogPage({
     if (src) {
       const s = src as DailyLog;
       prefilledFrom = { sourceLogDate: s.log_date };
-      const today = new Date().toISOString().slice(0, 10);
+      // 台灣時區的今天 — server 在 Vercel(UTC)上 toISOString 會在台灣 00:00–07:59 拿到前一天
+      const today = todayLocalDate();
       // 複製日誌時要把來源 work_items 依 item_type 拆三組(合約內 / 合約外 / 未簽約)
       // 用本批撈的 case_work_items 查表;查不到的當作合約內(dangling)
       const itemTypeBySrcId = new Map<string, string>();

@@ -43,6 +43,7 @@ import {
   getRemainingDays,
   getWeekdayLabel,
   sameLocalDate,
+  todayLocalDate,
   serializeWeather,
   WEATHER_OPTIONS,
   subcontractorKey,
@@ -354,8 +355,8 @@ export function NewLogForm({
           });
       }
     } else if (!initial?.logDate) {
-      // 沒草稿、也沒帶初始值 → logDate 設為今天
-      setLogDate(new Date().toISOString().slice(0, 10));
+      // 沒草稿、也沒帶初始值 → logDate 設為今天(台灣時區,不能用 toISOString 的 UTC 日期)
+      setLogDate(todayLocalDate());
     }
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1086,8 +1087,9 @@ export function NewLogForm({
         )}
       </Section>
 
-      {/* 待整合的現場回報 — 只在選了案件 + 該案有當日 pending 回報時出現 */}
-      {caseId && availableReports.length > 0 && (
+      {/* 待整合的現場回報 — 選了案件且該案有 pending 回報(不限日期)就出現。
+          當日的列出來可勾選;只有其他日期的也要現身提示,不然主任會以為回報不見了 */}
+      {caseId && (availableReports.length > 0 || otherDateReportsCount > 0) && (
         <details
           open
           className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] p-5 md:p-6"
@@ -1099,13 +1101,16 @@ export function NewLogForm({
             <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
           </summary>
           <p className="mt-1 mb-4 text-sm text-[#92400E]/80">
-            只列出與本日誌日期相符的回報。勾選後選文字要併到哪一節，再按「合併到此日誌」。照片帶 caption 一起進照片區，被合併的回報會標為「已併入」不再出現在這。
+            只列出與本日誌日期相符的回報。
+            {availableReports.length > 0 &&
+              "勾選後選文字要併到哪一節，再按「合併到此日誌」。照片帶 caption 一起進照片區，被合併的回報會標為「已併入」不再出現在這。"}
             {otherDateReportsCount > 0 && (
               <span className="ml-1 text-[#92400E]">
-                （此案件還有 {otherDateReportsCount} 筆其他日期的回報未顯示）
+                （此案件還有 {otherDateReportsCount} 筆其他日期的回報未顯示，把下面的日誌日期改成那天就看得到）
               </span>
             )}
           </p>
+          {availableReports.length > 0 && (<>
           <ul className="space-y-2">
             {availableReports.map((r) => {
               const checked = selectedReportIds.has(r.id);
@@ -1229,6 +1234,7 @@ export function NewLogForm({
               合併到此日誌 ({selectedReportIds.size})
             </Button>
           </div>
+          </>)}
         </details>
       )}
 

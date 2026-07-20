@@ -9,6 +9,7 @@ import {
   computeManpowerByCase,
   computeSubcontractorTotalsByCase,
   isBackfilledLog,
+  todayLocalDate,
 } from "../daily-log";
 
 describe("normalizeLogPhotos", () => {
@@ -68,6 +69,14 @@ describe("sameLocalDate", () => {
     expect(sameLocalDate(null, "2026-05-11")).toBe(false);
     expect(sameLocalDate("not-a-date", "2026-05-11")).toBe(false);
     expect(sameLocalDate("2026-05-11T14:00:00Z", "")).toBe(false);
+  });
+});
+
+describe("todayLocalDate", () => {
+  it("returns YYYY-MM-DD in Asia/Taipei regardless of runner timezone", () => {
+    expect(todayLocalDate()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // 與 sameLocalDate 用同一套時區轉換 — 「現在」一定屬於「今天」
+    expect(sameLocalDate(new Date().toISOString(), todayLocalDate())).toBe(true);
   });
 });
 

@@ -88,7 +88,9 @@ export function WorkItemsPicker({
   onHighlightConsumed,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [browserOpen, setBrowserOpen] = useState(value.length === 0);
+  // 預設收起(即使還沒勾任何工項):真實標單動輒上千項,一進頁面就整棵展開很難滑。
+  // 搜尋框常駐頂部,輸入關鍵字會自動展開;要逐層瀏覽再點「瀏覽全部工項」。
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   // 「全部移除」undo toast 的支援 refs:
   //  - valueRef:復原時拿「當下」的 value 合併(toast callback 是舊 closure)
@@ -362,7 +364,7 @@ export function WorkItemsPicker({
       )}
 
       {/* 瀏覽器 — 搜尋框常駐；「瀏覽全部」用 details 折疊。
-          已選 ≥1 後預設收起，但搜尋框永遠在頂部不需要先點才能找工項。 */}
+          一律預設收起（長清單難滑），搜尋框永遠在頂部不需要先點才能找工項。 */}
       <div className="rounded-lg border border-[#E0DCD6] bg-card">
         <div className="px-3 py-3">
           <input
