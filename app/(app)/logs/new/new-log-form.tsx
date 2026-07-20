@@ -695,6 +695,18 @@ export function NewLogForm({
     });
   }
 
+  const allReportsSelected =
+    availableReports.length > 0 &&
+    availableReports.every((r) => selectedReportIds.has(r.id));
+
+  function toggleSelectAllReports() {
+    setSelectedReportIds(
+      allReportsSelected
+        ? new Set()
+        : new Set(availableReports.map((r) => r.id)),
+    );
+  }
+
   function mergeSelectedReports() {
     if (selectedReportIds.size === 0) return;
     const picked = availableReports.filter((r) => selectedReportIds.has(r.id));
@@ -1092,7 +1104,21 @@ export function NewLogForm({
             <h2 className="text-base font-semibold text-[#92400E] md:text-lg">
               待整合的現場回報 ({availableReports.length})
             </h2>
-            <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  // 在 summary 裡:擋掉 details 的展開/收合 toggle
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleSelectAllReports();
+                }}
+                className="inline-flex min-h-11 items-center rounded-md px-2 text-xs font-medium text-[#92400E] underline underline-offset-2 transition-colors hover:text-[#B45309]"
+              >
+                {allReportsSelected ? "取消全選" : "全選"}
+              </button>
+              <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
+            </span>
           </summary>
           <p className="mt-1 mb-4 text-sm text-[#92400E]/80">
             勾選後選文字要併到哪一節，再按「合併到此日誌」。照片帶 caption 一起進照片區，被合併的回報會標為「已併入」不再出現在這。標了日期的是別天的回報，補登時再勾，別併進今天的日誌。
