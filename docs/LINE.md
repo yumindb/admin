@@ -110,8 +110,11 @@ server actions(簽核/請假/回報成功後)
 3. **設 webhook**:「Messaging API」tab:
    - Webhook URL:`https://yumin-admin.vercel.app/api/line/webhook`
    - **Use webhook 開啟**,按 Verify 應回成功(金鑰已設好並 redeploy 之後才驗)
-4. **關掉會干擾的自動功能**(OA Manager → 設定 → 回應設定):
-   - 聊天:關(或維持「回應模式:Bot」)
+4. **回應設定**(OA Manager → 設定 → 回應設定):
+   - 聊天:**開**(2026-07-20 起員工用聊天回報 bug;聊天與 Webhook 可並存,
+     訊息會同時進聊天收件匣與 webhook。回應方式選「手動聊天」、回應時間關)
+     - webhook 對已綁定者的一般訊息不回嘴,聊天不會被機器人插話;
+       未綁定者傳任何訊息會收到綁定引導 → 請員工先完成綁定再用聊天
    - 自動回應訊息:關(不然使用者傳綁定碼會收到罐頭回覆 + 我們的回覆各一則)
    - 加入好友的歡迎訊息:關(webhook 的 follow 事件會回我們自己的引導文)
 5. **Vercel** → Project Settings → Environment Variables → 加 `LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`(Production)→ **Redeploy**。

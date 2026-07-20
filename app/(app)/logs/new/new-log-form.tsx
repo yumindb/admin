@@ -671,25 +671,19 @@ export function NewLogForm({
     return out;
   }, [mergedReportSnapshots, photos]);
 
-  // 該案件下未合併過、且使用者本次也還沒勾過合併的回報。
-  // 還要與當前 logDate 同日 — 補填日誌時(logDate ≠ 今天)只看當天的回報,
-  // 其它日子的回報留給辦公室助理另行處理,避免主任誤合別日的內容。
-  // logDate 為空(初始尚未補上今天)時退回不過濾,等 mount 補完日期再 re-filter。
+  // 該案件下未合併過、且使用者本次也還沒勾過合併的回報 — 不分日期全列。
+  // (2026-05-08 曾限「與日誌同日」,2026-07-20 業主回饋放寬:主任常要補登
+  //  別日的回報照片,改日期太繞。同日排前面,非同日的卡片上有日期標記防誤併。)
   const availableReports = useMemo<PendingFieldReport[]>(() => {
     if (!caseId) return [];
     const list = pendingReportsByCase?.[caseId] ?? [];
     const filtered = list.filter((r) => !mergedReportIds.includes(r.id));
     if (!logDate) return filtered;
-    return filtered.filter((r) => sameLocalDate(r.createdAt, logDate));
-  }, [caseId, pendingReportsByCase, mergedReportIds, logDate]);
-
-  // 該案件下「其他日期」的待整合回報筆數 — 用來在區塊頂端做提示
-  const otherDateReportsCount = useMemo<number>(() => {
-    if (!caseId || !logDate) return 0;
-    const list = pendingReportsByCase?.[caseId] ?? [];
-    return list.filter(
-      (r) => !mergedReportIds.includes(r.id) && !sameLocalDate(r.createdAt, logDate),
-    ).length;
+    // 同日的排前面,其餘維持時間序
+    return [
+      ...filtered.filter((r) => sameLocalDate(r.createdAt, logDate)),
+      ...filtered.filter((r) => !sameLocalDate(r.createdAt, logDate)),
+    ];
   }, [caseId, pendingReportsByCase, mergedReportIds, logDate]);
 
   function toggleReportSelection(id: string) {
@@ -1087,35 +1081,28 @@ export function NewLogForm({
         )}
       </Section>
 
-      {/* 待整合的現場回報 — 選了案件且該案有 pending 回報(不限日期)就出現。
-          當日的列出來可勾選;只有其他日期的也要現身提示,不然主任會以為回報不見了 */}
-      {caseId && (availableReports.length > 0 || otherDateReportsCount > 0) && (
+      {/* 待整合的現場回報 — 選了案件且該案有 pending 回報就出現(不分日期,
+          同日排前面;非本日誌日期的卡片帶琥珀色日期標記防誤併) */}
+      {caseId && availableReports.length > 0 && (
         <details
           open
           className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] p-5 md:p-6"
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
             <h2 className="text-base font-semibold text-[#92400E] md:text-lg">
-              {logDate ? `${logDate} 的現場回報 (${availableReports.length})` : `待整合的現場回報 (${availableReports.length})`}
+              待整合的現場回報 ({availableReports.length})
             </h2>
             <span className="text-xs text-[#92400E]">點開展開 / 收合</span>
           </summary>
           <p className="mt-1 mb-4 text-sm text-[#92400E]/80">
-            只列出與本日誌日期相符的回報。
-            {availableReports.length > 0 &&
-              "勾選後選文字要併到哪一節，再按「合併到此日誌」。照片帶 caption 一起進照片區，被合併的回報會標為「已併入」不再出現在這。"}
-            {otherDateReportsCount > 0 && (
-              <span className="ml-1 text-[#92400E]">
-                （此案件還有 {otherDateReportsCount} 筆其他日期的回報未顯示，把下面的日誌日期改成那天就看得到）
-              </span>
-            )}
+            勾選後選文字要併到哪一節，再按「合併到此日誌」。照片帶 caption 一起進照片區，被合併的回報會標為「已併入」不再出現在這。標了日期的是別天的回報，補登時再勾，別併進今天的日誌。
           </p>
-          {availableReports.length > 0 && (<>
           <ul className="space-y-2">
             {availableReports.map((r) => {
               const checked = selectedReportIds.has(r.id);
               const hasText = r.note.trim().length > 0;
               const dest = reportDest.get(r.id) ?? defaultDestFor(r);
+              const isOtherDay = !!logDate && !sameLocalDate(r.createdAt, logDate);
               const ts = formatTW(r.createdAt, {
                 month: "2-digit",
                 day: "2-digit",
@@ -1139,9 +1126,16 @@ export function NewLogForm({
                         className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850]"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs text-muted-foreground">
-                          {ts} · {r.authorName}
-                          {r.photos.length > 0 && ` · ${r.photos.length} 張照片`}
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          {isOtherDay && (
+                            <span className="inline-flex items-center rounded-full border border-[#FDE68A] bg-[#FEF3C7] px-2 py-0.5 font-medium text-[#B45309]">
+                              {formatTW(r.createdAt, { month: "numeric", day: "numeric" })} 的回報
+                            </span>
+                          )}
+                          <span>
+                            {ts} · {r.authorName}
+                            {r.photos.length > 0 && ` · ${r.photos.length} 張照片`}
+                          </span>
                         </div>
                         {r.note && (
                           <p className="mt-1 whitespace-pre-line text-sm text-foreground">
@@ -1234,7 +1228,6 @@ export function NewLogForm({
               合併到此日誌 ({selectedReportIds.size})
             </Button>
           </div>
-          </>)}
         </details>
       )}
 
