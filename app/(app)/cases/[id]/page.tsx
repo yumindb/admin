@@ -21,7 +21,10 @@ import {
 } from "./case-excel-buttons";
 import { NextStepHint } from "@/components/next-step-hint";
 import { CaseQrCodeButton } from "@/components/case-qr-code-button";
-import { PhotoGallery, type GalleryPhoto } from "@/components/photo-gallery";
+import {
+  CasePhotoTimeline,
+  type TimelinePhoto,
+} from "@/components/case-photo-timeline";
 import { AttendanceTimeline, type TimelineEvent } from "@/components/attendance-timeline";
 import { CaseTimeline, type CaseTimelineEvent } from "@/components/case-timeline";
 import {
@@ -33,7 +36,7 @@ import {
   type ContractWithItems,
 } from "@/components/extra-contracts-section";
 import { normalizeLogPhotos } from "@/lib/daily-log";
-import { getSignedUrls } from "@/lib/supabase/storage";
+import { extractStoragePath, getSignedUrls } from "@/lib/supabase/storage";
 import type {
   Case,
   CaseWorkItem,
@@ -43,6 +46,7 @@ import type {
   DailyLogExtraItem,
   DailyLogUnsignedItem,
   ExtraContract,
+  FieldReport,
   QuoteStatus,
 } from "@/lib/types";
 
@@ -76,6 +80,7 @@ export default async function CaseDetailPage({
     { data: attendanceRows },
     { data: approvalRows },
     { data: reportRows },
+    { data: reportPhotoRows },
   ] = await Promise.all([
     supabase.from("cases").select("*").eq("id", id).maybeSingle(),
     // fetchAllRows:配電盤等真實標單單案 1200+ 工項,超 PostgREST 1000 筆上限
@@ -138,6 +143,16 @@ export default async function CaseDetailPage({
       .eq("case_id", id)
       .order("created_at", { ascending: false })
       .limit(30),
+    // 照片時間軸:此案全部回報的照片(未併入日誌的也要露出;已併入的靠 path 去重)
+    fetchAllRows((from, to) =>
+      supabase
+        .from("field_reports")
+        .select("id, photos, created_at")
+        .eq("case_id", id)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   if (caseErr || !caseRow) notFound();
@@ -413,8 +428,11 @@ export default async function CaseDetailPage({
   // 舊資料相容:從舊日誌 jsonb 蒐集合約外/未簽約(只有舊資料才會有)
   const legacyExtraRows: LegacyExtraRow[] = [];
   const legacyUnsignedRows: LegacyUnsignedRow[] = [];
-  // 跨所有日誌的照片,日期前綴附在 caption 上,給 PhotoGallery+Lightbox 用
-  const allPhotos: GalleryPhoto[] = [];
+  // 照片時間軸:日誌照片(正式紀錄)+ 未併入日誌的回報照片,
+  // 以 storage path 去重(合併回報時共用 path 不複製,日誌優先)
+  type RawTimelinePhoto = Omit<TimelinePhoto, "src"> & { rawPath: string };
+  const rawTimeline: RawTimelinePhoto[] = [];
+  const seenStorageKeys = new Set<string>();
   for (const log of allLogs) {
     for (const e of (log.extra_items ?? []) as DailyLogExtraItem[]) {
       legacyExtraRows.push({ ...e, log_id: log.id, log_date: log.log_date });
@@ -422,28 +440,51 @@ export default async function CaseDetailPage({
     for (const u of (log.unsigned_items ?? []) as DailyLogUnsignedItem[]) {
       legacyUnsignedRows.push({ ...u, log_id: log.id, log_date: log.log_date });
     }
-    const datePrefix = formatDateTW(log.log_date);
     for (const p of normalizeLogPhotos(log.photos)) {
-      allPhotos.push({
-        path: p.path,
-        caption: p.caption
-          ? `${datePrefix}・${p.caption}`
-          : datePrefix,
+      seenStorageKeys.add(extractStoragePath(p.path, "daily-photos") ?? p.path);
+      rawTimeline.push({
+        rawPath: p.path,
+        caption: p.caption,
+        date: log.log_date,
+        source: "log",
+        href: `/logs/${log.id}`,
+      });
+    }
+  }
+  for (const row of (reportPhotoRows ?? []) as Array<
+    Pick<FieldReport, "id" | "photos" | "created_at">
+  >) {
+    const date = new Date(row.created_at).toLocaleDateString("en-CA", {
+      timeZone: "Asia/Taipei",
+    });
+    for (const p of normalizeLogPhotos(row.photos)) {
+      const key = extractStoragePath(p.path, "daily-photos") ?? p.path;
+      if (seenStorageKeys.has(key)) continue; // 已併入日誌 → 以日誌版為準
+      seenStorageKeys.add(key);
+      rawTimeline.push({
+        rawPath: p.path,
+        caption: p.caption,
+        date,
+        source: "report",
+        href: `/field-reports/${row.id}`,
       });
     }
   }
 
-  // Storage 已轉 private → 一次撈所有照片的 signed URL(5 min)
+  // Storage 已轉 private → 一次撈所有照片的 signed URL
   const photoSignedMap = await getSignedUrls(
     "daily-photos",
-    allPhotos.map((p) => p.path),
-    // 1h:照片牆有 lazy/分批載入,使用者看頁面超過 5 分鐘再展開,
+    rawTimeline.map((p) => p.rawPath),
+    // 1h:時間軸漸進載入,使用者看頁面超過 5 分鐘才捲到的
     // 縮圖才請求 — 5 分鐘效期會 400 破圖
     3600,
   );
-  const allPhotosSigned: GalleryPhoto[] = allPhotos.map((p) => ({
-    ...p,
-    path: photoSignedMap.get(p.path) ?? p.path,
+  const timelinePhotos: TimelinePhoto[] = rawTimeline.map((p) => ({
+    src: photoSignedMap.get(p.rawPath) ?? p.rawPath,
+    caption: p.caption,
+    date: p.date,
+    source: p.source,
+    href: p.href,
   }));
 
   // 樹狀工項清單只顯示合約內(section/item/spec/manual);extra/unsigned 用各自區塊顯示
@@ -679,22 +720,16 @@ export default async function CaseDetailPage({
         emptyText="還沒有活動 — 匯入標單或填第一份日誌後，這裡會開始累積"
       />
 
-      {/* 跨日誌彙整：照片 */}
+      {/* 跨日誌彙整：照片時間軸(日誌 + 未併入的現場回報,依日期分組) */}
       <div className="mt-10 mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-primary md:text-xl">
-          施工日誌照片
+          照片時間軸
           <span className="ml-2 text-sm font-normal text-muted-foreground">
-            共 {allPhotos.length} 張
+            共 {timelinePhotos.length} 張
           </span>
         </h2>
       </div>
-      {allPhotos.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-10 text-center text-sm text-muted-foreground">
-          目前沒有日誌照片
-        </div>
-      ) : (
-        <PhotoGallery photos={allPhotosSigned} layout="grid" />
-      )}
+      <CasePhotoTimeline photos={timelinePhotos} />
 
       {/* 追加合約 — 以「合約」為單位呈現（migration-2.16 後），
           每份合約可包多筆工項，有自己的 bundle 優惠價 */}

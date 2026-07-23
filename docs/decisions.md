@@ -852,3 +852,38 @@ case_work_items
 - 聊天與 Webhook 並存(LINE 2023-11 後支援);webhook 對已綁定者的一般
   訊息本來就不回嘴,不衝突。docs/LINE.md 設定指引同步改「聊天:開」。
 - 未綁定者傳訊會收到綁定引導罐頭文 → 請員工先綁定再用聊天回報。
+
+## 2026-07-20(續)— 對標 Procore/Fieldwire/PlanGrid 的三個改進
+
+背景:Evelyn 問「這三套有什麼裕民用得到的」,選了三個低成本高價值的做:
+
+### 一、案件頁「照片時間軸」(components/case-photo-timeline.tsx)
+
+- 對標 PlanGrid 照片時間軸:驗收爭議/追加佐證時「5/12 那面牆長怎樣」十秒找到。
+- 取代原本案件頁的扁平 PhotoGallery。日期分組(新→舊)+ sticky 日期標頭 +
+  月份快跳 chips + 來源篩選(日誌/回報)+ 組標頭連回原文件。
+- 資料面:日誌照片 + **未併入日誌的回報照片**(依 storage path 去重,日誌優先,
+  回報照片掛「回報」徽章)。案件頁多一個 field_reports photos 查詢(fetchAllRows)。
+- 效能:IntersectionObserver 漸進載入(首批 48 張、每批 +96),
+  signed URL 維持 1h 一批簽。
+
+### 二、照片標註(components/photo-annotator.tsx)
+
+- 對標三套都有的照片標註。工具刻意只給三種:畫筆/箭頭/圈選,三色(紅黃藍),
+  復原/清除。不做文字工具 — caption 欄本來就在照片下方。
+- **原始照片永遠保留**(業主要求:好照片以後網站要用):標註輸出另存新檔
+  (JPEG、長邊 cap 2048px),photo.original_path 指向原檔;重新標註永遠從
+  原圖畫起(標註不可疊加,是重畫)。
+- 資料面:LogPhoto/FieldReportPhoto 加選配 original_path(jsonb,免 migration)。
+- **cleanup-orphan-photos 的 collectPaths 同步納入 original_path** — 不改這個,
+  原圖 72h 後會被當孤兒刪掉(這是本功能最危險的一步,已修)。
+- 重新標註時,前一版標註檔若是本次表單上傳的直接刪;跨表單的舊標註檔
+  變孤兒由 cron 收。storage 成本:每張標註多一份 ≤2048px JPEG,可忽略。
+- 接入點:日誌表單照片區 + 現場回報表單,共用同一個 annotator。
+
+### 三、日誌表單 Section 完成度指示
+
+- 對標 Procore 日誌分區塊 + 完成狀態。Section 標題右側:有數量的區塊顯示
+  數字 chip(工項/外包/未簽約/照片),布林區塊顯示綠勾或灰字「未填」。
+- 簽名 canvas 在 ref 裡 React 看不到 — 加 onEnd 追蹤 sigDrawn state。
+- 原本塞在標題字串裡的 (N) 計數改用統一 chip。

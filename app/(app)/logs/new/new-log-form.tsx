@@ -25,7 +25,8 @@ import {
   AddTempWorkItemDialog,
   type AddTempCreated,
 } from "@/components/add-temp-work-item-dialog";
-import { Plus } from "lucide-react";
+import { CheckCircle2, Pencil, Plus } from "lucide-react";
+import { PhotoAnnotator } from "@/components/photo-annotator";
 import { NextStepHint } from "@/components/next-step-hint";
 import { getCompanyShort } from "@/lib/companies";
 import { PhotoLightbox } from "@/components/photo-lightbox";
@@ -251,6 +252,9 @@ export function NewLogForm({
   // 工地主任 5 點趕填日誌時戴手套畫不出來 — 60min 內套用上次簽名
   const [rememberSig, setRememberSig] = useState(false);
   const [hasStoredSig, setHasStoredSig] = useState(false);
+  // 簽名內容在 canvas ref 裡,React 看不到 — 用 onEnd 追蹤「畫過了沒」
+  // 給 Section 完成度指示用(清除重簽會歸零)
+  const [sigDrawn, setSigDrawn] = useState(false);
   // 隱式 GPS 戳記:已授權才靜默取(未授權不彈視窗、不擋送出)
   const silentLoc = useSilentLocationOnce();
   // 追蹤本次工作階段「在這個表單內上傳」的照片 path,
@@ -262,6 +266,7 @@ export function NewLogForm({
   function clearSig() {
     sigRef.current?.clear();
     setHasStoredSig(false);
+    setSigDrawn(false);
   }
 
   // mount 後嘗試還原 60min 內的快取簽名(canvas ref 還要等下一個 tick)
@@ -313,9 +318,10 @@ export function NewLogForm({
       const snapPhotos = (draft.mergedReportSnapshots ?? []).flatMap(
         (s) => s.photos ?? [],
       );
+      // original_path(標註前原圖)也要一起重簽 — 重新標註時要載得出來
       const staleUrls = [...draftPhotos, ...snapPhotos]
-        .map((p) => p.path)
-        .filter(Boolean);
+        .flatMap((p) => [p.path, (p as LogPhoto).original_path])
+        .filter((u): u is string => !!u);
       const draftAgeMs =
         typeof draft.savedAt === "number" ? Date.now() - draft.savedAt : Infinity;
       if (staleUrls.length > 0 && draftAgeMs > 4 * 60 * 60 * 1000) {
@@ -333,9 +339,13 @@ export function NewLogForm({
             setPhotos((prev) =>
               prev
                 .filter((p) => !gone.has(p.path))
-                .map((p) =>
-                  fresh[p.path] ? { ...p, path: fresh[p.path] } : p,
-                ),
+                .map((p) => ({
+                  ...p,
+                  path: fresh[p.path] ?? p.path,
+                  ...(p.original_path
+                    ? { original_path: fresh[p.original_path] ?? p.original_path }
+                    : {}),
+                })),
             );
             setMergedReportSnapshots((prev) =>
               prev.map((s) => ({
@@ -659,13 +669,17 @@ export function NewLogForm({
     if (mergedReportSnapshots.length === 0) return [];
     const havePaths = new Set(photos.map((p) => p.path));
     const seen = new Set<string>();
-    const out: { path: string; caption: string }[] = [];
+    const out: LogPhoto[] = [];
     for (const r of mergedReportSnapshots) {
       for (const p of r.photos) {
         if (havePaths.has(p.path)) continue;
         if (seen.has(p.path)) continue;
         seen.add(p.path);
-        out.push({ path: p.path, caption: p.caption ?? "" });
+        out.push({
+          path: p.path,
+          caption: p.caption ?? "",
+          ...(p.original_path ? { original_path: p.original_path } : {}),
+        });
       }
     }
     return out;
@@ -742,8 +756,13 @@ export function NewLogForm({
     }
 
     // 2. photos: 帶上 caption 一起合併,不重覆 path(共用 storage、不複製)
+    //    original_path(回報端有標註過的)也一起帶 — 原圖引用不能斷
     const incoming: LogPhoto[] = picked.flatMap((r) =>
-      r.photos.map((p) => ({ path: p.path, caption: p.caption ?? "" }))
+      r.photos.map((p) => ({
+        path: p.path,
+        caption: p.caption ?? "",
+        ...(p.original_path ? { original_path: p.original_path } : {}),
+      }))
     );
     if (incoming.length) {
       setPhotos((prev) => {
@@ -887,6 +906,46 @@ export function NewLogForm({
     setPhotos((arr) =>
       arr.map((p) => (p.path === path ? { ...p, caption } : p))
     );
+  }
+
+  // ---- 照片標註:標註另存新檔,original_path 永遠指向未標註的原圖 ----
+  const [annotating, setAnnotating] = useState<LogPhoto | null>(null);
+  const [annotSaving, setAnnotSaving] = useState(false);
+
+  async function saveAnnotation(blob: Blob) {
+    if (!annotating) return;
+    setAnnotSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append(
+        "file",
+        new File([blob], "annotated.jpg", { type: "image/jpeg" }),
+      );
+      const res = await uploadPhotoAction(fd);
+      if (!res.ok) {
+        toast.error(res.error ?? "標註儲存失敗，請再試一次");
+        return;
+      }
+      sessionUploadsRef.current.add(res.path);
+      const oldPath = annotating.path;
+      const originalPath = annotating.original_path ?? annotating.path;
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.path === oldPath
+            ? { path: res.path, caption: p.caption, original_path: originalPath }
+            : p,
+        ),
+      );
+      // 重新標註:上一版標註檔若是本次表單產生的,直接清掉(原圖不動)
+      if (annotating.original_path && sessionUploadsRef.current.has(oldPath)) {
+        sessionUploadsRef.current.delete(oldPath);
+        void deletePhotoAction(oldPath);
+      }
+      setAnnotating(null);
+      toast.success("標註已儲存，原始照片有保留");
+    } finally {
+      setAnnotSaving(false);
+    }
   }
 
   function cancel() {
@@ -1079,7 +1138,7 @@ export function NewLogForm({
       </div>
 
       {/* 案件選擇 */}
-      <Section title="案件選擇">
+      <Section title="案件選擇" done={!!caseId}>
         {cases.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             目前沒有可用案件。請辦公室助理先開案。
@@ -1258,7 +1317,7 @@ export function NewLogForm({
       )}
 
       {/* 基本 */}
-      <Section title="日期 / 天氣">
+      <Section title="日期 / 天氣" done={!!logDate && (!!weather.am || !!weather.pm)}>
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="log_date">日期</Label>
@@ -1291,7 +1350,7 @@ export function NewLogForm({
         </div>
       </Section>
 
-      <Section title="出工人數">
+      <Section title="出工人數" done={todayTotalNum > 0}>
         <div className="space-y-2">
           <Label htmlFor="today_total">本日出工人數</Label>
           <Input
@@ -1316,6 +1375,7 @@ export function NewLogForm({
       <Section
         title="一、依施工計畫書執行按圖施工概況"
         hint="依照表單主體填寫施工項目、當日完成數量與累計進度"
+        count={picked.length}
       >
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾工項</p>
@@ -1335,6 +1395,10 @@ export function NewLogForm({
       <Section
         title="二、外包人員及機具管理"
         hint="對齊現有 Excel 的第二區塊，分開記錄工別與機具"
+        count={
+          subcontractors.filter((s) => s.trade?.trim()).length +
+          machines.filter((m) => m.name?.trim()).length
+        }
       >
         <div className="space-y-5">
           <ExtraItemsEditor<DailyLogSubcontractor>
@@ -1356,7 +1420,7 @@ export function NewLogForm({
         </div>
       </Section>
 
-      <Section title="三、通知協力廠商辦理事項">
+      <Section title="三、通知協力廠商辦理事項" done={vendorNotices.trim().length > 0}>
         <Textarea
           rows={3}
           value={vendorNotices}
@@ -1369,8 +1433,9 @@ export function NewLogForm({
           (migration-2.16：原本第四節「合約外」改由辦公室助理在案件總覽以「追加合約」管理，
            不再出現在主任的日誌 picker。） */}
       <Section
-        title={`四、未簽約施工內容${pickedUnsigned.length > 0 ? ` (${pickedUnsigned.length})` : ""}`}
+        title="四、未簽約施工內容"
         hint="尚未報價/打包成追加合約，但現場有施工。報價由辦公室助理事後補，可一次選多筆建立追加合約。"
+        count={pickedUnsigned.length}
       >
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾未簽約項目</p>
@@ -1463,7 +1528,7 @@ export function NewLogForm({
         </Section>
       )}
 
-      <Section title={`照片區${photos.length > 0 ? ` (${photos.length})` : ""}`}>
+      <Section title="照片區" count={photos.length}>
         {/* 不加 capture:主任多半白天拍照、傍晚坐下來從相簿選;
             系統選單本來就有「拍照」選項,加了反而鎖死只能開相機且不能多選 */}
         <input
@@ -1567,6 +1632,14 @@ export function NewLogForm({
                   >
                     ×
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnnotating(p)}
+                    className="absolute bottom-1.5 right-1.5 inline-flex min-h-10 items-center gap-1 rounded-full bg-black/70 px-3 text-sm text-white shadow-md hover:bg-black/85 active:bg-black"
+                  >
+                    <Pencil className="size-3.5" />
+                    {p.original_path ? "重新標註" : "標註"}
+                  </button>
                 </div>
                 <input
                   type="text"
@@ -1605,7 +1678,13 @@ export function NewLogForm({
                     onClick={() =>
                       setPhotos((prev) => [
                         ...prev,
-                        { path: p.path, caption: p.caption },
+                        {
+                          path: p.path,
+                          caption: p.caption,
+                          ...(p.original_path
+                            ? { original_path: p.original_path }
+                            : {}),
+                        },
                       ])
                     }
                     className="block w-full border-t border-[#F0EBE4] bg-white px-2 py-1.5 text-xs font-medium text-accent hover:bg-[#FAF7F2]"
@@ -1619,7 +1698,7 @@ export function NewLogForm({
         )}
       </Section>
 
-      <Section title="六、重要事項紀錄">
+      <Section title="六、重要事項紀錄" done={notes.trim().length > 0}>
         <Textarea
           rows={3}
           value={notes}
@@ -1629,7 +1708,11 @@ export function NewLogForm({
       </Section>
 
       {editMode === "classic" && (
-        <Section title="填表人簽名" hint={`填表人：${currentUserName}。送出核定前請在下方手寫簽名；只儲存草稿可不簽。`}>
+        <Section
+          title="填表人簽名"
+          hint={`填表人：${currentUserName}。送出核定前請在下方手寫簽名；只儲存草稿可不簽。`}
+          done={sigDrawn || hasStoredSig}
+        >
           <div
             className="rounded-md border border-[#E0DCD6] bg-white"
             style={{ touchAction: "none" }}
@@ -1639,6 +1722,7 @@ export function NewLogForm({
               penColor="#003153"
               minWidth={2}
               maxWidth={4}
+              onEnd={() => setSigDrawn(true)}
               // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
               clearOnResize={false}
               canvasProps={{
@@ -1754,6 +1838,16 @@ export function NewLogForm({
           )
         }
       />
+
+      {/* 照片標註 — 永遠從原圖(original_path ?? path)畫起,存檔另存新圖 */}
+      {annotating && (
+        <PhotoAnnotator
+          src={annotating.original_path ?? annotating.path}
+          onSave={(blob) => void saveAnnotation(blob)}
+          onCancel={() => setAnnotating(null)}
+          saving={annotSaving}
+        />
+      )}
 
       {showPostEditConfirm && (
         <div
@@ -1935,15 +2029,37 @@ function CasePicker({
 function Section({
   title,
   hint,
+  done,
+  count,
   children,
 }: {
   title: string;
   hint?: string;
+  /** 完成度指示:count > 0 顯示數量 chip;否則 done=true 顯示綠勾、
+   *  done=false 顯示灰字「未填」;兩者皆未傳(undefined)則不顯示 */
+  done?: boolean;
+  count?: number;
   children: React.ReactNode;
 }) {
+  // 主任捲動長表單時,標題右側一眼看出「這區填了沒」
+  const filled = done === true || (count !== undefined && count > 0);
+  const showEmpty = !filled && (done !== undefined || count !== undefined);
   return (
     <section className="rounded-lg border border-[#E0DCD6] bg-card p-4 md:p-6">
-      <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">{title}</h2>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-primary md:text-lg">{title}</h2>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {count !== undefined && count > 0 && (
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-[#A07850]/12 px-2 text-xs font-semibold text-[#A07850]">
+              {count}
+            </span>
+          )}
+          {filled && (
+            <CheckCircle2 className="size-5 text-[#4D7C0F]" aria-label="已填" />
+          )}
+          {showEmpty && <span className="text-xs text-[#B8B0A6]">未填</span>}
+        </span>
+      </div>
       {hint && <p className="mb-3 text-sm text-muted-foreground md:mb-4">{hint}</p>}
       {!hint && <div className="mb-3 md:mb-4" />}
       {children}

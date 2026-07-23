@@ -153,31 +153,35 @@ export async function GET(request: Request) {
   });
 }
 
-/** 從 photos jsonb 取出所有 storage path。容忍兩種格式:
- *  - 新格式 { path: string, caption?: string }
+/** 從 photos jsonb 取出所有 storage path。容忍三種格式:
+ *  - 新格式 { path: string, caption?: string, original_path?: string }
+ *    (original_path 是標註前的原始檔 — 一樣算被引用,絕不能清)
  *  - 舊格式 string(直接是 URL,migration-2.7 之前) */
 function collectPaths(photos: unknown, out: Set<string>) {
   if (!Array.isArray(photos)) return;
   for (const item of photos) {
-    let url: string | null = null;
-    if (typeof item === "string") url = item;
-    else if (item && typeof item === "object" && "path" in item) {
-      const p = (item as { path: unknown }).path;
-      if (typeof p === "string") url = p;
-    }
-    if (!url) continue;
-    let path: string | null = null;
-    for (const marker of [PUBLIC_MARKER, SIGN_MARKER]) {
-      const idx = url.indexOf(marker);
-      if (idx >= 0) {
-        const after = url.slice(idx + marker.length);
-        const q = after.indexOf("?");
-        path = q >= 0 ? after.slice(0, q) : after;
-        break;
+    const urls: string[] = [];
+    if (typeof item === "string") urls.push(item);
+    else if (item && typeof item === "object") {
+      for (const key of ["path", "original_path"] as const) {
+        const v = (item as Record<string, unknown>)[key];
+        if (typeof v === "string" && v) urls.push(v);
       }
     }
-    // 沒命中 marker → 視為裸 storage path(未來格式)
-    if (!path) path = url;
-    if (path) out.add(path);
+    for (const url of urls) {
+      let path: string | null = null;
+      for (const marker of [PUBLIC_MARKER, SIGN_MARKER]) {
+        const idx = url.indexOf(marker);
+        if (idx >= 0) {
+          const after = url.slice(idx + marker.length);
+          const q = after.indexOf("?");
+          path = q >= 0 ? after.slice(0, q) : after;
+          break;
+        }
+      }
+      // 沒命中 marker → 視為裸 storage path(未來格式)
+      if (!path) path = url;
+      if (path) out.add(path);
+    }
   }
 }

@@ -90,6 +90,9 @@ export type DailyLogUnsignedItem = {
 export type LogPhoto = {
   path: string;
   caption: string;
+  /** 有標註時:path 是標註後的圖,這裡指向未標註的原始檔(網站日後選圖用)。
+   *  cleanup-orphan-photos cron 的 collectPaths 也認這個欄位,原檔不會被清 */
+  original_path?: string;
 };
 
 export type DailyLog = {
@@ -246,6 +249,8 @@ export type FieldReportStatus = "pending" | "merged" | "archived";
 export type FieldReportPhoto = {
   path: string;
   caption: string;
+  /** 同 LogPhoto.original_path:標註後保留原始檔的指標 */
+  original_path?: string;
 };
 
 export type FieldReport = {

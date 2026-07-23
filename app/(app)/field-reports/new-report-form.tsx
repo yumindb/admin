@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CasePicker, type CasePickerOption } from "@/components/case-picker";
 import { PhotoLightbox } from "@/components/photo-lightbox";
+import { PhotoAnnotator } from "@/components/photo-annotator";
+import { Pencil } from "lucide-react";
 import { deletePhotoAction, uploadPhotoAction } from "../logs/[id]/photo-actions";
 import { createFieldReportAction, updateFieldReportAction } from "./actions";
 import { NextStepHint } from "@/components/next-step-hint";
@@ -282,6 +284,47 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     setPhotos((arr) => arr.map((p, i) => (i === idx ? { ...p, caption } : p)));
   }
 
+  // ---- 照片標註:標註另存新檔,original_path 永遠指向未標註的原圖 ----
+  const [annotatingIdx, setAnnotatingIdx] = useState<number | null>(null);
+  const [annotSaving, setAnnotSaving] = useState(false);
+  const annotating = annotatingIdx !== null ? photos[annotatingIdx] : null;
+
+  async function saveAnnotation(blob: Blob) {
+    if (annotatingIdx === null || !annotating) return;
+    setAnnotSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append(
+        "file",
+        new File([blob], "annotated.jpg", { type: "image/jpeg" }),
+      );
+      const res = await uploadPhotoAction(fd);
+      if (!res.ok) {
+        toast.error(res.error ?? "標註儲存失敗，請再試一次");
+        return;
+      }
+      sessionUploadsRef.current.add(res.path);
+      const oldPath = annotating.path;
+      const originalPath = annotating.original_path ?? annotating.path;
+      setPhotos((arr) =>
+        arr.map((p, i) =>
+          i === annotatingIdx
+            ? { path: res.path, caption: p.caption, original_path: originalPath }
+            : p,
+        ),
+      );
+      // 重新標註:上一版標註檔若是本次表單產生的,直接清掉(原圖不動)
+      if (annotating.original_path && sessionUploadsRef.current.has(oldPath)) {
+        sessionUploadsRef.current.delete(oldPath);
+        void deletePhotoAction(oldPath);
+      }
+      setAnnotatingIdx(null);
+      toast.success("標註已儲存，原始照片有保留");
+    } finally {
+      setAnnotSaving(false);
+    }
+  }
+
   function clearDraft() {
     try {
       localStorage.removeItem(draftKey);
@@ -429,6 +472,14 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
                 >
                   ×
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setAnnotatingIdx(idx)}
+                  className="absolute bottom-2 right-2 inline-flex min-h-11 items-center gap-1 rounded-full bg-black/70 px-3.5 text-sm text-white shadow-md hover:bg-black/85 active:bg-black"
+                >
+                  <Pencil className="size-4" />
+                  {p.original_path ? "重新標註" : "標註"}
+                </button>
               </div>
               <input
                 value={p.caption}
@@ -473,6 +524,16 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         path={lightboxPath}
         onChange={setLightboxPath}
       />
+
+      {/* 照片標註 — 永遠從原圖(original_path ?? path)畫起,存檔另存新圖 */}
+      {annotating && (
+        <PhotoAnnotator
+          src={annotating.original_path ?? annotating.path}
+          onSave={(blob) => void saveAnnotation(blob)}
+          onCancel={() => setAnnotatingIdx(null)}
+          saving={annotSaving}
+        />
+      )}
     </div>
   );
 }

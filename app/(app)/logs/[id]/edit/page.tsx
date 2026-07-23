@@ -271,8 +271,9 @@ export default async function EditLogPage({
   }
 
   // Storage 已轉 private — 對 initial photos + 待整合 reports 的照片一次 sign
+  // original_path(標註前原圖)也要簽:重新標註時 annotator 要載得出原圖
   const initialPhotos = normalizeLogPhotos(l.photos);
-  const allReportPhotos: { path: string }[] = [];
+  const allReportPhotos: { path: string; original_path?: string }[] = [];
   for (const list of Object.values(pendingReportsByCase)) {
     for (const r of list) {
       for (const p of r.photos) allReportPhotos.push(p);
@@ -280,17 +281,25 @@ export default async function EditLogPage({
   }
   const photoSignedMap = await getSignedUrls(
     "daily-photos",
-    [...initialPhotos.map((p) => p.path), ...allReportPhotos.map((p) => p.path)]
+    [...initialPhotos, ...allReportPhotos].flatMap((p) =>
+      p.original_path ? [p.path, p.original_path] : [p.path],
+    ),
   );
   const initialPhotosSigned = initialPhotos.map((p) => ({
     ...p,
     path: photoSignedMap.get(p.path) ?? p.path,
+    ...(p.original_path
+      ? { original_path: photoSignedMap.get(p.original_path) ?? p.original_path }
+      : {}),
   }));
   for (const list of Object.values(pendingReportsByCase)) {
     for (const r of list) {
       r.photos = r.photos.map((p) => ({
         ...p,
         path: photoSignedMap.get(p.path) ?? p.path,
+        ...(p.original_path
+          ? { original_path: photoSignedMap.get(p.original_path) ?? p.original_path }
+          : {}),
       }));
     }
   }

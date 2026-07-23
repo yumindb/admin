@@ -197,7 +197,8 @@ export default async function NewLogPage({
   }
 
   // Storage 已轉 private — 對待整合 reports 的照片 sign(主任勾選預覽用)
-  const allReportPhotos: { path: string }[] = [];
+  // original_path(標註前原圖)一起簽:合併後若要重新標註,annotator 要載得出原圖
+  const allReportPhotos: { path: string; original_path?: string }[] = [];
   for (const list of Object.values(pendingReportsByCase)) {
     for (const r of list) {
       for (const p of r.photos) allReportPhotos.push(p);
@@ -206,13 +207,18 @@ export default async function NewLogPage({
   if (allReportPhotos.length > 0) {
     const photoSignedMap = await getSignedUrls(
       "daily-photos",
-      allReportPhotos.map((p) => p.path)
+      allReportPhotos.flatMap((p) =>
+        p.original_path ? [p.path, p.original_path] : [p.path],
+      ),
     );
     for (const list of Object.values(pendingReportsByCase)) {
       for (const r of list) {
         r.photos = r.photos.map((p) => ({
           ...p,
           path: photoSignedMap.get(p.path) ?? p.path,
+          ...(p.original_path
+            ? { original_path: photoSignedMap.get(p.original_path) ?? p.original_path }
+            : {}),
         }));
       }
     }

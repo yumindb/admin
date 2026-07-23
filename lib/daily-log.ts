@@ -52,7 +52,14 @@ export function normalizeLogPhotos(raw: unknown): LogPhoto[] {
       if (p && typeof p === "object" && typeof (p as { path?: unknown }).path === "string") {
         const path = (p as { path: string }).path;
         const caption = (p as { caption?: unknown }).caption;
-        return { path, caption: typeof caption === "string" ? caption : "" };
+        const original = (p as { original_path?: unknown }).original_path;
+        return {
+          path,
+          caption: typeof caption === "string" ? caption : "",
+          ...(typeof original === "string" && original
+            ? { original_path: original }
+            : {}),
+        };
       }
       return null;
     })

@@ -51,6 +51,22 @@ describe("normalizeLogPhotos", () => {
     expect(normalizeLogPhotos(undefined)).toEqual([]);
     expect(normalizeLogPhotos("not array")).toEqual([]);
   });
+
+  it("preserves original_path (annotated photos keep pointer to raw file)", () => {
+    const out = normalizeLogPhotos([
+      { path: "a/annotated.jpg", caption: "標了紅圈", original_path: "a/raw.jpg" },
+      { path: "b/plain.jpg", caption: "" },
+      { path: "c/bad.jpg", caption: "", original_path: 123 },
+    ]);
+    expect(out[0]).toEqual({
+      path: "a/annotated.jpg",
+      caption: "標了紅圈",
+      original_path: "a/raw.jpg",
+    });
+    expect(out[1]).toEqual({ path: "b/plain.jpg", caption: "" });
+    // 非字串的 original_path 直接丟棄,不讓垃圾值進 DB
+    expect(out[2]).toEqual({ path: "c/bad.jpg", caption: "" });
+  });
 });
 
 describe("sameLocalDate", () => {
