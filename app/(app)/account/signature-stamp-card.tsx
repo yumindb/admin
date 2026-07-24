@@ -229,20 +229,64 @@ export function SignatureStampCard({
   );
 }
 
-/** 圖片 → 白底 PNG,寬度上限 MAX_WIDTH(等比縮)。 */
+/**
+ * 圖片 → 白底 PNG 圖章:
+ *   1. 合成白底(透明 PNG / HEIC 的透明區在 PDF 上要跟紙一樣白)
+ *   2. 自動裁白邊:掃描亮度 < 200 的像素找筆跡 bounding box,
+ *      裁掉四周空白 + 8% padding — 沒裁的話簽名在圖章框裡會縮成一小條
+ *   3. 寬度縮到上限 MAX_WIDTH
+ * 找不到筆跡(全白)或背景偏暗的照片(整張都算「筆跡」)時,自然退回不裁。
+ */
 async function toStampPng(file: File): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_WIDTH / bitmap.width);
+  // 工作畫布 cap 2000px:掃描像素量可控,又不犧牲裁切精度
+  const workScale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+  const work = document.createElement("canvas");
+  work.width = Math.max(1, Math.round(bitmap.width * workScale));
+  work.height = Math.max(1, Math.round(bitmap.height * workScale));
+  const wctx = work.getContext("2d");
+  if (!wctx) throw new Error("canvas unavailable");
+  wctx.fillStyle = "#FFFFFF";
+  wctx.fillRect(0, 0, work.width, work.height);
+  wctx.drawImage(bitmap, 0, 0, work.width, work.height);
+  bitmap.close();
+
+  // 掃筆跡 bounding box
+  const { data } = wctx.getImageData(0, 0, work.width, work.height);
+  let minX = work.width, minY = work.height, maxX = -1, maxY = -1;
+  for (let y = 0; y < work.height; y++) {
+    for (let x = 0; x < work.width; x++) {
+      const i = (y * work.width + x) * 4;
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      if (lum < 200) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  let sx = 0, sy = 0, sw = work.width, sh = work.height;
+  if (maxX >= minX && maxY >= minY) {
+    const pad = Math.round(Math.max(maxX - minX, maxY - minY) * 0.08);
+    sx = Math.max(0, minX - pad);
+    sy = Math.max(0, minY - pad);
+    sw = Math.min(work.width, maxX + pad + 1) - sx;
+    sh = Math.min(work.height, maxY + pad + 1) - sy;
+  }
+
+  // 裁切後才縮到 MAX_WIDTH — 簽名本體拿到完整解析度
+  const outScale = Math.min(1, MAX_WIDTH / sw);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
+  canvas.width = Math.max(1, Math.round(sw * outScale));
+  canvas.height = Math.max(1, Math.round(sh * outScale));
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas unavailable");
-  // 白底:透明 PNG 或 HEIC 轉出來的透明區,在 PDF 上要跟紙一樣白
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
+  ctx.drawImage(work, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
