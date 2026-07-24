@@ -20,7 +20,7 @@ import {
   fetchWorkItemAncestry,
   groupWorkItemsByAncestor,
 } from "@/lib/work-item-grouping";
-import { getSignedUrls } from "@/lib/supabase/storage";
+import { getSignedUrl, getSignedUrls } from "@/lib/supabase/storage";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 import type { WorkItemGroup } from "@/lib/work-item-grouping";
 import type { DailyLogWorkItem } from "@/lib/types";
@@ -64,6 +64,13 @@ export default async function ApprovalDetailPage({
   const role = (roleProfile?.role ?? null) as UserRole | null;
   const allowedStage = role ? STAGE_FOR_ROLE[role] : null;
   if (!allowedStage) redirect("/logs");
+
+  // 簽名圖章(owner 先試用):有上傳過 → 簽核卡預設出「蓋章」選項。
+  // 6h TTL — Phil 會開著待辦連續簽,5 分鐘效期會破圖
+  const stampUrl =
+    role === "owner"
+      ? await getSignedUrl("signatures", `${user!.id}/stamp.png`, 6 * 60 * 60)
+      : null;
 
   const { data: log } = await supabase
     .from("daily_logs")
@@ -476,7 +483,7 @@ export default async function ApprovalDetailPage({
             : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。要退回切到「退回」分頁，主任會在「我的日誌」看到並可修正後重送。`}
         </NextStepHint>
       </div>
-      <ApprovalActions logId={id} stage={allowedStage} />
+      <ApprovalActions logId={id} stage={allowedStage} stampUrl={stampUrl} />
     </div>
   );
 }

@@ -897,3 +897,17 @@ case_work_items
 - 沒做成 tabs 的原因:單頁保留 Ctrl+F 全頁搜尋與「一路往下看完整案況」的
   閱讀方式,tabs 會把跨區塊掃視切碎;快跳列已解決「到達」問題。
 - 照片時間軸的 sticky 日期標頭 top 讓出快跳列高度(top-[3.25rem])。
+
+### 五、簽名圖章(owner 先試用,2026-07-20 Phil 提)
+
+- 需求:核定像「蓋章」— 用預簽好的簽名圖檔,PDF 紙本比手寫板正式。
+  Phil 拍板他先試用;Evelyn 規劃未來全員都可在「我的帳號」留存預簽簽名。
+- 儲存:signatures bucket `{userId}/stamp.png`(upsert 覆蓋),**免 migration**
+  (2.10 的 own-folder INSERT/UPDATE/DELETE policy 已涵蓋)。
+- 上傳:「我的帳號」新增「簽名圖章」卡(目前只 owner 顯示;放寬 = 改
+  photo-actions 的 STAMP_ROLES + account 頁 canUseStamp)。client 端統一轉
+  白底 PNG、寬度上限 1200px。
+- 簽核:單筆與批簽都有「蓋簽名圖章 / 手寫簽名」切換,有圖章預設蓋章。
+  **蓋章 = server 把 stamp.png 複製成 `{userId}/{ts}-stamp.png` 快照**再回
+  signed URL — 之後換圖章不影響已核定日誌(簽核不可變,同 attendance 邏輯)。
+- PDF 管線零改動:log_approvals.signature_url 拿到的快照與手寫上傳同格式。

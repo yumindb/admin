@@ -4,6 +4,8 @@ import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
 import { PasswordForm } from "./password-form";
 import { LineBindingCard } from "./line-binding-card";
+import { SignatureStampCard } from "./signature-stamp-card";
+import { getSignedUrl } from "@/lib/supabase/storage";
 import {
   NOTIFICATION_CATEGORIES,
   resolvePrefs,
@@ -58,6 +60,13 @@ export default async function AccountPage() {
       }).format(new Date(lineBinding.bound_at as string))
     : null;
 
+  // 簽名圖章(2026-07-20:Phil 先試用,限 owner;規劃上未來全員都可有
+  // 預簽簽名檔,存放已按 per-user 設計,屆時放寬 STAMP_ROLES 即可)
+  const canUseStamp = profile?.role === "owner";
+  const stampUrl = canUseStamp
+    ? await getSignedUrl("signatures", `${user.id}/stamp.png`, 6 * 60 * 60)
+    : null;
+
   const roleLabel = profile?.role
     ? ROLE_LABEL[profile.role] ?? profile.role
     : "—";
@@ -104,6 +113,18 @@ export default async function AccountPage() {
           receiveLabels={receiveLabels}
         />
       </section>
+
+      {canUseStamp && (
+        <section className="mb-8 rounded-lg border border-[#E0DCD6] bg-card p-5">
+          <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">
+            簽名圖章
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            上傳一張簽好名的圖，核定日誌時可以直接蓋章，印出來的 PDF 會呈現這個簽名。
+          </p>
+          <SignatureStampCard initialUrl={stampUrl} />
+        </section>
+      )}
 
       <section className="rounded-lg border border-[#E0DCD6] bg-card p-5">
         <h2 className="mb-1 text-base font-semibold text-primary md:text-lg">

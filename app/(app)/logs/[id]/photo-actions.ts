@@ -186,6 +186,99 @@ export async function deletePhotoAction(publicUrl: string) {
 
 const SIG_BUCKET = "signatures";
 
+/* ================================================================
+ * 簽名圖章 — 2026-07-20 Phil 提的:核定時直接「蓋」預先上傳的簽名圖,
+ * 不用每次手寫,列印的 PDF 呈現正式簽名。目前限 owner(Phil 先試用,
+ * 其他人要不要用一次簽的圖章他說之後再看)。
+ *
+ * 儲存:signatures bucket 固定路徑 `{userId}/stamp.png`(upsert 覆蓋)。
+ * 蓋章:stampSignatureAction 把 stamp.png 複製成 `{userId}/{ts}-stamp.png`
+ * 再回 signed URL — 簽核紀錄拿到的是獨立快照,之後換圖章不影響舊日誌
+ * (簽核不可變原則,跟 attendance immutable 同一個邏輯)。
+ * ================================================================ */
+
+const STAMP_ROLES = ["owner"] as const;
+
+function stampPath(userId: string) {
+  return `${userId}/stamp.png`;
+}
+
+/** 上傳 / 更換簽名圖章。client 端已轉成 PNG(白底、寬度上限),這裡再驗一次。 */
+export async function uploadSignatureStampAction(formData: FormData) {
+  await requireRole([...STAMP_ROLES]);
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false as const, error: "未提供檔案" };
+  if (file.type !== "image/png") {
+    return { ok: false as const, error: "圖章格式錯誤（需為 PNG）" };
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    return { ok: false as const, error: "圖章超過 2MB，請換小一點的圖" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "未登入" };
+
+  const buf = Buffer.from(await file.arrayBuffer());
+  const { error: upErr } = await supabase.storage
+    .from(SIG_BUCKET)
+    .upload(stampPath(user.id), buf, {
+      contentType: "image/png",
+      upsert: true,
+    });
+  if (upErr) return { ok: false as const, error: "上傳失敗：" + upErr.message };
+
+  const signed = await getSignedUrl(SIG_BUCKET, stampPath(user.id), PREVIEW_TTL);
+  if (!signed) return { ok: false as const, error: "簽名失敗" };
+  return { ok: true as const, url: signed };
+}
+
+/** 移除簽名圖章(之後核定回到手寫)。 */
+export async function deleteSignatureStampAction() {
+  await requireRole([...STAMP_ROLES]);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "未登入" };
+
+  const { error } = await supabase.storage
+    .from(SIG_BUCKET)
+    .remove([stampPath(user.id)]);
+  if (error) return { ok: false as const, error: "移除失敗：" + error.message };
+  return { ok: true as const };
+}
+
+/**
+ * 蓋章:把圖章複製成本次簽核專用的快照檔,回傳 signed URL。
+ * 回傳格式與 uploadSignatureAction 相同,approveStageAction 直接沿用。
+ */
+export async function stampSignatureAction() {
+  await requireRole([...STAMP_ROLES]);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "未登入" };
+
+  const dest = `${user.id}/${Date.now()}-stamp.png`;
+  const { error: cpErr } = await supabase.storage
+    .from(SIG_BUCKET)
+    .copy(stampPath(user.id), dest);
+  if (cpErr) {
+    return {
+      ok: false as const,
+      error: "找不到簽名圖章，請到「我的帳號」重新上傳",
+    };
+  }
+  const signed = await getSignedUrl(SIG_BUCKET, dest);
+  if (!signed) return { ok: false as const, error: "簽名失敗" };
+  return { ok: true as const, path: signed };
+}
+
 const SignatureDataUrlSchema = z
   .string()
   .regex(

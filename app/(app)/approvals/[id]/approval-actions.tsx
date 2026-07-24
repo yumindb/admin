@@ -11,7 +11,10 @@ import {
   nextPendingRedirect,
   getPendingCount,
 } from "./actions";
-import { uploadSignatureAction } from "../../logs/[id]/photo-actions";
+import {
+  stampSignatureAction,
+  uploadSignatureAction,
+} from "../../logs/[id]/photo-actions";
 import {
   readRememberedSig,
   writeRememberedSig,
@@ -29,12 +32,19 @@ const VERB: Record<ApprovalStage, string> = {
 export function ApprovalActions({
   logId,
   stage,
+  stampUrl,
 }: {
   logId: string;
   stage: ApprovalStage;
+  /** 簽名圖章預覽 URL(已上傳的人才有;2026-07 Phil 先試用)。有值時預設用蓋章。 */
+  stampUrl?: string | null;
 }) {
   const sigRef = useRef<SignatureCanvas>(null);
   const [mode, setMode] = useState<"approve" | "reject">("approve");
+  // 簽名方式:有圖章的人預設蓋章(這正是圖章的目的 — 免手寫),可切回手寫
+  const [signMethod, setSignMethod] = useState<"stamp" | "draw">(
+    stampUrl ? "stamp" : "draw",
+  );
   const [comment, setComment] = useState("");
   // 退回原因 chip 改成 toggle:每個 chip 可獨立選/取消,送出時與自由文字合併
   const [selectedChips, setSelectedChips] = useState<string[]>([]);
@@ -44,8 +54,9 @@ export function ApprovalActions({
   const [isPending, startTransition] = useTransition();
 
   // mount 時若有 60min 內的快取簽名 → 自動套用 + 預設「記住」也勾上
+  // (signMethod 進 deps:從「蓋章」切回「手寫」時 canvas 才剛 mount,要重套)
   useEffect(() => {
-    if (mode !== "approve") return;
+    if (mode !== "approve" || signMethod !== "draw") return;
     const stored = readRememberedSig();
     if (stored && sigRef.current) {
       try {
@@ -56,7 +67,7 @@ export function ApprovalActions({
         // canvas 還沒 mount 完成 — 略過
       }
     }
-  }, [mode]);
+  }, [mode, signMethod]);
 
   function toggleChip(chip: string) {
     setSelectedChips((prev) =>
@@ -78,26 +89,39 @@ export function ApprovalActions({
   }
 
   function handleApprove() {
-    if (sigRef.current?.isEmpty()) {
-      toast.error(`請在下方簽名再${VERB[stage]}`);
-      return;
+    const useStamp = signMethod === "stamp" && !!stampUrl;
+    if (!useStamp) {
+      if (sigRef.current?.isEmpty()) {
+        toast.error(`請在下方簽名再${VERB[stage]}`);
+        return;
+      }
     }
-    const dataUrl = sigRef.current?.toDataURL("image/png");
-    if (!dataUrl) {
-      toast.error("簽名讀取失敗，請重試");
-      return;
-    }
-    // 套用 remember 設定 — 勾選保留 60min,取消勾就清掉 cache
-    if (remember) writeRememberedSig(dataUrl);
-    else clearRememberedSig();
+    let signaturePromise: Promise<string>;
+    if (useStamp) {
+      // 蓋章:server 端把圖章複製成本次簽核的快照檔
+      signaturePromise = (async () => {
+        const res = await stampSignatureAction();
+        if (!res.ok) throw new Error(res.error);
+        return res.path;
+      })();
+    } else {
+      const dataUrl = sigRef.current?.toDataURL("image/png");
+      if (!dataUrl) {
+        toast.error("簽名讀取失敗，請重試");
+        return;
+      }
+      // 套用 remember 設定 — 勾選保留 60min,取消勾就清掉 cache
+      if (remember) writeRememberedSig(dataUrl);
+      else clearRememberedSig();
 
-    const signaturePromise = (async () => {
-      const fd = new FormData();
-      fd.set("dataUrl", dataUrl);
-      const upload = await uploadSignatureAction(fd);
-      if (!upload.ok) throw new Error(upload.error);
-      return upload.path;
-    })();
+      signaturePromise = (async () => {
+        const fd = new FormData();
+        fd.set("dataUrl", dataUrl);
+        const upload = await uploadSignatureAction(fd);
+        if (!upload.ok) throw new Error(upload.error);
+        return upload.path;
+      })();
+    }
 
     startTransition(async () => {
       let signatureUrl: string;
@@ -176,56 +200,99 @@ export function ApprovalActions({
 
       {mode === "approve" ? (
         <div>
-          <p className="mb-2 text-sm text-muted-foreground">
-            在下方手寫板簽名後按「{VERB[stage]}」
-          </p>
-          <div
-            className="rounded-md border border-[#E0DCD6] bg-white"
-            style={{ touchAction: "none" }}
-          >
-            <SignatureCanvas
-              ref={sigRef}
-              penColor="#003153"
-              minWidth={2}
-              maxWidth={4}
-              // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
-              clearOnResize={false}
-              canvasProps={{
-                className: "w-full",
-                style: {
-                  width: "100%",
-                  // 響應式高度:橫向手機 / 矮螢幕用較小高度避免擠出畫面
-                  height: "clamp(180px, 28vh, 260px)",
-                  touchAction: "none",
-                },
-              }}
-            />
-          </div>
-          <div className="mt-2 flex items-center justify-between">
-            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                className="size-4 cursor-pointer accent-[#003153]"
-              />
-              <span>
-                記住簽名（60 分鐘內）
-                {hasStoredSig && (
-                  <span className="ml-1 text-xs text-[#4A7C59]">
-                    ✓ 已套用上次
+          {/* 有圖章的人:蓋章 / 手寫 切換(2026-07 Phil 先試用) */}
+          {stampUrl && (
+            <div className="mb-3 inline-flex rounded-md border border-[#E0DCD6] p-1">
+              {(
+                [
+                  { value: "stamp", label: "蓋簽名圖章" },
+                  { value: "draw", label: "手寫簽名" },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setSignMethod(m.value)}
+                  aria-pressed={signMethod === m.value}
+                  className={`inline-flex min-h-10 items-center rounded-sm px-4 text-sm transition-colors ${
+                    signMethod === m.value
+                      ? "bg-[#A07850] text-white"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {stampUrl && signMethod === "stamp" ? (
+            <div>
+              <p className="mb-2 text-sm text-muted-foreground">
+                將以下方的簽名圖章簽署，PDF 會呈現這個簽名
+              </p>
+              <div className="rounded-md border border-[#E0DCD6] bg-white p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={stampUrl} alt="簽名圖章" className="mx-auto max-h-32" />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                想換圖：到「我的帳號」→「簽名圖章」更換
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="mb-2 text-sm text-muted-foreground">
+                在下方手寫板簽名後按「{VERB[stage]}」
+              </p>
+              <div
+                className="rounded-md border border-[#E0DCD6] bg-white"
+                style={{ touchAction: "none" }}
+              >
+                <SignatureCanvas
+                  ref={sigRef}
+                  penColor="#003153"
+                  minWidth={2}
+                  maxWidth={4}
+                  // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
+                  clearOnResize={false}
+                  canvasProps={{
+                    className: "w-full",
+                    style: {
+                      width: "100%",
+                      // 響應式高度:橫向手機 / 矮螢幕用較小高度避免擠出畫面
+                      height: "clamp(180px, 28vh, 260px)",
+                      touchAction: "none",
+                    },
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    className="size-4 cursor-pointer accent-[#003153]"
+                  />
+                  <span>
+                    記住簽名（60 分鐘內）
+                    {hasStoredSig && (
+                      <span className="ml-1 text-xs text-[#4A7C59]">
+                        ✓ 已套用上次
+                      </span>
+                    )}
                   </span>
-                )}
-              </span>
-            </label>
-            <button
-              type="button"
-              onClick={clearSig}
-              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent"
-            >
-              清除重簽
-            </button>
-          </div>
+                </label>
+                <button
+                  type="button"
+                  onClick={clearSig}
+                  className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent"
+                >
+                  清除重簽
+                </button>
+              </div>
+            </>
+          )}
 
           <Textarea
             rows={2}

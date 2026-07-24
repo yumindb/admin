@@ -13,7 +13,10 @@ import {
   forceRejectStuckLogAction,
   forceDeleteStuckLogAction,
 } from "./[id]/actions";
-import { uploadSignatureAction } from "../logs/[id]/photo-actions";
+import {
+  stampSignatureAction,
+  uploadSignatureAction,
+} from "../logs/[id]/photo-actions";
 import { formatWeatherSummary } from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
 import {
@@ -48,10 +51,13 @@ export function BatchApprovalsList({
   logs,
   stage,
   role,
+  stampUrl,
 }: {
   logs: LogRow[];
   stage: ApprovalStage;
   role: UserRole;
+  /** 簽名圖章預覽 URL(owner 先試用;有值時批簽 modal 預設用蓋章) */
+  stampUrl?: string | null;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -321,6 +327,7 @@ export function BatchApprovalsList({
         <BatchApprovalModal
           logIds={Array.from(selected)}
           stage={stage}
+          stampUrl={stampUrl}
           onClose={() => setShowModal(false)}
           onDone={(result) => {
             // 成功的清掉勾選,並 refresh server data
@@ -342,11 +349,13 @@ export function BatchApprovalsList({
 function BatchApprovalModal({
   logIds,
   stage,
+  stampUrl,
   onClose,
   onDone,
 }: {
   logIds: string[];
   stage: ApprovalStage;
+  stampUrl?: string | null;
   onClose: () => void;
   onDone: (result: {
     ok: string[];
@@ -356,6 +365,10 @@ function BatchApprovalModal({
   const sigRef = useRef<SignatureCanvas>(null);
   const [comment, setComment] = useState("");
   const [remember, setRemember] = useState(false);
+  // 有圖章的人預設蓋章,可切回手寫(與單筆簽核一致)
+  const [signMethod, setSignMethod] = useState<"stamp" | "draw">(
+    stampUrl ? "stamp" : "draw",
+  );
   const [result, setResult] = useState<{
     ok: string[];
     failed: { logId: string; reason: string }[];
@@ -365,8 +378,10 @@ function BatchApprovalModal({
   useBodyScrollLock(true);
   useEscToClose(true, onClose, !isPending);
 
-  // 點開即還原(若 60 分鐘內有記住的簽名)
+  // 點開即還原(若 60 分鐘內有記住的簽名)。
+  // signMethod 進 deps:預設蓋章時 canvas 沒 mount,切到手寫才套
   useEffect(() => {
+    if (signMethod !== "draw") return;
     const stored = readRememberedSig();
     if (stored && sigRef.current) {
       // SignatureCanvas 提供 fromDataURL
@@ -377,40 +392,52 @@ function BatchApprovalModal({
         // ignore
       }
     }
-  }, []);
+  }, [signMethod]);
 
   function clearSig() {
     sigRef.current?.clear();
   }
 
   function submit() {
-    if (sigRef.current?.isEmpty()) {
+    const useStamp = signMethod === "stamp" && !!stampUrl;
+    if (!useStamp && sigRef.current?.isEmpty()) {
       toast.error("請先簽名");
       return;
     }
-    const dataUrl = sigRef.current?.toDataURL("image/png");
-    if (!dataUrl) {
+    const dataUrl = useStamp ? null : sigRef.current?.toDataURL("image/png");
+    if (!useStamp && !dataUrl) {
       toast.error("簽名讀取失敗，請重試");
       return;
     }
 
     startTransition(async () => {
-      // 1) 上傳簽名一次,拿 signed URL
-      const fd = new FormData();
-      fd.set("dataUrl", dataUrl);
-      const upload = await uploadSignatureAction(fd);
-      if (!upload.ok) {
-        toast.error(upload.error);
-        return;
+      // 1) 拿本批共用的簽名 signed URL:蓋章走 server 複製,手寫走上傳
+      let signatureUrl: string;
+      if (useStamp) {
+        const res = await stampSignatureAction();
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        signatureUrl = res.path;
+      } else {
+        const fd = new FormData();
+        fd.set("dataUrl", dataUrl!);
+        const upload = await uploadSignatureAction(fd);
+        if (!upload.ok) {
+          toast.error(upload.error);
+          return;
+        }
+        // 記住或清除暫存(只有手寫需要)
+        if (remember) writeRememberedSig(dataUrl!);
+        else clearRememberedSig();
+        signatureUrl = upload.path;
       }
-      // 2) 記住或清除暫存
-      if (remember) writeRememberedSig(dataUrl);
-      else clearRememberedSig();
 
-      // 3) 批處理
+      // 2) 批處理
       const res = await batchApproveAction({
         logIds,
-        signatureUrl: upload.path,
+        signatureUrl,
         comment: comment.trim() || undefined,
       });
       setResult(res);
@@ -450,46 +477,80 @@ function BatchApprovalModal({
               簽一次，套用到 {logIds.length} 份。每份各自寫一筆紀錄共用同張簽名。
             </p>
 
-            <div
-              className="rounded-md border border-[#E0DCD6] bg-white"
-              style={{ touchAction: "none" }}
-            >
-              <SignatureCanvas
-                ref={sigRef}
-                penColor="#003153"
-                minWidth={2}
-                maxWidth={4}
-                // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
-                clearOnResize={false}
-                canvasProps={{
-                  className: "w-full",
-                  style: {
-                    width: "100%",
-                    height: "clamp(180px, 28vh, 260px)",
-                    touchAction: "none",
-                  },
-                }}
-              />
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="size-4 cursor-pointer accent-[#003153]"
-                />
-                <span>下次簽核也用這個簽名（60 分鐘內）</span>
-              </label>
-              <button
-                type="button"
-                onClick={clearSig}
-                disabled={isPending}
-                className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent disabled:opacity-50"
-              >
-                清除重簽
-              </button>
-            </div>
+            {stampUrl && (
+              <div className="mb-3 inline-flex rounded-md border border-[#E0DCD6] p-1">
+                {(
+                  [
+                    { value: "stamp", label: "蓋簽名圖章" },
+                    { value: "draw", label: "手寫簽名" },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setSignMethod(m.value)}
+                    aria-pressed={signMethod === m.value}
+                    className={`inline-flex min-h-10 items-center rounded-sm px-4 text-sm transition-colors ${
+                      signMethod === m.value
+                        ? "bg-[#A07850] text-white"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {stampUrl && signMethod === "stamp" ? (
+              <div className="rounded-md border border-[#E0DCD6] bg-white p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={stampUrl} alt="簽名圖章" className="mx-auto max-h-28" />
+              </div>
+            ) : (
+              <>
+                <div
+                  className="rounded-md border border-[#E0DCD6] bg-white"
+                  style={{ touchAction: "none" }}
+                >
+                  <SignatureCanvas
+                    ref={sigRef}
+                    penColor="#003153"
+                    minWidth={2}
+                    maxWidth={4}
+                    // 手機鍵盤彈出/網址列收合都算 window resize,預設會整張清空簽名
+                    clearOnResize={false}
+                    canvasProps={{
+                      className: "w-full",
+                      style: {
+                        width: "100%",
+                        height: "clamp(180px, 28vh, 260px)",
+                        touchAction: "none",
+                      },
+                    }}
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                      className="size-4 cursor-pointer accent-[#003153]"
+                    />
+                    <span>下次簽核也用這個簽名（60 分鐘內）</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={clearSig}
+                    disabled={isPending}
+                    className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent disabled:opacity-50"
+                  >
+                    清除重簽
+                  </button>
+                </div>
+              </>
+            )}
 
             <Textarea
               rows={2}

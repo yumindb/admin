@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getSignedUrl } from "@/lib/supabase/storage";
 import { NextStepHint } from "@/components/next-step-hint";
 import { BatchApprovalsList } from "./batch-actions";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
@@ -57,6 +58,12 @@ export default async function ApprovalsPage() {
   const role = (profile?.role ?? null) as UserRole | null;
   const stage = role ? STAGE_FOR_ROLE[role] : null;
   if (!stage) redirect("/logs");
+
+  // 簽名圖章(owner 先試用):批簽 modal 用。6h TTL 蓋掉整段簽核時間
+  const stampUrl =
+    role === "owner"
+      ? await getSignedUrl("signatures", `${user!.id}/stamp.png`, 6 * 60 * 60)
+      : null;
 
   let query = supabase
     .from("daily_logs")
@@ -118,7 +125,7 @@ export default async function ApprovalsPage() {
           )}
         </div>
       ) : (
-        <BatchApprovalsList logs={list} stage={stage} role={role!} />
+        <BatchApprovalsList logs={list} stage={stage} role={role!} stampUrl={stampUrl} />
       )}
     </div>
   );
