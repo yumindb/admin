@@ -238,8 +238,9 @@ export function CasePhotoTimeline({ photos }: { photos: TimelinePhoto[] }) {
               }}
               style={{ scrollMarginTop: "4.5rem" }}
             >
-              {/* sticky 日期標頭:捲動時知道自己在哪一天 */}
-              <div className="sticky top-0 z-10 -mx-1 mb-2 flex items-center justify-between gap-3 bg-[#F5F1EC]/95 px-1 py-2 backdrop-blur-sm">
+              {/* sticky 日期標頭:捲動時知道自己在哪一天。
+                  top 讓出案件頁 SectionJumpNav 的高度(z-20、約 52px),貼在它下緣 */}
+              <div className="sticky top-[3.25rem] z-10 -mx-1 mb-2 flex items-center justify-between gap-3 bg-[#F5F1EC]/95 px-1 py-2 backdrop-blur-sm">
                 <h3 className="flex items-baseline gap-2 text-sm font-semibold text-primary">
                   {formatGroupDate(g.date)}
                   <span className="text-xs font-normal text-muted-foreground">

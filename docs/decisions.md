@@ -887,3 +887,13 @@ case_work_items
   數字 chip(工項/外包/未簽約/照片),布林區塊顯示綠勾或灰字「未填」。
 - 簽名 canvas 在 ref 裡 React 看不到 — 加 onEnd 追蹤 sigDrawn state。
 - 原本塞在標題字串裡的 (N) 計數改用統一 chip。
+
+### 四、案件頁區塊快跳導覽(components/section-jump-nav.tsx)
+
+- 痛點:工項樹上千列 + 照片幾百張,看「未簽約」要滑好幾屏。
+- sticky 頂欄(工項/出勤/大事記/照片/追加合約/未簽約 + 計數),點了平滑捲到
+  該區塊;scrollspy 高亮目前所在(用 scroll+rAF,不用 IntersectionObserver —
+  區塊高度差異太大,threshold 難調)。手機橫向捲動不折行。
+- 沒做成 tabs 的原因:單頁保留 Ctrl+F 全頁搜尋與「一路往下看完整案況」的
+  閱讀方式,tabs 會把跨區塊掃視切碎;快跳列已解決「到達」問題。
+- 照片時間軸的 sticky 日期標頭 top 讓出快跳列高度(top-[3.25rem])。

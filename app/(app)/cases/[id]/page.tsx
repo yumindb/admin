@@ -25,6 +25,7 @@ import {
   CasePhotoTimeline,
   type TimelinePhoto,
 } from "@/components/case-photo-timeline";
+import { SectionJumpNav } from "@/components/section-jump-nav";
 import { AttendanceTimeline, type TimelineEvent } from "@/components/attendance-timeline";
 import { CaseTimeline, type CaseTimelineEvent } from "@/components/case-timeline";
 import {
@@ -654,7 +655,22 @@ export default async function CaseDetailPage({
         </NextStepHint>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      {/* 區塊快跳 — 工項樹上千列、照片幾百張,滑到底要好幾屏,一鍵直達 */}
+      <SectionJumpNav
+        sections={[
+          { id: "sec-work-items", label: "工項", count: items.length },
+          { id: "sec-attendance", label: "出勤" },
+          { id: "sec-events", label: "大事記" },
+          { id: "sec-photos", label: "照片", count: timelinePhotos.length },
+          { id: "sec-extra-contracts", label: "追加合約", count: contractsForUI.length },
+          { id: "sec-unsigned", label: "未簽約", count: unsignedItems.length },
+        ]}
+      />
+
+      <div
+        id="sec-work-items"
+        className="mb-4 flex scroll-mt-16 flex-wrap items-center justify-between gap-3"
+      >
         <h2 className="text-lg font-semibold text-primary md:text-xl">工項清單</h2>
         {items.length > 0 && (
           <div className="flex flex-wrap items-end gap-3">
@@ -690,7 +706,10 @@ export default async function CaseDetailPage({
       )}
 
       {/* 工地出勤 — 近 14 天打卡時間軸（migration-2.21） */}
-      <div className="mt-10 mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div
+        id="sec-attendance"
+        className="mt-10 mb-4 flex scroll-mt-16 flex-wrap items-center justify-between gap-3"
+      >
         <h2 className="text-lg font-semibold text-primary md:text-xl">
           工地出勤
           <span className="ml-2 text-sm font-normal text-muted-foreground">
@@ -707,7 +726,10 @@ export default async function CaseDetailPage({
       <AttendanceTimeline events={timelineEvents} showUser showCase={false} emptyText="近 14 天無打卡紀錄" />
 
       {/* 案件大事記 — 日誌簽核 / 追加合約 / 未簽約項 / 回報 / 匯入 合併時間軸 */}
-      <div className="mt-10 mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div
+        id="sec-events"
+        className="mt-10 mb-4 flex scroll-mt-16 flex-wrap items-center justify-between gap-3"
+      >
         <h2 className="text-lg font-semibold text-primary md:text-xl">
           案件大事記
           <span className="ml-2 text-sm font-normal text-muted-foreground">
@@ -721,7 +743,10 @@ export default async function CaseDetailPage({
       />
 
       {/* 跨日誌彙整：照片時間軸(日誌 + 未併入的現場回報,依日期分組) */}
-      <div className="mt-10 mb-4 flex items-center justify-between">
+      <div
+        id="sec-photos"
+        className="mt-10 mb-4 flex scroll-mt-16 items-center justify-between"
+      >
         <h2 className="text-lg font-semibold text-primary md:text-xl">
           照片時間軸
           <span className="ml-2 text-sm font-normal text-muted-foreground">
@@ -733,21 +758,25 @@ export default async function CaseDetailPage({
 
       {/* 追加合約 — 以「合約」為單位呈現（migration-2.16 後），
           每份合約可包多筆工項，有自己的 bundle 優惠價 */}
-      <ExtraContractsSection
-        contracts={contractsForUI}
-        progress={progress}
-        caseId={c.id}
-        editable={canEditWorkItems}
-      />
+      <div id="sec-extra-contracts" className="scroll-mt-16">
+        <ExtraContractsSection
+          contracts={contractsForUI}
+          progress={progress}
+          caseId={c.id}
+          editable={canEditWorkItems}
+        />
+      </div>
 
       {/* 未簽約施工內容 — 案件級工項，可補報價、多筆打包成追加合約 */}
-      <ExtraUnsignedSection
-        kind="unsigned"
-        rows={unsignedItems}
-        progress={progress}
-        caseId={c.id}
-        editable={canEditWorkItems}
-      />
+      <div id="sec-unsigned" className="scroll-mt-16">
+        <ExtraUnsignedSection
+          kind="unsigned"
+          rows={unsignedItems}
+          progress={progress}
+          caseId={c.id}
+          editable={canEditWorkItems}
+        />
+      </div>
 
       {/* 罕見路徑：沒掛合約的 extra 工項（理論上 migration-2.16 已全部搬完）；
           仍顯示舊版區塊讓 office 補綁，但通常為 0 筆 */}
