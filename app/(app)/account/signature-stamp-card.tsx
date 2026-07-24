@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
 import {
   deleteSignatureStampAction,
@@ -30,6 +31,9 @@ export function SignatureStampCard({
   const [busy, setBusy] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
+  // 手寫建立圖章:攤開手寫板(手機沒有現成簽名圖檔的人直接寫一個)
+  const [drawing, setDrawing] = useState(false);
+  const sigRef = useRef<SignatureCanvas>(null);
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("image/")) {
@@ -68,6 +72,48 @@ export function SignatureStampCard({
     });
   }
 
+  /** 手寫板內容 → 白底 PNG 圖章上傳。裁掉四周空白再留一點 padding。 */
+  async function handleSaveDrawn() {
+    const sig = sigRef.current;
+    if (!sig || sig.isEmpty()) {
+      toast.error("請先在手寫板上簽名");
+      return;
+    }
+    setBusy(true);
+    try {
+      const trimmed = sig.getTrimmedCanvas();
+      const pad = Math.round(Math.max(trimmed.width, trimmed.height) * 0.08);
+      const canvas = document.createElement("canvas");
+      canvas.width = trimmed.width + pad * 2;
+      canvas.height = trimmed.height + pad * 2;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("canvas unavailable");
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(trimmed, pad, pad);
+      const png = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
+          "image/png",
+        );
+      });
+      const fd = new FormData();
+      fd.append("file", new File([png], "stamp.png", { type: "image/png" }));
+      const res = await uploadSignatureStampAction(fd);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setUrl(res.url);
+      setDrawing(false);
+      toast.success("簽名圖章已儲存，之後核定可以直接蓋章");
+    } catch {
+      toast.error("簽名處理失敗，請再試一次");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
       {url ? (
@@ -81,6 +127,60 @@ export function SignatureStampCard({
         </div>
       )}
 
+      {drawing && (
+        <div className="mb-3">
+          <p className="mb-2 text-sm text-muted-foreground">
+            在下方手寫板簽名，寫好按「存成圖章」
+          </p>
+          <div
+            className="rounded-md border border-[#E0DCD6] bg-white"
+            style={{ touchAction: "none" }}
+          >
+            <SignatureCanvas
+              ref={sigRef}
+              penColor="#003153"
+              minWidth={2}
+              maxWidth={4}
+              clearOnResize={false}
+              canvasProps={{
+                className: "w-full",
+                style: {
+                  width: "100%",
+                  height: "clamp(180px, 28vh, 260px)",
+                  touchAction: "none",
+                },
+              }}
+            />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSaveDrawn()}
+              disabled={busy}
+              className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {busy ? "儲存中…" : "存成圖章"}
+            </button>
+            <button
+              type="button"
+              onClick={() => sigRef.current?.clear()}
+              disabled={busy}
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-accent disabled:opacity-50"
+            >
+              清除重寫
+            </button>
+            <button
+              type="button"
+              onClick={() => setDrawing(false)}
+              disabled={busy}
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] disabled:opacity-50"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
       <input
         ref={fileRef}
         type="file"
@@ -91,29 +191,39 @@ export function SignatureStampCard({
           if (f) void handleFile(f);
         }}
       />
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={busy}
-          className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {busy ? "上傳中…" : url ? "更換圖章" : "上傳圖章"}
-        </button>
-        {url && (
+      {!drawing && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={handleDelete}
-            disabled={isPending}
-            className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-[#B91C1C] disabled:opacity-50"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            移除
+            {busy ? "上傳中…" : url ? "上傳圖檔更換" : "上傳圖檔"}
           </button>
-        )}
-      </div>
+          <button
+            type="button"
+            onClick={() => setDrawing(true)}
+            disabled={busy}
+            className="inline-flex min-h-11 items-center rounded-md border border-[#E0DCD6] bg-white px-4 text-sm font-medium text-foreground hover:border-accent hover:text-accent disabled:opacity-50"
+          >
+            {url ? "手寫更換" : "手寫建立"}
+          </button>
+          {url && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isPending}
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground hover:bg-[#F5F1EC] hover:text-[#B91C1C] disabled:opacity-50"
+            >
+              移除
+            </button>
+          )}
+        </div>
+      )}
       <p className="mt-3 text-xs text-muted-foreground">
-        建議用白底黑字的簽名圖（拍照或掃描都可以）。更換圖章不影響已核定的日誌
-        — 每次蓋章當下的圖會單獨存檔。
+        可以上傳白底黑字的簽名圖（拍照或掃描都可以），也可以直接在手機上手寫一個。
+        更換圖章不影響已核定的日誌 — 每次蓋章當下的圖會單獨存檔。
       </p>
     </div>
   );
