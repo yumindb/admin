@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   BarChart3,
+  FileCog,
   FileWarning,
   History,
   KeyRound,
@@ -85,6 +86,12 @@ export default async function ReportsHomePage() {
               title="操作紀錄"
               description="人員、工項單價、追加合約的修改與刪除留底 — 誰改了什麼一目了然"
               icon={<History className="size-6" strokeWidth={1.75} />}
+            />
+            <ReportCard
+              href="/reports/regen-pdfs"
+              title="PDF 批次重產"
+              description="版面修正後（如簽名比例），把已核定日誌的 PDF 整批重新產生"
+              icon={<FileCog className="size-6" strokeWidth={1.75} />}
             />
           </>
         )}
