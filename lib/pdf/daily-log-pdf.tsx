@@ -179,6 +179,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 4,
     alignItems: "center",
+    // 老闆的簽名格較高(56pt vs 42pt),其他格內容垂直置中比較不空
+    justifyContent: "center",
   },
   sigStage: {
     fontSize: 7.5,
@@ -477,10 +479,13 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
                     <Text style={styles.sigName}>{ap.approverName ?? "—"}</Text>
                     {ap.signatureDataUrl ? (
                       // 寬高都要明給:react-pdf 只給單邊會拉滿容器(非等比)。
-                      // 格寬約 120pt,簽名以高 30pt 等比、寬上限 104pt
+                      // 基準高 42pt;核定(老闆)放大到 56pt — 業主指定要霸氣。
+                      // 寬上限依格數(4 格格內寬約 119pt、3 格約 164pt),超寬時反推高
                       (() => {
                         const aspect = ap.signatureAspect ?? 3;
-                        const width = Math.min(104, 30 * aspect);
+                        const baseH = ap.stage === "approve" ? 56 : 42;
+                        const maxW = cells.length >= 4 ? 108 : 150;
+                        const width = Math.min(maxW, baseH * aspect);
                         const height = width / aspect;
                         return (
                           <Image
