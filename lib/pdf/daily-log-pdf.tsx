@@ -179,8 +179,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 4,
     alignItems: "center",
-    // 老闆的簽名格較高(56pt vs 42pt),其他格內容垂直置中比較不空
-    justifyContent: "center",
+  },
+  // 姓名列齊上、簽名與時間齊下(中間用這個 spacer 撐開)。
+  // 核定的簽名比別關高,不齊下的話各格簽名浮在不同高度,沒有基準線
+  sigSpacer: {
+    flexGrow: 1,
+    minHeight: 2,
   },
   // 行內 span:縮在姓名同一行的關卡小字
   sigStage: {
@@ -480,6 +484,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
                       <Text style={styles.sigStage}>{STAGE_LABEL[ap.stage]} </Text>
                       {ap.approverName ?? "—"}
                     </Text>
+                    <View style={styles.sigSpacer} />
                     {ap.signatureDataUrl ? (
                       // 寬高都要明給:react-pdf 只給單邊會拉滿容器(非等比)。
                       // 基準高 42pt;核定(老闆)放大到 56pt — 業主指定要霸氣。
