@@ -13,6 +13,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { DailyLogPdf, type PdfData, type PdfApproval, type PdfPhoto } from "./daily-log-pdf";
 import type { DailyLog, LogApproval } from "@/lib/types";
 import { normalizeLogPhotos } from "@/lib/daily-log";
+import { imageSizeFromDataUrl } from "./image-size";
 import {
   fetchWorkItemAncestry,
   groupWorkItemsByAncestor,
@@ -164,10 +165,14 @@ export async function generatePdfForLog(logId: string): Promise<
         (await fetchAsDataUrl(supabase, SIGNATURES_BUCKET, a.signature_url)) ??
         (await fetchAsDataUrl(supabase, PHOTOS_BUCKET, a.signature_url));
     }
+    // 長寬比:react-pdf Image 只給 height 會把寬度拉滿整行(簽名被壓扁),
+    // 要自己算 width — 見 image-size.ts
+    const size = signatureDataUrl ? imageSizeFromDataUrl(signatureDataUrl) : null;
     return {
       ...a,
       approverName: a.approver_id ? profileMap.get(a.approver_id) ?? null : null,
       signatureDataUrl,
+      signatureAspect: size ? size.width / size.height : null,
     };
   });
 

@@ -235,6 +235,8 @@ export type PdfPhoto = {
 export type PdfApproval = LogApproval & {
   approverName: string | null;
   signatureDataUrl: string | null;
+  /** 簽名圖原始長寬比(w/h)— 等比呈現用;讀不出來時 null(fallback 3:1) */
+  signatureAspect?: number | null;
 };
 
 export type PdfWorkItemGroup = {
@@ -443,7 +445,20 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
                     </Text>
                   )}
                   {ap.signatureDataUrl && (
-                    <Image src={ap.signatureDataUrl} style={styles.signatureImg} />
+                    // 寬高都要明給:react-pdf 只給 height 會把寬度拉滿整行,
+                    // 簽名被壓成扁長條(2026-07 紙本回饋)。以高 36pt 等比算寬,
+                    // 特寬的簽名改用寬 170pt 反推高,兩種情況都不變形
+                    (() => {
+                      const aspect = ap.signatureAspect ?? 3;
+                      const width = Math.min(170, 36 * aspect);
+                      const height = width / aspect;
+                      return (
+                        <Image
+                          src={ap.signatureDataUrl}
+                          style={[styles.signatureImg, { width, height }]}
+                        />
+                      );
+                    })()
                   )}
                 </View>
               </View>
