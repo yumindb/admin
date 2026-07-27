@@ -185,11 +185,11 @@ const styles = StyleSheet.create({
   sigStage: {
     fontSize: 7.5,
     color: COLORS.muted,
+    marginTop: 1,
   },
   sigName: {
     fontSize: 10,
     color: COLORS.text,
-    marginTop: 2,
   },
   // 注意:直向欄裡的 Text 千萬不能放 flex:1 — 會 collapse 成 0 高疊在一起
   sigTime: {
@@ -475,8 +475,9 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
               <View style={styles.sigGrid}>
                 {cells.map((ap) => (
                   <View key={ap.id} style={styles.sigCell}>
-                    <Text style={styles.sigStage}>{STAGE_LABEL[ap.stage]}</Text>
+                    {/* 姓名在最上、關卡標籤次之(2026-07 業主回饋) */}
                     <Text style={styles.sigName}>{ap.approverName ?? "—"}</Text>
+                    <Text style={styles.sigStage}>{STAGE_LABEL[ap.stage]}</Text>
                     {ap.signatureDataUrl ? (
                       // 寬高都要明給:react-pdf 只給單邊會拉滿容器(非等比)。
                       // 基準高 42pt;核定(老闆)放大到 56pt — 業主指定要霸氣。
