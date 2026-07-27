@@ -167,7 +167,8 @@ const styles = StyleSheet.create({
   },
   approvalRow: {
     flexDirection: "row",
-    alignItems: "center",
+    // flex-start:內欄是直向堆疊(姓名時間/意見/簽名),置中沒意義
+    alignItems: "flex-start",
     paddingVertical: 6,
     borderBottom: `0.5pt solid ${COLORS.border}`,
   },
@@ -177,7 +178,8 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
   approvalValue: {
-    flex: 1,
+    // 不能放 flex: 1!直向欄裡的 Text 會被 collapse 成 0 高,
+    // 姓名/意見/簽名全部疊在同一個位置(2026-07 紙本回饋抓到的重疊 bug)
     fontSize: 9,
   },
   signatureImg: {
