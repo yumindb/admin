@@ -182,10 +182,10 @@ const styles = StyleSheet.create({
     // 老闆的簽名格較高(56pt vs 42pt),其他格內容垂直置中比較不空
     justifyContent: "center",
   },
+  // 行內 span:縮在姓名同一行的關卡小字
   sigStage: {
     fontSize: 7.5,
     color: COLORS.muted,
-    marginTop: 1,
   },
   sigName: {
     fontSize: 10,
@@ -475,9 +475,11 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
               <View style={styles.sigGrid}>
                 {cells.map((ap) => (
                   <View key={ap.id} style={styles.sigCell}>
-                    {/* 姓名在最上、關卡標籤次之(2026-07 業主回饋) */}
-                    <Text style={styles.sigName}>{ap.approverName ?? "—"}</Text>
-                    <Text style={styles.sigStage}>{STAGE_LABEL[ap.stage]}</Text>
+                    {/* 關卡 + 姓名同一行(2026-07 業主回饋):小字關卡、大字姓名 */}
+                    <Text style={styles.sigName}>
+                      <Text style={styles.sigStage}>{STAGE_LABEL[ap.stage]} </Text>
+                      {ap.approverName ?? "—"}
+                    </Text>
                     {ap.signatureDataUrl ? (
                       // 寬高都要明給:react-pdf 只給單邊會拉滿容器(非等比)。
                       // 基準高 42pt;核定(老闆)放大到 56pt — 業主指定要霸氣。
