@@ -92,13 +92,15 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 16,
     fontWeight: "bold",
+    // 標題字大,CJK 字型的實際字面會吃掉 line box 下緣 —
+    // 明確留空,不然表報編號那行會貼到標題(2026-07 紙本回饋)
+    marginBottom: 8,
   },
   headerMeta: {
     flexDirection: "row",
     flexWrap: "wrap",
     fontSize: 8,
     color: COLORS.muted,
-    marginTop: 4,
   },
   headerMetaItem: {
     marginRight: 14,
@@ -165,26 +167,49 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.text,
   },
-  approvalRow: {
+  // 簽核區 — 傳統紙本表單的「簽章欄」:每關一格並排,意見另起整行(2026-07 重設計)
+  sigGrid: {
     flexDirection: "row",
-    // flex-start:內欄是直向堆疊(姓名時間/意見/簽名),置中沒意義
-    alignItems: "flex-start",
-    paddingVertical: 6,
-    borderBottom: `0.5pt solid ${COLORS.border}`,
+    gap: 6,
+    marginTop: 2,
   },
-  approvalLabel: {
-    width: 110,
-    fontSize: 9,
+  sigCell: {
+    flex: 1,
+    border: `0.5pt solid ${COLORS.border}`,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    alignItems: "center",
+  },
+  sigStage: {
+    fontSize: 7.5,
     color: COLORS.muted,
   },
-  approvalValue: {
-    // 不能放 flex: 1!直向欄裡的 Text 會被 collapse 成 0 高,
-    // 姓名/意見/簽名全部疊在同一個位置(2026-07 紙本回饋抓到的重疊 bug)
-    fontSize: 9,
+  sigName: {
+    fontSize: 10,
+    color: COLORS.text,
+    marginTop: 2,
   },
-  signatureImg: {
-    height: 36,
-    marginVertical: 4,
+  // 注意:直向欄裡的 Text 千萬不能放 flex:1 — 會 collapse 成 0 高疊在一起
+  sigTime: {
+    fontSize: 7,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  sigNone: {
+    fontSize: 8,
+    color: COLORS.muted,
+    marginVertical: 14,
+  },
+  sigNotes: {
+    marginTop: 6,
+    border: `0.5pt solid ${COLORS.border}`,
+    backgroundColor: COLORS.bgSoft,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  sigNoteLine: {
+    fontSize: 8.5,
+    marginBottom: 2,
   },
   photoGrid: {
     flexDirection: "row",
@@ -428,45 +453,63 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
           </>
         )}
 
-        {/* 簽核紀錄 */}
-        {data.approvals.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>簽核紀錄</Text>
-            {data.approvals.map((ap) => (
-              <View key={ap.id} style={styles.approvalRow}>
-                <Text style={styles.approvalLabel}>
-                  {STAGE_LABEL[ap.stage]}（{DECISION_LABEL[ap.decision]}）
-                </Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.approvalValue}>
-                    {ap.approverName ?? "—"} · {formatTW(ap.created_at)}
-                  </Text>
-                  {ap.comment && (
-                    <Text style={[styles.approvalValue, { color: COLORS.muted }]}>
-                      意見：{ap.comment}
-                    </Text>
-                  )}
-                  {ap.signatureDataUrl && (
-                    // 寬高都要明給:react-pdf 只給 height 會把寬度拉滿整行,
-                    // 簽名被壓成扁長條(2026-07 紙本回饋)。以高 36pt 等比算寬,
-                    // 特寬的簽名改用寬 170pt 反推高,兩種情況都不變形
-                    (() => {
-                      const aspect = ap.signatureAspect ?? 3;
-                      const width = Math.min(170, 36 * aspect);
-                      const height = width / aspect;
-                      return (
-                        <Image
-                          src={ap.signatureDataUrl}
-                          style={[styles.signatureImg, { width, height }]}
-                        />
-                      );
-                    })()
-                  )}
-                </View>
+        {/* 簽核紀錄 — 紙本表單式簽章欄:每關最後一次「通過」一格並排;
+            意見 / 退回歷程另起整行寬(核定備註是選填,有寫才出現,多長都放得下) */}
+        {data.approvals.length > 0 && (() => {
+          const latestByStage = new Map<string, PdfApproval>();
+          for (const ap of data.approvals) {
+            // approvals 依時間升冪 — 後面的自然蓋掉前面(退回重送會重簽)
+            if (ap.decision === "approved") latestByStage.set(ap.stage, ap);
+          }
+          const cells = STAGE_ORDER.filter((s) => latestByStage.has(s)).map(
+            (s) => latestByStage.get(s)!,
+          );
+          const notes = data.approvals.filter(
+            (ap) => ap.comment || ap.decision === "rejected",
+          );
+          return (
+            <>
+              <Text style={styles.sectionTitle}>簽核紀錄</Text>
+              <View style={styles.sigGrid}>
+                {cells.map((ap) => (
+                  <View key={ap.id} style={styles.sigCell}>
+                    <Text style={styles.sigStage}>{STAGE_LABEL[ap.stage]}</Text>
+                    <Text style={styles.sigName}>{ap.approverName ?? "—"}</Text>
+                    {ap.signatureDataUrl ? (
+                      // 寬高都要明給:react-pdf 只給單邊會拉滿容器(非等比)。
+                      // 格寬約 120pt,簽名以高 30pt 等比、寬上限 104pt
+                      (() => {
+                        const aspect = ap.signatureAspect ?? 3;
+                        const width = Math.min(104, 30 * aspect);
+                        const height = width / aspect;
+                        return (
+                          <Image
+                            src={ap.signatureDataUrl}
+                            style={{ width, height, marginVertical: 4 }}
+                          />
+                        );
+                      })()
+                    ) : (
+                      <Text style={styles.sigNone}>（無簽名）</Text>
+                    )}
+                    <Text style={styles.sigTime}>{formatTW(ap.created_at)}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </>
-        )}
+              {notes.length > 0 && (
+                <View style={styles.sigNotes}>
+                  {notes.map((ap) => (
+                    <Text key={`note-${ap.id}`} style={styles.sigNoteLine}>
+                      {formatTW(ap.created_at)}｜{STAGE_LABEL[ap.stage]}
+                      {ap.decision === "rejected" ? "退回原因" : "意見"}：
+                      {ap.comment || "（未填）"}
+                    </Text>
+                  ))}
+                </View>
+              )}
+            </>
+          );
+        })()}
 
         <Text
           style={styles.footer}
@@ -607,7 +650,5 @@ const STAGE_LABEL: Record<string, string> = {
   audit: "審核（辦公室助理）",
   approve: "核定（老闆）",
 };
-const DECISION_LABEL: Record<string, string> = {
-  approved: "通過",
-  rejected: "退回",
-};
+/** 簽章欄固定順序(有該關紀錄才出格) */
+const STAGE_ORDER = ["fill", "review", "audit", "approve"] as const;
