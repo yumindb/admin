@@ -32,6 +32,7 @@ import {
   isBackfilledLog,
 } from "@/lib/daily-log";
 import { formatTW } from "@/lib/datetime";
+import { REQUIRED_APPROVE_SIGNATURES } from "@/lib/approvals/dual-sign";
 import type {
   DailyLog,
   DailyLogExtraItem,
@@ -178,6 +179,17 @@ const styles = StyleSheet.create({
     border: `0.5pt solid ${COLORS.border}`,
     paddingVertical: 6,
     paddingHorizontal: 4,
+    alignItems: "center",
+  },
+  // 核定關雙簽:同一欄內兩位並排
+  sigSignerRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    alignSelf: "stretch",
+    gap: 4,
+  },
+  sigSigner: {
+    flex: 1,
     alignItems: "center",
   },
   // 姓名列齊上、簽名與時間齊下(中間用這個 spacer 撐開)。
@@ -462,13 +474,27 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
         {/* 簽核紀錄 — 紙本表單式簽章欄:每關最後一次「通過」一格並排;
             意見 / 退回歷程另起整行寬(核定備註是選填,有寫才出現,多長都放得下) */}
         {data.approvals.length > 0 && (() => {
+          // 每關取「最後一次通過」;核定關是雙簽(2026-07),取最後兩位不同的簽核人。
+          // 退回重送會產生新一輪紀錄,取最後的自然就是本輪的。
           const latestByStage = new Map<string, PdfApproval>();
           for (const ap of data.approvals) {
-            // approvals 依時間升冪 — 後面的自然蓋掉前面(退回重送會重簽)
             if (ap.decision === "approved") latestByStage.set(ap.stage, ap);
           }
-          const cells = STAGE_ORDER.filter((s) => latestByStage.has(s)).map(
-            (s) => latestByStage.get(s)!,
+          const approveSigners = data.approvals
+            .filter((ap) => ap.stage === "approve" && ap.decision === "approved")
+            .slice(-REQUIRED_APPROVE_SIGNATURES);
+
+          const groups = STAGE_ORDER.filter(
+            (s) => (s === "approve" ? approveSigners.length > 0 : latestByStage.has(s)),
+          ).map((s) => ({
+            stage: s,
+            signers:
+              s === "approve" ? approveSigners : [latestByStage.get(s)!],
+          }));
+          // 核定雙簽時該欄要放兩個簽名 → 給雙倍寬
+          const flexUnits = groups.reduce(
+            (n, g) => n + (g.signers.length > 1 ? 2 : 1),
+            0,
           );
           const notes = data.approvals.filter(
             (ap) => ap.comment || ap.decision === "rejected",
@@ -477,35 +503,52 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
             <>
               <Text style={styles.sectionTitle}>簽核紀錄</Text>
               <View style={styles.sigGrid}>
-                {cells.map((ap) => (
-                  <View key={ap.id} style={styles.sigCell}>
-                    {/* 關卡 + 姓名同一行(2026-07 業主回饋):小字關卡、大字姓名 */}
-                    <Text style={styles.sigName}>
-                      <Text style={styles.sigStage}>{STAGE_LABEL[ap.stage]} </Text>
-                      {ap.approverName ?? "—"}
+                {groups.map((g) => (
+                  <View
+                    key={g.stage}
+                    style={[
+                      styles.sigCell,
+                      { flex: g.signers.length > 1 ? 2 : 1 },
+                    ]}
+                  >
+                    <Text style={styles.sigStage}>
+                      {STAGE_LABEL[g.stage]}
+                      {g.signers.length > 1 ? "（兩位簽名）" : ""}
                     </Text>
-                    <View style={styles.sigSpacer} />
-                    {ap.signatureDataUrl ? (
-                      // 寬高都要明給:react-pdf 只給單邊會拉滿容器(非等比)。
-                      // 基準高 42pt;核定(老闆)放大到 56pt — 業主指定要霸氣。
-                      // 寬上限依格數(4 格格內寬約 119pt、3 格約 164pt),超寬時反推高
-                      (() => {
-                        const aspect = ap.signatureAspect ?? 3;
-                        const baseH = ap.stage === "approve" ? 56 : 42;
-                        const maxW = cells.length >= 4 ? 108 : 150;
-                        const width = Math.min(maxW, baseH * aspect);
-                        const height = width / aspect;
-                        return (
-                          <Image
-                            src={ap.signatureDataUrl}
-                            style={{ width, height, marginVertical: 4 }}
-                          />
-                        );
-                      })()
-                    ) : (
-                      <Text style={styles.sigNone}>（無簽名）</Text>
-                    )}
-                    <Text style={styles.sigTime}>{formatTW(ap.created_at)}</Text>
+                    <View style={styles.sigSignerRow}>
+                      {g.signers.map((ap) => (
+                        <View key={ap.id} style={styles.sigSigner}>
+                          <Text style={styles.sigName}>
+                            {ap.approverName ?? "—"}
+                          </Text>
+                          <View style={styles.sigSpacer} />
+                          {ap.signatureDataUrl ? (
+                            // 寬高都要明給:react-pdf 只給單邊會拉滿容器(非等比)。
+                            // 基準高 42pt;核定(老闆)放大到 56pt — 業主指定要霸氣。
+                            // 寬上限依欄寬估算(總 flex 單位越多、單欄越窄)
+                            (() => {
+                              const aspect = ap.signatureAspect ?? 3;
+                              const baseH = ap.stage === "approve" ? 56 : 42;
+                              const unitW = 500 / Math.max(flexUnits, 1);
+                              const maxW = Math.max(70, unitW - 18);
+                              const width = Math.min(maxW, baseH * aspect);
+                              const height = width / aspect;
+                              return (
+                                <Image
+                                  src={ap.signatureDataUrl}
+                                  style={{ width, height, marginVertical: 4 }}
+                                />
+                              );
+                            })()
+                          ) : (
+                            <Text style={styles.sigNone}>（無簽名）</Text>
+                          )}
+                          <Text style={styles.sigTime}>
+                            {formatTW(ap.created_at)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
                 ))}
               </View>

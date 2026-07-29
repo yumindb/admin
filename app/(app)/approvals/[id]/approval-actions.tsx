@@ -142,9 +142,13 @@ export function ApprovalActions({
       }
       // 加進度計數 — Phil 想知道「+1 / 還剩 N 份」
       const remaining = await getPendingCount(logId);
-      toast.success(`已${VERB[stage]}`, {
-        description:
-          remaining > 0 ? `還剩 ${remaining} 份，跳下一份…` : "全部簽完了，辛苦您了",
+      const tail =
+        remaining > 0 ? `還剩 ${remaining} 份，跳下一份…` : "待簽的都處理完了";
+      // 核定雙簽:第一位簽完還沒完成核定,講清楚免得以為簽完就結案
+      toast.success(res.awaitingSecond ? "已簽名" : `已${VERB[stage]}`, {
+        description: res.awaitingSecond
+          ? `已通知另一位老闆補簽，兩位都簽完才算完成核定。${tail}`
+          : tail,
       });
       await nextPendingRedirect(logId);
     });

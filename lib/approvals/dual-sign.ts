@@ -1,0 +1,80 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * 核定關雙簽名(2026-07-20 業主拍板)。
+ *
+ * 規則:
+ *   - 核定(approve)關要「兩位不同的 owner」都簽名才算完成 → status='approved'
+ *   - 不限順序,誰先簽都可以;同一個人在同一輪不能簽兩次
+ *   - 「同一輪」= 本次送出之後。退回重送會重新計算(舊輪的簽名不算數),
+ *     判斷基準:log_approvals.created_at >= daily_logs.submitted_at
+ *
+ * 計數存在 daily_logs.approve_signatures(migration-2.29),
+ * 用條件式 UPDATE 序列化兩人同時簽的情況 — 見 approveStageAction。
+ */
+
+export const REQUIRED_APPROVE_SIGNATURES = 2;
+
+/**
+ * 這個系統實際需要幾位核定簽名。
+ *
+ * 保險:老闆帳號只有一位時要求兩簽 = 日誌永遠卡在核定關(第二位不存在)。
+ * 所以取 min(2, owner 帳號數)。第二個老闆帳號一建立,雙簽自動生效,
+ * 不用改程式也不用重新部署。
+ */
+export async function requiredApproveSignatures(
+  supabase: SupabaseClient,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "owner");
+  if (error || count == null) return REQUIRED_APPROVE_SIGNATURES;
+  return Math.min(REQUIRED_APPROVE_SIGNATURES, Math.max(1, count));
+}
+
+/** 這一輪已在核定關簽過名的 log id(用於待辦清單過濾:已簽的人不該再看到) */
+export async function findApproveSignedLogIds(
+  supabase: SupabaseClient,
+  userId: string,
+  logs: { id: string; submitted_at: string | null }[],
+): Promise<Set<string>> {
+  const signed = new Set<string>();
+  const ids = logs.map((l) => l.id);
+  if (ids.length === 0) return signed;
+
+  const { data } = await supabase
+    .from("log_approvals")
+    .select("log_id, created_at")
+    .eq("stage", "approve")
+    .eq("decision", "approved")
+    .eq("approver_id", userId)
+    .in("log_id", ids);
+
+  const submittedAtById = new Map(logs.map((l) => [l.id, l.submitted_at]));
+  for (const row of (data ?? []) as { log_id: string; created_at: string }[]) {
+    const submittedAt = submittedAtById.get(row.log_id);
+    // submitted_at 缺值(理論上不會)→ 保守當作本輪,寧可少顯示也不要重複簽
+    if (!submittedAt || row.created_at >= submittedAt) signed.add(row.log_id);
+  }
+  return signed;
+}
+
+/** 本輪核定關的簽名紀錄(排除 / 只取自己,由呼叫端決定) */
+export async function loadApproveSignersThisRound(
+  supabase: SupabaseClient,
+  logId: string,
+  submittedAt: string | null,
+): Promise<{ approverId: string | null; createdAt: string }[]> {
+  const { data } = await supabase
+    .from("log_approvals")
+    .select("approver_id, created_at")
+    .eq("log_id", logId)
+    .eq("stage", "approve")
+    .eq("decision", "approved")
+    .order("created_at", { ascending: true });
+
+  return ((data ?? []) as { approver_id: string | null; created_at: string }[])
+    .filter((r) => !submittedAt || r.created_at >= submittedAt)
+    .map((r) => ({ approverId: r.approver_id, createdAt: r.created_at }));
+}

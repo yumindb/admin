@@ -312,6 +312,15 @@ export async function saveLogAction(payload: SaveLogPayload) {
       .eq("id", logId)
       .eq("supervisor_id", user.id);
     if (error) return { ok: false, error: "儲存失敗：" + error.message };
+
+    // 重送 → 核定簽名計數歸零(雙簽制:上一輪的簽名不算數)。
+    // 獨立語句 + 忽略錯誤:migration-2.29 未跑時不影響送出。
+    if (submittedAt) {
+      await supabase
+        .from("daily_logs")
+        .update({ approve_signatures: 0 })
+        .eq("id", logId);
+    }
   } else {
     const insertPayload: Record<string, unknown> = {
       case_id: payload.caseId,

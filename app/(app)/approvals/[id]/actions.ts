@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generatePdfForLog } from "@/lib/pdf/generate";
+import {
+  findApproveSignedLogIds,
+  loadApproveSignersThisRound,
+  requiredApproveSignatures,
+} from "@/lib/approvals/dual-sign";
 import type { ApprovalStage, UserRole } from "@/lib/types";
 
 /**
@@ -63,10 +68,47 @@ async function getActor() {
 async function loadLogStage(supabase: Awaited<ReturnType<typeof createClient>>, logId: string) {
   const { data } = await supabase
     .from("daily_logs")
-    .select("status, current_stage")
+    .select("status, current_stage, submitted_at")
     .eq("id", logId)
     .maybeSingle();
-  return data as { status: string; current_stage: ApprovalStage | null } | null;
+  return data as {
+    status: string;
+    current_stage: ApprovalStage | null;
+    submitted_at: string | null;
+  } | null;
+}
+
+/**
+ * 核定關的已簽人數 — 優先讀 daily_logs.approve_signatures(migration-2.29,
+ * 條件式 UPDATE 用它序列化兩人同時簽)。migration 還沒跑時退回數 log_approvals,
+ * 功能照常,只是同秒同時簽的極端 race 沒有保護。
+ */
+async function loadApproveSignatureCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  logId: string,
+  submittedAt: string | null,
+): Promise<{ count: number; hasCounter: boolean }> {
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select("approve_signatures")
+    .eq("id", logId)
+    .maybeSingle();
+  if (!error && data && typeof data.approve_signatures === "number") {
+    return { count: data.approve_signatures, hasCounter: true };
+  }
+  const signers = await loadApproveSignersThisRound(supabase, logId, submittedAt);
+  return { count: signers.length, hasCounter: false };
+}
+
+/** 重設核定簽名計數(退回 / 重送)。migration-2.29 未跑時失敗無害,忽略。 */
+async function resetApproveSignatures(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  logId: string,
+) {
+  await supabase
+    .from("daily_logs")
+    .update({ approve_signatures: 0 })
+    .eq("id", logId);
 }
 
 /**
@@ -106,29 +148,81 @@ export async function approveStageAction(
   //     不會寫第二筆 approval。
   const nextStage = NEXT_STAGE[log.current_stage];
   const expectedStage = log.current_stage;
-  if (nextStage === null) {
-    // 老闆核定通過 — 同時把 pdf_status 翻 'generating',讓 UI 顯示「產生中…」
-    const { data: rows, error: updErr } = await supabase
-      .from("daily_logs")
-      .update({
-        status: "approved",
-        current_stage: null,
-        pdf_status: "generating",
-        pdf_error: null,
-      })
-      .eq("id", payload.logId)
-      .eq("status", "submitted")
-      .eq("current_stage", expectedStage)
-      .select("id");
-    if (updErr) return { ok: false as const, error: "更新失敗：" + updErr.message };
-    if (!rows || rows.length === 0) {
+  // 核定關要兩位 owner 都簽(2026-07-20 業主拍板);第一位簽完仍停在 approve 關
+  const isApproveStage = nextStage === null;
+  let finalized = false;
+  if (isApproveStage) {
+    // 同一輪不能自己簽兩次(退回重送算新的一輪 — 以 submitted_at 為界)
+    const priorSigners = await loadApproveSignersThisRound(
+      supabase,
+      payload.logId,
+      log.submitted_at,
+    );
+    if (priorSigners.some((s) => s.approverId === user.id)) {
       return {
         ok: false as const,
-        error: "日誌狀態已被他人變更，請重新整理",
+        error: "你已經簽過這份日誌了，等另一位老闆簽名就會完成核定",
       };
     }
 
-    // 核定通過 → 背景產 PDF(不阻塞 response)。
+    // 需要幾簽:正常是 2;系統只有一位老闆帳號時退回 1(不然永遠等不到第二簽)
+    const required = await requiredApproveSignatures(supabase);
+
+    // compare-and-set:兩位老闆同時按時,只有一個請求的 UPDATE 會拿到 rows;
+    // 落敗的那個重讀計數 → 發現已有 1 人簽 → 自己就是最後一簽,改走完成路徑。
+    let settled = false;
+    for (let attempt = 0; attempt < 2 && !settled; attempt++) {
+      const { count, hasCounter } = await loadApproveSignatureCount(
+        supabase,
+        payload.logId,
+        log.submitted_at,
+      );
+      const willFinalize = count + 1 >= required;
+
+      // 沒有計數欄位(migration-2.29 未跑)且還不是最後一簽 → 日誌不用動,直接記簽名
+      if (!hasCounter && !willFinalize) {
+        settled = true;
+        break;
+      }
+
+      const patch: Record<string, unknown> = hasCounter
+        ? { approve_signatures: count + 1 }
+        : {};
+      if (willFinalize) {
+        // 完成核定 — 同時把 pdf_status 翻 'generating',讓 UI 顯示「產生中…」
+        Object.assign(patch, {
+          status: "approved",
+          current_stage: null,
+          pdf_status: "generating",
+          pdf_error: null,
+        });
+      }
+
+      let q = supabase
+        .from("daily_logs")
+        .update(patch)
+        .eq("id", payload.logId)
+        .eq("status", "submitted")
+        .eq("current_stage", expectedStage);
+      if (hasCounter) q = q.eq("approve_signatures", count);
+      const { data: rows, error: updErr } = await q.select("id");
+      if (updErr) return { ok: false as const, error: "更新失敗：" + updErr.message };
+      if (rows && rows.length > 0) {
+        finalized = willFinalize;
+        settled = true;
+      }
+      // 0 rows → 另一位老闆剛好同時簽,下一輪重讀計數再算一次
+    }
+    if (!settled) {
+      return {
+        ok: false as const,
+        error: "日誌狀態剛被其他人變更，請重新整理再試一次",
+      };
+    }
+  }
+
+  if (finalized) {
+    // 核定完成 → 背景產 PDF(不阻塞 response)。
     // 完成 / 失敗都要寫回 pdf_status,讓 UI 從 spinner 切到下載 / 重試。
     // 用 service-role 避免被 daily_logs RLS 擋(after() 跑在 user session 之後,
     // user 可能已登出 / token 過期)。
@@ -158,7 +252,8 @@ export async function approveStageAction(
           .eq("id", payload.logId);
       }
     });
-  } else {
+  } else if (!isApproveStage) {
+    // 一般關卡:推進到下一關(核定關的第一簽不動 stage,continue 停在 approve)
     const { data: rows, error: updErr } = await supabase
       .from("daily_logs")
       .update({ current_stage: nextStage })
@@ -193,12 +288,25 @@ export async function approveStageAction(
   }
 
   // LINE 通知(不阻塞、失敗不影響簽核):
-  //   audit 過關 → 通知老闆待核定;老闆核定通過 → 通知主任
+  //   audit 過關 → 通知老闆待核定
+  //   核定第一簽 → 通知「另一位」老闆補簽;兩簽到齊 → 通知主任
+  const actorId = user.id;
   if (!internal?.suppressNotify) {
     after(async () => {
       const events = await import("@/lib/notifications/events");
-      if (nextStage === null) {
+      if (isApproveStage && finalized) {
         await events.notifyLogApproved(payload.logId);
+      } else if (isApproveStage) {
+        const { data: me } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", actorId)
+          .maybeSingle();
+        await events.notifyLogAwaitingSecondApproval(
+          payload.logId,
+          actorId,
+          (me?.full_name as string | null) ?? null,
+        );
       } else if (nextStage === "approve") {
         await events.notifyLogAwaitingApproval(payload.logId);
       }
@@ -207,7 +315,8 @@ export async function approveStageAction(
 
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);
-  return { ok: true as const };
+  // awaitingSecond:UI 用來提示「已簽,還差另一位老闆」
+  return { ok: true as const, awaitingSecond: isApproveStage && !finalized };
 }
 
 /**
@@ -263,6 +372,9 @@ export async function rejectStageAction(payload: ActPayload) {
     );
   }
 
+  // 退回 → 核定簽名計數歸零(重送後重新算兩簽)
+  await resetApproveSignatures(supabase, payload.logId);
+
   // LINE 通知主任:日誌被退回(附原因)
   const rejectComment = payload.comment.trim();
   after(async () => {
@@ -294,19 +406,23 @@ export async function batchApproveAction(payload: {
 }): Promise<{
   ok: string[];
   failed: { logId: string; reason: string }[];
+  /** 核定雙簽:這些只拿到我的第一簽,還要另一位老闆補簽 */
+  awaitingSecond: string[];
 }> {
   const { logIds, signatureUrl, comment } = payload;
   const okList: string[] = [];
+  const awaitingSecond: string[] = [];
   const failed: { logId: string; reason: string }[] = [];
 
   if (!Array.isArray(logIds) || logIds.length === 0) {
-    return { ok: okList, failed };
+    return { ok: okList, failed, awaitingSecond };
   }
   if (!signatureUrl) {
     // 整批拒絕:沒簽名
     return {
       ok: okList,
       failed: logIds.map((id) => ({ logId: id, reason: "缺簽名" })),
+      awaitingSecond,
     };
   }
 
@@ -330,6 +446,8 @@ export async function batchApproveAction(payload: {
         );
         if (res.ok) {
           okList.push(id);
+          // 核定雙簽:只拿到第一簽的要分開通知(不能跟主任說「已核定」)
+          if (res.awaitingSecond) awaitingSecond.push(id);
         } else {
           failed.push({ logId: id, reason: res.error });
         }
@@ -343,21 +461,29 @@ export async function batchApproveAction(payload: {
 
   // 批簽彙總通知:一批只送一則(而不是 N 則),省官方帳號訊息額度。
   //   office_staff 批審核 → 通知老闆「N 份待核定」
-  //   owner 批核定 → 依主任分組,各通知「你的 N 份已核定」
+  //   owner 批核定 → 完成的依主任分組通知「已核定」;只拿到第一簽的通知另一位老闆
   if (okList.length > 0) {
-    const { role } = await getActor();
-    const approvedIds = [...okList];
+    const { user, role } = await getActor();
+    const pendingSecond = new Set(awaitingSecond);
+    const finalizedIds = okList.filter((id) => !pendingSecond.has(id));
+    const waitingCount = awaitingSecond.length;
+    const actorId = user?.id ?? null;
     after(async () => {
       const events = await import("@/lib/notifications/events");
       if (role === "office_staff") {
-        await events.notifyLogsBatchAwaitingApproval(approvedIds.length);
+        await events.notifyLogsBatchAwaitingApproval(okList.length);
       } else if (role === "owner") {
-        await events.notifyLogsBatchApproved(approvedIds);
+        if (finalizedIds.length > 0) {
+          await events.notifyLogsBatchApproved(finalizedIds);
+        }
+        if (waitingCount > 0 && actorId) {
+          await events.notifyLogsBatchAwaitingSecondApproval(waitingCount, actorId);
+        }
       }
     });
   }
 
-  return { ok: okList, failed };
+  return { ok: okList, failed, awaitingSecond };
 }
 
 // ---------- 卡住日誌強制處理 (見 migration-2.24) ----------
@@ -434,6 +560,9 @@ export async function forceRejectStuckLogAction(payload: {
     );
   }
 
+  // 強制退回 → 核定簽名計數歸零
+  await resetApproveSignatures(supabase, payload.logId);
+
   // LINE 通知主任:日誌被強制退回(附原因)
   after(async () => {
     const { notifyLogRejected } = await import("@/lib/notifications/events");
@@ -498,14 +627,19 @@ export async function nextPendingRedirect(currentLogId: string) {
 
   const { data } = await supabase
     .from("daily_logs")
-    .select("id")
+    .select("id, submitted_at")
     .eq("status", "submitted")
     .eq("current_stage", allowedStage)
     .neq("id", currentLogId)
-    .order("submitted_at", { ascending: true })
-    .limit(1);
-  if (data && data.length > 0) {
-    redirect(`/approvals/${data[0].id}`);
+    .order("submitted_at", { ascending: true });
+  let candidates = (data ?? []) as { id: string; submitted_at: string | null }[];
+  // 核定關雙簽:自己已簽過的不再跳過去(等另一位老闆)
+  if (allowedStage === "approve" && candidates.length > 0) {
+    const signed = await findApproveSignedLogIds(supabase, user.id, candidates);
+    candidates = candidates.filter((l) => !signed.has(l.id));
+  }
+  if (candidates.length > 0) {
+    redirect(`/approvals/${candidates[0].id}`);
   }
   redirect("/approvals");
 }
@@ -519,6 +653,21 @@ export async function getPendingCount(currentLogId?: string): Promise<number> {
   if (!user || !role) return 0;
   const allowedStage = STAGE_FOR_ROLE[role];
   if (!allowedStage) return 0;
+
+  // 核定關要逐筆比對「我簽過沒」,拿 id 清單而不是 count
+  if (allowedStage === "approve") {
+    let q = supabase
+      .from("daily_logs")
+      .select("id, submitted_at")
+      .eq("status", "submitted")
+      .eq("current_stage", allowedStage);
+    if (currentLogId) q = q.neq("id", currentLogId);
+    const { data } = await q;
+    const rows = (data ?? []) as { id: string; submitted_at: string | null }[];
+    if (rows.length === 0) return 0;
+    const signed = await findApproveSignedLogIds(supabase, user.id, rows);
+    return rows.filter((l) => !signed.has(l.id)).length;
+  }
 
   let q = supabase
     .from("daily_logs")

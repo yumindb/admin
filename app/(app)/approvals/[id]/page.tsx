@@ -21,6 +21,7 @@ import {
   groupWorkItemsByAncestor,
 } from "@/lib/work-item-grouping";
 import { getSignedUrl, getSignedUrls } from "@/lib/supabase/storage";
+import { loadApproveSignersThisRound } from "@/lib/approvals/dual-sign";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 import type { WorkItemGroup } from "@/lib/work-item-grouping";
 import type { DailyLogWorkItem } from "@/lib/types";
@@ -71,6 +72,24 @@ export default async function ApprovalDetailPage({
     role === "owner"
       ? await getSignedUrl("signatures", `${user!.id}/stamp.png`, 6 * 60 * 60)
       : null;
+
+  // 核定關雙簽(2026-07):本輪已簽的人不再顯示簽名面板
+  let alreadySignedApprove = false;
+  let approveSignedCount = 0;
+  if (allowedStage === "approve") {
+    const { data: logRound } = await supabase
+      .from("daily_logs")
+      .select("submitted_at")
+      .eq("id", id)
+      .maybeSingle();
+    const signers = await loadApproveSignersThisRound(
+      supabase,
+      id,
+      (logRound?.submitted_at as string | null) ?? null,
+    );
+    approveSignedCount = signers.length;
+    alreadySignedApprove = signers.some((s) => s.approverId === user!.id);
+  }
 
   const { data: log } = await supabase
     .from("daily_logs")
@@ -475,15 +494,25 @@ export default async function ApprovalDetailPage({
         </SignSection>
       )}
 
-      {/* 簽核 */}
-      <div className="mb-4">
-        <NextStepHint tone="info">
-          {allowedStage === "approve"
-            ? "確認上方內容後，在下方簽名按「核定通過」，系統自動跳下一份。要退回切到「退回」分頁。"
-            : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。要退回切到「退回」分頁，主任會在「我的日誌」看到並可修正後重送。`}
-        </NextStepHint>
-      </div>
-      <ApprovalActions logId={id} stage={allowedStage} stampUrl={stampUrl} />
+      {/* 簽核 — 核定關雙簽:自己簽過就不再顯示簽名面板 */}
+      {alreadySignedApprove ? (
+        <div className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-5 py-4 text-sm text-[#92400E]">
+          你已經簽過這份日誌了，正在等另一位老闆補簽。兩位都簽完就會自動完成核定並產生 PDF。
+        </div>
+      ) : (
+        <>
+          <div className="mb-4">
+            <NextStepHint tone="info">
+              {allowedStage === "approve"
+                ? approveSignedCount > 0
+                  ? "另一位老闆已經簽過了，你這一簽完成後就會核定通過並自動產生 PDF。"
+                  : "核定要兩位老闆都簽名。你先簽完後，系統會通知另一位老闆補簽。"
+                : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。要退回切到「退回」分頁，主任會在「我的日誌」看到並可修正後重送。`}
+            </NextStepHint>
+          </div>
+          <ApprovalActions logId={id} stage={allowedStage} stampUrl={stampUrl} />
+        </>
+      )}
     </div>
   );
 }

@@ -911,3 +911,24 @@ case_work_items
   **蓋章 = server 把 stamp.png 複製成 `{userId}/{ts}-stamp.png` 快照**再回
   signed URL — 之後換圖章不影響已核定日誌(簽核不可變,同 attendance 邏輯)。
 - PDF 管線零改動:log_approvals.signature_url 拿到的快照與手寫上傳同格式。
+
+## 2026-07-20(三)— 核定關雙簽名(兩位 owner)
+
+- 業主要求:核定那一關要「兩個人簽名才算完成」。Evelyn 裁示第二位用**另開一個
+  owner 帳號**、**不限順序**。
+- 狀態機:第一簽完成後日誌**仍停在 approve 關**(status 維持 submitted),
+  兩簽到齊才 `approved` + 產 PDF。
+- **Race**:兩位老闆同時按 → 兩邊都可能讀到「0 人簽」而各自以為是第一位,
+  日誌就永遠卡住。解法是 `daily_logs.approve_signatures`(migration-2.29)+
+  條件式 UPDATE(compare-and-set):`WHERE approve_signatures = n`,同時只有一個
+  請求拿得到 rows;落敗方重讀後發現已有 1 人簽,自己就走完成路徑。
+- **不能用 unique index(log_id, stage, approver_id)**:退回重送時同一個人本來就
+  會再簽同一關。「本輪」改用 `log_approvals.created_at >= daily_logs.submitted_at`
+  判斷;退回 / 強制退回 / 重送都把計數歸零。
+- **單一 owner 保險**:系統只有一個老闆帳號時 required 自動退回 1 —
+  否則第二位不存在,所有日誌會卡死在核定關。第二個帳號建立後雙簽自動生效。
+- 連帶改動:待辦清單 / getPendingCount / 跳下一份都濾掉「我簽過的」;
+  簽核詳情頁對已簽者不再顯示簽名面板;批簽結果分「已完成」與「等補簽」;
+  LINE 新增 notifyLogAwaitingSecondApproval(排除剛簽的人)與批簽彙總版;
+  PDF 核定欄改雙倍寬、欄內兩位並排(舊的單簽日誌照樣正常顯示)。
+- 部署順序:**先建第二個 owner 帳號 + 跑 migration-2.29**,再讓老闆開始簽。

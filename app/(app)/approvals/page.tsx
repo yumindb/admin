@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getSignedUrl } from "@/lib/supabase/storage";
+import { findApproveSignedLogIds } from "@/lib/approvals/dual-sign";
 import { NextStepHint } from "@/components/next-step-hint";
 import { BatchApprovalsList } from "./batch-actions";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
@@ -78,7 +79,19 @@ export default async function ApprovalsPage() {
   }
 
   const { data: pending } = await query;
-  const list = (pending ?? []) as LogRow[];
+  let list = (pending ?? []) as LogRow[];
+
+  // 核定關雙簽:我已經簽過的先不顯示(等另一位老闆簽),另外算一個提示數字
+  let awaitingOtherCount = 0;
+  if (stage === "approve" && list.length > 0) {
+    const signed = await findApproveSignedLogIds(
+      supabase,
+      user!.id,
+      list.map((l) => ({ id: l.id, submitted_at: l.submitted_at ?? null })),
+    );
+    awaitingOtherCount = signed.size;
+    list = list.filter((l) => !signed.has(l.id));
+  }
   const copy = PAGE_COPY[stage];
 
   return (
@@ -104,8 +117,15 @@ export default async function ApprovalsPage() {
         <NextStepHint tone="muted">
           四關流程：填表 → 複核（工地主任） → 審核（辦公室助理） → 核定（老闆）。
           每關退回都會回到「我的日誌」讓主任修正後重送。
+          {stage === "approve" && "核定要兩位老闆都簽名才算完成。"}
         </NextStepHint>
       </div>
+
+      {awaitingOtherCount > 0 && (
+        <div className="mb-6 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
+          另有 {awaitingOtherCount} 份你已經簽過，正在等另一位老闆補簽，簽完就會自動完成核定。
+        </div>
+      )}
 
       {!list.length ? (
         <div className="space-y-4">

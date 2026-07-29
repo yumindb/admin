@@ -124,6 +124,61 @@ export async function notifyLogAwaitingApproval(logId: string): Promise<void> {
   });
 }
 
+/**
+ * 核定關第一位老闆簽完 → 通知「另一位」老闆補簽(雙簽制,2026-07)。
+ * 排除剛簽完的人,免得自己收到自己的提醒。
+ */
+export async function notifyLogAwaitingSecondApproval(
+  logId: string,
+  firstSignerId: string,
+  firstSignerName: string | null,
+): Promise<void> {
+  const ctx = await loadLogContext(logId);
+  if (!ctx) return;
+  await sendNotification({
+    eventType: "log_to_approve",
+    relatedId: logId,
+    recipients: { roles: ["owner"], excludeProfileIds: [firstSignerId] },
+    altText: "日誌待您第二核定",
+    message: noticeFlex({
+      title: "日誌等你補簽核定",
+      lines: [
+        `案件:${ctx.caseName}`,
+        `日期:${fmtDate(ctx.logDate)}`,
+        `主任:${ctx.supervisorName}`,
+        `${firstSignerName ?? "另一位老闆"}已簽,還差你這一簽`,
+      ],
+      tone: "amber",
+      buttonLabel: "去核定",
+      buttonPath: "/approvals",
+    }),
+  });
+}
+
+/** 批簽的雙簽版:一位老闆批簽 N 份後,通知另一位老闆補簽(只送一則,省額度) */
+export async function notifyLogsBatchAwaitingSecondApproval(
+  count: number,
+  firstSignerId: string,
+): Promise<void> {
+  if (count <= 0) return;
+  await sendNotification({
+    eventType: "log_to_approve",
+    relatedId: null,
+    recipients: { roles: ["owner"], excludeProfileIds: [firstSignerId] },
+    altText: `${count} 份日誌等你補簽核定`,
+    message: noticeFlex({
+      title: `${count} 份日誌等你補簽`,
+      lines: [
+        "另一位老闆已經簽過了",
+        "兩位都簽完才會完成核定並產出 PDF",
+      ],
+      tone: "amber",
+      buttonLabel: "去核定",
+      buttonPath: "/approvals",
+    }),
+  });
+}
+
 /** 老闆核定通過 → 通知該份日誌的主任 */
 export async function notifyLogApproved(logId: string): Promise<void> {
   const ctx = await loadLogContext(logId);

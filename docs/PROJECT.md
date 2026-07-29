@@ -50,9 +50,15 @@
 draft →[主任填表+簽名 fill]→ submitted+review
      →[主任複核 review]→ submitted+audit
      →[辦公室審核 audit]→ submitted+approve
-     →[老闆核定+簽名 approve]→ approved（自動產 PDF）
+     →[老闆核定+簽名 approve ×2]→ approved（自動產 PDF）
      →[任一關退回]→ rejected →[主任編輯重送]→ 回到 review
 ```
+
+- **核定關是雙簽**（2026-07-20 業主拍板）：要**兩位不同的 owner** 都簽名才 `approved`，
+  不限順序。第一簽完成後日誌仍停在 `approve`，並通知另一位老闆補簽。
+  計數在 `daily_logs.approve_signatures`（migration-2.29，compare-and-set 防同時簽），
+  「本輪」以 `log_approvals.created_at >= daily_logs.submitted_at` 判斷（退回重送重新計）。
+  系統只有一個 owner 帳號時自動退回單簽（見 `lib/approvals/dual-sign.ts`）。
 
 - 統一走 `approveStageAction` / `rejectStageAction`（role↔stage map 集中驗證）。
 - 卡住的日誌：owner / office_staff 可在逾時後「強制處理」（有 audit trail，含 DELETE trigger）。
