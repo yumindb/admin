@@ -37,6 +37,7 @@
 | 31 | [`migration-2.27.sql`](migration-2.27.sql) | LINE 通知:line_bindings(綁定碼流程)+ notification_queue(推播佇列)+ RLS(見 [`LINE.md`](LINE.md))| 必跑 |
 | 32 | [`migration-2.28.sql`](migration-2.28.sql) | LINE 通知偏好:line_bindings 加 notification_prefs jsonb(白名單制分類開關,/staff 設定)| 必跑 |
 | 33 | [`migration-2.29.sql`](migration-2.29.sql) | 核定關雙簽名:daily_logs 加 approve_signatures(兩位 owner 都簽才完成;race 用 compare-and-set)| 必跑 |
+| 34 | [`migration-2.30.sql`](migration-2.30.sql) | 儀表板警示「先不理」:dashboard_dismissals(per-user、7 天後自動再提醒)+ RLS | 必跑 |
 
 ## 排錯
 

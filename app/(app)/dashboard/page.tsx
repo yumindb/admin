@@ -6,6 +6,7 @@ import { tryGetActor } from "@/lib/auth/require-role";
 import { formatDateTW } from "@/lib/datetime";
 import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
 import { normalizeLogPhotos } from "@/lib/daily-log";
+import { AlertsSection, type AlertItem } from "./alerts-section";
 import type {
   Case,
   CaseWorkItem,
@@ -312,12 +313,6 @@ export default async function DashboardPage() {
   }
   staleCases.sort((a, b) => b.daysSinceLog - a.daysSinceLog);
 
-  type AlertItem = {
-    kind: "rejected" | "stale";
-    title: string;
-    detail: string;
-    href: string;
-  };
   const alerts: AlertItem[] = [];
   for (const r of (stuckRejected ?? []) as unknown as Array<{
     id: string;
@@ -331,6 +326,7 @@ export default async function DashboardPage() {
     );
     alerts.push({
       kind: "rejected",
+      targetId: r.id,
       title: `${r.cases?.code ?? ""}${r.cases?.code ? "｜" : ""}${r.cases?.name ?? "（已刪除）"}`,
       detail: `${r.profiles?.full_name ?? "主任"} 的 ${r.log_date} 日誌已退回 ${days} 天，尚未重送`,
       href: `/logs/${r.id}`,
@@ -339,11 +335,30 @@ export default async function DashboardPage() {
   for (const c of staleCases.slice(0, 10)) {
     alerts.push({
       kind: "stale",
+      targetId: c.id,
       title: `${c.code ?? ""}${c.code ? "｜" : ""}${c.name}`,
       detail: `已 ${c.daysSinceLog} 天沒有新日誌`,
       href: `/cases/${c.id}`,
     });
   }
+
+  // 「先不理」中的警示(migration-2.30)。migration 未跑 → 查詢出錯就當作沒有,
+  // 儀表板照常顯示全部,不因此壞掉。
+  const { data: dismissRows } = await supabase
+    .from("dashboard_dismissals")
+    .select("alert_kind, target_id, dismissed_until")
+    .eq("profile_id", actor.id)
+    .gt("dismissed_until", new Date().toISOString());
+  const dismissedKeys = new Set(
+    ((dismissRows ?? []) as Array<{ alert_kind: string; target_id: string }>).map(
+      (d) => `${d.alert_kind}:${d.target_id}`,
+    ),
+  );
+  const visibleAlerts = alerts.filter(
+    (a) => !dismissedKeys.has(`${a.kind}:${a.targetId}`),
+  );
+  // 只算「還在清單裡但被收起來」的,避免顯示早已解決的殘留筆數
+  const dismissedCount = alerts.length - visibleAlerts.length;
 
   const isOwner = actor.role === "owner";
   const pendingPath = isOwner ? "/approvals" : "/approvals";
@@ -360,44 +375,9 @@ export default async function DashboardPage() {
       </div>
 
       {/* 「需要您出手」異常 banner — Phil 視角:不是每件都要簽,而是要看
-          「真正卡住的」。退回後 ≥ 2 天 + 案件 ≥ 5 天沒日誌 兩種訊號合併。 */}
-      {alerts.length > 0 && (
-        <section className="mb-5 rounded-lg border border-[#FCA5A5] bg-[#FEF2F2] p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <span aria-hidden className="inline-block size-2.5 rounded-full bg-[#B91C1C]" />
-            <h2 className="text-base font-semibold text-[#B91C1C]">
-              需要您出手（{alerts.length}）
-            </h2>
-          </div>
-          <ul className="divide-y divide-[#FCA5A5]/40">
-            {alerts.slice(0, 10).map((a, i) => (
-              <li key={i}>
-                <Link
-                  href={a.href}
-                  className="block py-2 transition-colors hover:bg-[#FEE2E2] -mx-2 px-2 rounded"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-sm font-medium text-foreground">
-                      {a.title}
-                    </span>
-                    <span className="shrink-0 text-xs text-[#B91C1C]">
-                      {a.kind === "rejected" ? "退回未重送" : "案件停滯"}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {a.detail}
-                  </div>
-                </Link>
-              </li>
-            ))}
-            {alerts.length > 10 && (
-              <li className="pt-2 text-xs text-muted-foreground">
-                …共 {alerts.length} 件，僅顯示前 10
-              </li>
-            )}
-          </ul>
-        </section>
-      )}
+          「真正卡住的」。退回後 ≥ 2 天 + 案件 ≥ 5 天沒日誌 兩種訊號合併。
+          每項可「先不理」(per-user、7 天後自動再提醒,見 alerts-section.tsx)。 */}
+      <AlertsSection alerts={visibleAlerts} dismissedCount={dismissedCount} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* 卡 1：待核定 / 待審 */}
