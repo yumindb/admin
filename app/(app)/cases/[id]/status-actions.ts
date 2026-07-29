@@ -85,14 +85,16 @@ export async function getCloseChecklistAction(caseId: string): Promise<Checklist
   };
 }
 
+// paused:2026-07 補上 — schema 一直有這個狀態(打卡選單、報表都認),
+// 但沒有任何 UI 能設定。暫停中的案件不列入「案件停滯」警示。
 const StatusSchema = z.object({
   caseId: z.string().uuid(),
-  status: z.enum(["active", "closed"]),
+  status: z.enum(["active", "paused", "closed"]),
 });
 
 export async function setCaseStatusAction(
   caseId: string,
-  status: "active" | "closed",
+  status: "active" | "paused" | "closed",
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await requireRole(["office_staff", "owner"]);

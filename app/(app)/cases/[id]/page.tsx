@@ -15,6 +15,7 @@ import { getCompanyShort } from "@/lib/companies";
 import { UndoImportButton } from "./undo-import-button";
 import { DeleteCaseButton } from "./delete-case-button";
 import { CloseCaseButton } from "./close-case-button";
+import { PauseCaseButton } from "./pause-case-button";
 import {
   WorkItemsXlsxButton,
   MonthlyReportXlsxButton,
@@ -576,6 +577,7 @@ export default async function CaseDetailPage({
                   <span className="hidden sm:inline">編輯</span>
                 </Link>
               </Button>
+              <PauseCaseButton caseId={c.id} caseName={c.name} status={c.status} />
               <CloseCaseButton caseId={c.id} caseName={c.name} status={c.status} />
               <DeleteCaseButton
                 caseId={c.id}

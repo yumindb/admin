@@ -549,10 +549,14 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
 
       <div className="mt-4 flex items-center justify-between border-t border-[#F0EBE4] pt-3 text-xs text-muted-foreground">
         <span className="truncate">{c.client || "—"}</span>
+        {/* 「尚未開工」只在真的還沒動工時講;已經有日誌卻沒填開工日,
+            要講的是「開工日未填」而不是「尚未開工」(2026-07 業主指出會誤解) */}
         <span>
           {c.started_at
             ? `開工 ${formatDateTW(c.started_at)}`
-            : "尚未開工"}
+            : stats.logCount > 0
+              ? "開工日未填"
+              : "尚未開工"}
         </span>
       </div>
     </div>
