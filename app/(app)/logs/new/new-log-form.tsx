@@ -198,6 +198,10 @@ export function NewLogForm({
   const [dayLaborNote, setDayLaborNote] = useState<string>(
     initial?.manpowerDayLaborNote ?? ""
   );
+  // 點工區塊預設收合;已經有值(編輯既有日誌)就直接展開
+  const [dayLaborOpen, setDayLaborOpen] = useState<boolean>(
+    !!initial?.manpowerDayLabor || !!initial?.manpowerDayLaborNote?.trim()
+  );
   const [subcontractors, setSubcontractors] = useState<DailyLogSubcontractor[]>(
     initial?.subcontractors ?? []
   );
@@ -309,6 +313,10 @@ export function NewLogForm({
       if (draft.todayTotal !== undefined) setTodayTotal(draft.todayTotal);
       if (draft.dayLabor !== undefined) setDayLabor(draft.dayLabor);
       if (draft.dayLaborNote !== undefined) setDayLaborNote(draft.dayLaborNote);
+      // 草稿裡有點工 → 展開,不然還原後看起來像沒填
+      if (Number(draft.dayLabor) > 0 || draft.dayLaborNote?.trim()) {
+        setDayLaborOpen(true);
+      }
       if (draft.subcontractors !== undefined) setSubcontractors(draft.subcontractors);
       if (draft.machines !== undefined) setMachines(draft.machines);
       if (draft.picked !== undefined) setPicked(draft.picked);
@@ -1396,8 +1404,28 @@ export function NewLogForm({
             </p>
           </div>
 
-          {/* 點工 — 臨時加的人力,只請款不簽合約,所以跟上面的出工人數各算各的 */}
-          <div className="space-y-2 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] p-4">
+          {/* 點工 — 臨時加的人力,只請款不簽合約,所以跟上面的出工人數各算各的。
+              多數日子沒有叫點工,預設收合(手機上不要多兩格永遠空著的欄位);
+              有值時(編輯舊日誌 / 還原草稿)自動展開,免得改到一半找不到。 */}
+          <details
+            open={dayLaborOpen}
+            onToggle={(e) => setDayLaborOpen(e.currentTarget.open)}
+            className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2]"
+          >
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 [&::-webkit-details-marker]:hidden">
+              <span className="text-sm font-medium text-primary">
+                點工（臨時加的人力）
+                {!dayLaborOpen && dayLaborNum > 0 && (
+                  <span className="ml-2 rounded-full border border-[#C9B79C] bg-white px-2 py-0.5 text-xs font-normal text-[#8A6D3B]">
+                    {dayLaborNum} 人
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {dayLaborOpen ? "收合" : "今天有叫點工再點開"}
+              </span>
+            </summary>
+            <div className="space-y-2 border-t border-[#E0DCD6] p-4">
             <Label htmlFor="day_labor">本日點工人數</Label>
             <Input
               id="day_labor"
@@ -1431,7 +1459,8 @@ export function NewLogForm({
             <p className="text-xs text-muted-foreground">
               點工是臨時找來的人力，只請款、不簽合約，所以跟上面的出工人數分開算。寫清楚做什麼，辦公室才好請款。
             </p>
-          </div>
+            </div>
+          </details>
         </div>
       </Section>
 
