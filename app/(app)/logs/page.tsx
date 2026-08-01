@@ -114,6 +114,23 @@ export default async function LogsPage({
   const list = (logs ?? []) as LogRow[];
   const hitAllLimit = rangeOpt.days === null && list.length >= ALL_HARD_LIMIT;
 
+  // 「經助理修改」標籤:一次查完本頁所有日誌被辦公室助理改過的紀錄,
+  // 避免每列各發一次查詢。日誌沒有時直接跳過(.in 空陣列會多打一趟)。
+  const editedByOffice = new Set<string>();
+  if (list.length > 0) {
+    const { data: officeEdits } = await supabase
+      .from("daily_log_revisions")
+      .select("log_id")
+      .eq("editor_role", "office_staff")
+      .in(
+        "log_id",
+        list.map((l) => l.id),
+      );
+    for (const r of (officeEdits ?? []) as { log_id: string }[]) {
+      editedByOffice.add(r.log_id);
+    }
+  }
+
   const groups = groupByCase(list);
   const filteredCaseName =
     caseFilterId && groups.length > 0 ? groups[0].caseName : null;
@@ -320,6 +337,14 @@ export default async function LogsPage({
                                 {isBackfilledLog(l) && (
                                   <span className="rounded-full border border-[#FDBA74] bg-[#FFF7ED] px-1.5 py-0 text-[10px] text-[#C2410C]">
                                     補件
+                                  </span>
+                                )}
+                                {editedByOffice.has(l.id) && (
+                                  <span
+                                    className="rounded-full border border-[#C9B79C] bg-[#FAF3E8] px-1.5 py-0 text-[10px] text-[#8A6D3B]"
+                                    title="送出後由辦公室助理修改過內容"
+                                  >
+                                    經助理修改
                                   </span>
                                 )}
                                 {l.weather && (

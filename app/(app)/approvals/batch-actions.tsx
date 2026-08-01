@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { useBodyScrollLock, useEscToClose } from "@/lib/use-modal-behavior";
@@ -52,13 +52,20 @@ export function BatchApprovalsList({
   stage,
   role,
   stampUrl,
+  officeEditedIds,
 }: {
   logs: LogRow[];
   stage: ApprovalStage;
   role: UserRole;
   /** 簽名圖章預覽 URL(owner 先試用;有值時批簽 modal 預設用蓋章) */
   stampUrl?: string | null;
+  /** 送出後被辦公室助理改過的日誌 id — 列表掛「經助理修改」標籤 */
+  officeEditedIds?: string[];
 }) {
+  const officeEdited = useMemo(
+    () => new Set(officeEditedIds ?? []),
+    [officeEditedIds],
+  );
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [showModal, setShowModal] = useState(false);
@@ -261,6 +268,14 @@ export function BatchApprovalsList({
                     {l.photos?.length ?? 0} 張照片
                   </span>
                   {l.weather && <span>{formatWeatherSummary(l.weather)}</span>}
+                  {officeEdited.has(l.id) && (
+                    <span
+                      className="inline-flex items-center rounded-full border border-[#C9B79C] bg-[#FAF3E8] px-2 py-0.5 text-xs text-[#8A6D3B]"
+                      title="這份日誌送出後由辦公室助理修改過，詳情頁的「編輯軌跡」有前後對照"
+                    >
+                      經助理修改
+                    </span>
+                  )}
                   {(() => {
                     const d = daysSinceSubmit(l);
                     if (d === null || d < 1) return null;
@@ -622,7 +637,7 @@ function BatchResultView({
       </div>
       {waiting > 0 && (
         <div className="mb-3 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-sm text-[#92400E]">
-          其中 {waiting} 份還在等另一位老闆補簽，簽完才會完成核定並產生 PDF（已發通知）。
+          其中 {waiting} 份還在等另一位核定人補簽，簽完才會完成核定並產生 PDF（已發通知）。
         </div>
       )}
       {result.failed.length > 0 && (

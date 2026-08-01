@@ -115,6 +115,7 @@ export function NewLogForm({
   currentDaySeq,
   priorAggregates,
   priorManpowerByCase,
+  priorDayLaborByCase,
   priorSubcontractorByCase,
   priorMachineByCase,
   pendingReportsByCase,
@@ -136,6 +137,8 @@ export function NewLogForm({
   priorAggregates?: WorkItemAggregateMap;
   /** 各案件之前已累計的出工人次(submitted/approved 日誌 today_total 加總,編輯時排除自己) */
   priorManpowerByCase?: Record<string, number>;
+  /** 各案件之前已累計的點工人次(day_labor 加總)— 與出工人次分開算,不相加 */
+  priorDayLaborByCase?: Record<string, number>;
   /** 各案件 → 工別正規化名 → 之前累計人次(submitted/approved 日誌的 today 加總) */
   priorSubcontractorByCase?: Record<string, Record<string, number>>;
   /** 各案件 → 機具正規化名 → 之前累計使用數量 */
@@ -147,6 +150,9 @@ export function NewLogForm({
     logDate: string;
     weather: DailyWeather;
     manpowerTodayTotal: number;
+    /** 點工人數(臨時人力,只請款不簽約)*/
+    manpowerDayLabor?: number;
+    manpowerDayLaborNote?: string;
     subcontractors: DailyLogSubcontractor[];
     machines: DailyLogMachine[];
     workItems: PickerValue[];
@@ -184,6 +190,13 @@ export function NewLogForm({
   const [weather, setWeather] = useState<DailyWeather>(initial?.weather ?? {});
   const [todayTotal, setTodayTotal] = useState<string>(
     String(initial?.manpowerTodayTotal ?? "")
+  );
+  // 點工:臨時加的人力,只請款不簽約 → 與出工人數各自獨立(不併入 today_total)
+  const [dayLabor, setDayLabor] = useState<string>(
+    initial?.manpowerDayLabor ? String(initial.manpowerDayLabor) : ""
+  );
+  const [dayLaborNote, setDayLaborNote] = useState<string>(
+    initial?.manpowerDayLaborNote ?? ""
   );
   const [subcontractors, setSubcontractors] = useState<DailyLogSubcontractor[]>(
     initial?.subcontractors ?? []
@@ -294,6 +307,8 @@ export function NewLogForm({
       if (draft.logDate !== undefined) setLogDate(draft.logDate);
       if (draft.weather !== undefined) setWeather(draft.weather);
       if (draft.todayTotal !== undefined) setTodayTotal(draft.todayTotal);
+      if (draft.dayLabor !== undefined) setDayLabor(draft.dayLabor);
+      if (draft.dayLaborNote !== undefined) setDayLaborNote(draft.dayLaborNote);
       if (draft.subcontractors !== undefined) setSubcontractors(draft.subcontractors);
       if (draft.machines !== undefined) setMachines(draft.machines);
       if (draft.picked !== undefined) setPicked(draft.picked);
@@ -380,7 +395,7 @@ export function NewLogForm({
         localStorage.setItem(
           draftKey,
           JSON.stringify({
-            caseId, logDate, weather, todayTotal,
+            caseId, logDate, weather, todayTotal, dayLabor, dayLaborNote,
             subcontractors, machines, picked, pickedExtra, pickedUnsigned,
             extras, unsigned,
             photos, vendorNotices, notes,
@@ -395,7 +410,7 @@ export function NewLogForm({
     }, 600);
     return () => clearTimeout(t);
   }, [
-    draftKey, hydrated, caseId, logDate, weather, todayTotal,
+    draftKey, hydrated, caseId, logDate, weather, todayTotal, dayLabor, dayLaborNote,
     subcontractors, machines, picked, pickedExtra, pickedUnsigned,
     extras, unsigned, photos,
     vendorNotices, notes, mergedReportIds, mergedReportSnapshots,
@@ -434,6 +449,12 @@ export function NewLogForm({
   const priorManpower = caseId ? priorManpowerByCase?.[caseId] ?? 0 : 0;
   const todayTotalNum = todayTotal ? Number(todayTotal) : 0;
   const accumulatedTotalNum = priorManpower + (Number.isFinite(todayTotalNum) ? todayTotalNum : 0);
+
+  // 點工累計走自己的一條線 — 業主要求與出工人次分開算(點工只請款、不簽合約)
+  const priorDayLabor = caseId ? priorDayLaborByCase?.[caseId] ?? 0 : 0;
+  const dayLaborNum = dayLabor ? Number(dayLabor) : 0;
+  const accumulatedDayLaborNum =
+    priorDayLabor + (Number.isFinite(dayLaborNum) ? dayLaborNum : 0);
 
   // 工別 / 機具 名稱 → 之前累計(目前案件)
   const priorSubMap = caseId ? priorSubcontractorByCase?.[caseId] : undefined;
@@ -1046,6 +1067,9 @@ export function NewLogForm({
         manpower: {
           today_total: todayTotal ? Number(todayTotal) : undefined,
           accumulated_total: todayTotal ? accumulatedTotalNum : undefined,
+          day_labor: dayLabor ? Number(dayLabor) : undefined,
+          day_labor_accumulated: dayLabor ? accumulatedDayLaborNum : undefined,
+          day_labor_note: dayLaborNote.trim() || undefined,
           subcontractors: subcontractorsToSave,
           machines: machinesToSave,
         },
@@ -1350,25 +1374,64 @@ export function NewLogForm({
         </div>
       </Section>
 
-      <Section title="出工人數" done={todayTotalNum > 0}>
-        <div className="space-y-2">
-          <Label htmlFor="today_total">本日出工人數</Label>
-          <Input
-            id="today_total"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={todayTotal}
-            onChange={(e) => setTodayTotal(e.target.value)}
-            placeholder="0"
-          />
-          <p className="text-xs text-muted-foreground">
-            累計出工人次：
-            <span className="ml-1 font-medium text-primary">{accumulatedTotalNum}</span>
-            <span className="ml-2 text-muted-foreground/80">
-              （此案件之前 {priorManpower} 人次 + 本日 {todayTotalNum || 0} 人，自動加總）
-            </span>
-          </p>
+      <Section title="出工人數" done={todayTotalNum > 0 || dayLaborNum > 0}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="today_total">本日出工人數</Label>
+            <Input
+              id="today_total"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={todayTotal}
+              onChange={(e) => setTodayTotal(e.target.value)}
+              placeholder="0"
+            />
+            <p className="text-xs text-muted-foreground">
+              累計出工人次：
+              <span className="ml-1 font-medium text-primary">{accumulatedTotalNum}</span>
+              <span className="ml-2 text-muted-foreground/80">
+                （此案件之前 {priorManpower} 人次 + 本日 {todayTotalNum || 0} 人，自動加總）
+              </span>
+            </p>
+          </div>
+
+          {/* 點工 — 臨時加的人力,只請款不簽合約,所以跟上面的出工人數各算各的 */}
+          <div className="space-y-2 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] p-4">
+            <Label htmlFor="day_labor">本日點工人數</Label>
+            <Input
+              id="day_labor"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={dayLabor}
+              onChange={(e) => setDayLabor(e.target.value)}
+              placeholder="0"
+            />
+            <p className="text-xs text-muted-foreground">
+              累計點工人次：
+              <span className="ml-1 font-medium text-primary">{accumulatedDayLaborNum}</span>
+              <span className="ml-2 text-muted-foreground/80">
+                （此案件之前 {priorDayLabor} 人次 + 本日 {dayLaborNum || 0} 人）
+              </span>
+            </p>
+            <div className="pt-1">
+              <Label htmlFor="day_labor_note" className="text-sm">
+                點工做什麼
+              </Label>
+              <Textarea
+                id="day_labor_note"
+                rows={2}
+                className="mt-1.5 bg-white"
+                value={dayLaborNote}
+                onChange={(e) => setDayLaborNote(e.target.value)}
+                placeholder="例：叫 2 個點工幫忙清運三樓拆除廢料"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              點工是臨時找來的人力，只請款、不簽合約，所以跟上面的出工人數分開算。寫清楚做什麼，辦公室才好請款。
+            </p>
+          </div>
         </div>
       </Section>
 
@@ -2109,6 +2172,8 @@ type StoredDraft = {
   logDate?: string;
   weather?: DailyWeather;
   todayTotal?: string;
+  dayLabor?: string;
+  dayLaborNote?: string;
   subcontractors?: DailyLogSubcontractor[];
   machines?: DailyLogMachine[];
   picked?: PickerValue[];

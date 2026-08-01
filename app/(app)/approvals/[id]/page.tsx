@@ -22,9 +22,23 @@ import {
 } from "@/lib/work-item-grouping";
 import { getSignedUrl, getSignedUrls } from "@/lib/supabase/storage";
 import { loadApproveSignersThisRound } from "@/lib/approvals/dual-sign";
+import { buildRevisionDiffs } from "@/lib/log-diff";
+import { RevisionDiffRows } from "@/components/revision-diff";
+import { formatTW } from "@/lib/datetime";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 import type { WorkItemGroup } from "@/lib/work-item-grouping";
-import type { DailyLogWorkItem } from "@/lib/types";
+import type {
+  DailyLogEditableField,
+  DailyLogSnapshot,
+  DailyLogWorkItem,
+} from "@/lib/types";
+
+const ROLE_LABEL: Record<string, string> = {
+  site_supervisor: "工地主任",
+  office_staff: "辦公室助理",
+  owner: "老闆",
+  field_assistant: "現場人員",
+};
 
 const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
   site_supervisor: "review",
@@ -129,7 +143,33 @@ export default async function ApprovalDetailPage({
     .lte("created_at", l.created_at);
   const daySeq = dayCount ?? 1;
 
-  const wiIds = (l.work_items ?? []).map((w) => w.work_item_id);
+  // 送出後被誰改過(業主 2026-08:核定前要看得到助理改了哪裡)。
+  // 放在 ancestry 前面 — 快照裡的工項也要一起查名稱。
+  const { data: revisionRows } = await supabase
+    .from("daily_log_revisions")
+    .select(
+      "id, editor_role, edited_at, changed_fields, snapshot, editor:profiles!editor_id(full_name)"
+    )
+    .eq("log_id", id)
+    .order("edited_at", { ascending: false });
+  type RevRow = {
+    id: string;
+    editor_role: string;
+    edited_at: string;
+    changed_fields: DailyLogEditableField[];
+    snapshot: DailyLogSnapshot | null;
+    editor: { full_name: string | null } | { full_name: string | null }[] | null;
+  };
+  const revRows = (revisionRows ?? []) as unknown as RevRow[];
+
+  const wiIds = [
+    ...new Set([
+      ...(l.work_items ?? []).map((w) => w.work_item_id),
+      ...revRows.flatMap((r) =>
+        (r.snapshot?.work_items ?? []).map((w) => w.work_item_id),
+      ),
+    ]),
+  ];
   const ancestry = await fetchWorkItemAncestry(supabase, wiIds);
   const wiMap = new Map<string, WorkItemRow>();
   for (const [id, n] of ancestry) {
@@ -150,6 +190,44 @@ export default async function ApprovalDetailPage({
     (w) => w.work_item_id,
     ancestry
   );
+
+  // 前後對照(只在有 snapshot 的紀錄上做;2026-08 之前的舊紀錄沒有)
+  const currentSnapshot: DailyLogSnapshot = {
+    log_date: l.log_date,
+    weather: l.weather ?? null,
+    manpower: l.manpower ?? {},
+    work_items: l.work_items ?? [],
+    extra_items: l.extra_items ?? [],
+    unsigned_items: l.unsigned_items ?? [],
+    photos: normalizeLogPhotos(l.photos),
+    vendor_notices: l.vendor_notices ?? null,
+    notes: l.notes ?? null,
+  };
+  const revDiffs = buildRevisionDiffs(
+    revRows.map((r) => ({
+      id: r.id,
+      snapshot: r.snapshot as DailyLogSnapshot,
+      changedFields: r.changed_fields ?? [],
+    })),
+    currentSnapshot,
+    (wid) => {
+      const n = ancestry.get(wid);
+      return n ? { name: n.name, unit: n.unit } : null;
+    },
+  );
+  const edits = revRows
+    .map((r, i) => {
+      const editor = Array.isArray(r.editor) ? r.editor[0] : r.editor;
+      return {
+        id: r.id,
+        editorName: editor?.full_name ?? "（已離職 / 未命名）",
+        editorRole: r.editor_role,
+        editedAt: r.edited_at,
+        changes: r.snapshot ? revDiffs[i].changes : [],
+      };
+    })
+    .filter((e) => e.changes.length > 0);
+  const editedByOffice = revRows.some((r) => r.editor_role === "office_staff");
 
   // 辦公室助理視角：審核時想知道「主任本日漏掉哪些合約內工項」。
   // 撈此案件所有「葉節點 + 合約內」工項，與本份日誌已填的對照，列出未填的。
@@ -283,7 +361,42 @@ export default async function ApprovalDetailPage({
             value={unsignedWorkItems.length.toString()}
             alert={unsignedWorkItems.length > 0}
           />
+          {/* 點工只在有填時出現 — 臨時人力要請款,核定前值得看一眼 */}
+          {!!l.manpower?.day_labor && (
+            <SummaryCard
+              label="點工"
+              value={`${l.manpower.day_labor} 人`}
+              alert
+            />
+          )}
         </div>
+        {!!l.manpower?.day_labor_note && (
+          <p className="mt-3 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-4 py-2.5 text-sm text-muted-foreground">
+            <span className="font-medium text-primary">點工工作內容：</span>
+            {l.manpower.day_labor_note}
+          </p>
+        )}
+        {/* 送出後被改過 — 簽之前要看得到改了哪裡 */}
+        {edits.length > 0 && (
+          <div className="mt-3 rounded-md border border-[#C9B79C] bg-[#FAF3E8] px-4 py-3">
+            <p className="text-sm font-medium text-[#8A6D3B]">
+              {editedByOffice ? "這份日誌經助理修改" : "這份日誌送出後有修改"}
+            </p>
+            <div className="mt-2 space-y-3">
+              {edits.map((e) => (
+                <div key={e.id}>
+                  <p className="text-xs text-muted-foreground">
+                    {e.editorName}（{ROLE_LABEL[e.editorRole] ?? e.editorRole}）・
+                    {formatTW(e.editedAt)}
+                  </p>
+                  <div className="mt-1">
+                    <RevisionDiffRows changes={e.changes} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </SignSection>
 
       <SignSection title="表頭摘要">
@@ -497,7 +610,7 @@ export default async function ApprovalDetailPage({
       {/* 簽核 — 核定關雙簽:自己簽過就不再顯示簽名面板 */}
       {alreadySignedApprove ? (
         <div className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-5 py-4 text-sm text-[#92400E]">
-          你已經簽過這份日誌了，正在等另一位老闆補簽。兩位都簽完就會自動完成核定並產生 PDF。
+          你已經簽過這份日誌了，正在等另一位核定人補簽。兩位都簽完就會自動完成核定並產生 PDF。
         </div>
       ) : (
         <>
@@ -505,8 +618,8 @@ export default async function ApprovalDetailPage({
             <NextStepHint tone="info">
               {allowedStage === "approve"
                 ? approveSignedCount > 0
-                  ? "另一位老闆已經簽過了，你這一簽完成後就會核定通過並自動產生 PDF。"
-                  : "核定要兩位老闆都簽名。你先簽完後，系統會通知另一位老闆補簽。"
+                  ? "另一位核定人已經簽過了，你這一簽完成後就會核定通過並自動產生 PDF。"
+                  : "核定要兩位核定人都簽名。你先簽完後，系統會通知另一位核定人補簽。"
                 : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。要退回切到「退回」分頁，主任會在「我的日誌」看到並可修正後重送。`}
             </NextStepHint>
           </div>

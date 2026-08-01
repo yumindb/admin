@@ -147,7 +147,7 @@ export function ApprovalActions({
       // 核定雙簽:第一位簽完還沒完成核定,講清楚免得以為簽完就結案
       toast.success(res.awaitingSecond ? "已簽名" : `已${VERB[stage]}`, {
         description: res.awaitingSecond
-          ? `已通知另一位老闆補簽，兩位都簽完才算完成核定。${tail}`
+          ? `已通知另一位核定人補簽，兩位都簽完才算完成核定。${tail}`
           : tail,
       });
       await nextPendingRedirect(logId);

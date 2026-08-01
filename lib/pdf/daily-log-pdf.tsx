@@ -359,6 +359,25 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
           />
         </View>
 
+        {/* 點工 — 臨時人力,只請款不簽約,故與出工人數分開列一區 */}
+        {(!!log.manpower?.day_labor || !!log.manpower?.day_labor_note) && (
+          <>
+            <Text style={styles.sectionTitle}>點工（臨時人力，不列入出工人次）</Text>
+            <View style={styles.twoCol}>
+              <Cell
+                label="本日／累計點工"
+                value={`${log.manpower?.day_labor ?? "—"} 人 / ${
+                  log.manpower?.day_labor_accumulated ?? "—"
+                } 人次`}
+              />
+              <Cell
+                label="點工工作內容"
+                value={log.manpower?.day_labor_note || "—"}
+              />
+            </View>
+          </>
+        )}
+
         {/* 包商人力 */}
         {log.manpower?.subcontractors && log.manpower.subcontractors.length > 0 && (
           <>

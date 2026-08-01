@@ -139,6 +139,32 @@ export function computeManpowerByCase(
   return result;
 }
 
+/**
+ * 從歷史日誌算各案件「之前已累計的點工人次」。
+ *
+ * 點工(day_labor)是臨時加的人力,只請款不簽合約,所以**不併入**出工人次 —
+ * 兩條累計各走各的,報表與 PDF 也分開顯示。
+ *
+ * @param logs       已從 daily_logs 撈出的紀錄(建議只含 submitted/approved)
+ * @param excludeId  編輯模式時當前正在改的 log_id,避免自我重複計算
+ * @returns          caseId → prior_day_labor_sum
+ */
+export function computeDayLaborByCase(
+  logs: { id: string; case_id: string; day_labor: number | null | undefined }[],
+  excludeId?: string,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const l of logs) {
+    if (excludeId && l.id === excludeId) continue;
+    const n =
+      typeof l.day_labor === "number" && Number.isFinite(l.day_labor)
+        ? l.day_labor
+        : 0;
+    result[l.case_id] = (result[l.case_id] ?? 0) + n;
+  }
+  return result;
+}
+
 /** 字串正規化作為 trade / machine name 的查詢 key:trim + lowercase。
  *  允許使用者打字時大小寫或前後空白不同也能對到同一筆 */
 function normalizeNameKey(s: string | null | undefined): string {

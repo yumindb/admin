@@ -7,6 +7,7 @@ import {
   formatWeatherSummary,
   buildReportNumber,
   computeManpowerByCase,
+  computeDayLaborByCase,
   computeSubcontractorTotalsByCase,
   isBackfilledLog,
   todayLocalDate,
@@ -195,6 +196,37 @@ describe("computeManpowerByCase", () => {
       { id: "3", case_id: "A", today_total: undefined },
     ]);
     expect(out).toEqual({ A: 5 });
+  });
+});
+
+describe("computeDayLaborByCase", () => {
+  it("sums day_labor by case_id", () => {
+    const out = computeDayLaborByCase([
+      { id: "1", case_id: "A", day_labor: 2 },
+      { id: "2", case_id: "A", day_labor: 3 },
+      { id: "3", case_id: "B", day_labor: 1 },
+    ]);
+    expect(out).toEqual({ A: 5, B: 1 });
+  });
+
+  it("excludes given id (edit mode)", () => {
+    const out = computeDayLaborByCase(
+      [
+        { id: "1", case_id: "A", day_labor: 2 },
+        { id: "2", case_id: "A", day_labor: 3 },
+      ],
+      "2",
+    );
+    expect(out).toEqual({ A: 2 });
+  });
+
+  it("treats null / undefined as 0（沒填點工的日誌不影響累計）", () => {
+    const out = computeDayLaborByCase([
+      { id: "1", case_id: "A", day_labor: 2 },
+      { id: "2", case_id: "A", day_labor: null },
+      { id: "3", case_id: "A", day_labor: undefined },
+    ]);
+    expect(out).toEqual({ A: 2 });
   });
 });
 

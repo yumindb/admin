@@ -81,7 +81,7 @@ export default async function ApprovalsPage() {
   const { data: pending } = await query;
   let list = (pending ?? []) as LogRow[];
 
-  // 核定關雙簽:我已經簽過的先不顯示(等另一位老闆簽),另外算一個提示數字
+  // 核定關雙簽:我已經簽過的先不顯示(等另一位核定人簽),另外算一個提示數字
   let awaitingOtherCount = 0;
   if (stage === "approve" && list.length > 0) {
     const signed = await findApproveSignedLogIds(
@@ -92,6 +92,22 @@ export default async function ApprovalsPage() {
     awaitingOtherCount = signed.size;
     list = list.filter((l) => !signed.has(l.id));
   }
+  // 「經助理修改」— 核定前值得知道這份被辦公室動過(業主 2026-08 要求)
+  const officeEditedIds: string[] = [];
+  if (list.length > 0) {
+    const { data: officeEdits } = await supabase
+      .from("daily_log_revisions")
+      .select("log_id")
+      .eq("editor_role", "office_staff")
+      .in(
+        "log_id",
+        list.map((l) => l.id),
+      );
+    for (const r of (officeEdits ?? []) as { log_id: string }[]) {
+      if (!officeEditedIds.includes(r.log_id)) officeEditedIds.push(r.log_id);
+    }
+  }
+
   const copy = PAGE_COPY[stage];
 
   return (
@@ -117,13 +133,13 @@ export default async function ApprovalsPage() {
         <NextStepHint tone="muted">
           四關流程：填表 → 複核（工地主任） → 審核（辦公室助理） → 核定（老闆）。
           每關退回都會回到「我的日誌」讓主任修正後重送。
-          {stage === "approve" && "核定要兩位老闆都簽名才算完成。"}
+          {stage === "approve" && "核定要兩位核定人都簽名才算完成。"}
         </NextStepHint>
       </div>
 
       {awaitingOtherCount > 0 && (
         <div className="mb-6 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
-          另有 {awaitingOtherCount} 份你已經簽過，正在等另一位老闆補簽，簽完就會自動完成核定。
+          另有 {awaitingOtherCount} 份你已經簽過，正在等另一位核定人補簽，簽完就會自動完成核定。
         </div>
       )}
 
@@ -145,7 +161,13 @@ export default async function ApprovalsPage() {
           )}
         </div>
       ) : (
-        <BatchApprovalsList logs={list} stage={stage} role={role!} stampUrl={stampUrl} />
+        <BatchApprovalsList
+          logs={list}
+          stage={stage}
+          role={role!}
+          stampUrl={stampUrl}
+          officeEditedIds={officeEditedIds}
+        />
       )}
     </div>
   );

@@ -21,9 +21,13 @@ import {
 import type {
   DailyLog,
   DailyLogEditableField,
+  DailyLogSnapshot,
   DailyLogWorkItem,
   LogApproval,
 } from "@/lib/types";
+import { buildRevisionDiffs } from "@/lib/log-diff";
+import { RevisionDiffRows } from "@/components/revision-diff";
+import { RevokeApprovalButton } from "./revoke-approval-button";
 import {
   fetchWorkItemAncestry,
   groupWorkItemsByAncestor,
@@ -152,7 +156,24 @@ export default async function LogDetailPage({
     .lte("created_at", l.created_at);
   const daySeq = dayCount ?? 1;
 
-  const workItemIds = (l.work_items ?? []).map((w) => w.work_item_id);
+  // 送出後編輯軌跡(post-submission edits) — 連 editor 名稱與編輯前快照一起撈。
+  // 放在 ancestry 之前:快照裡可能引用「現在已經被改掉」的工項,名稱查表要一起帶。
+  const { data: revisionRows } = await supabase
+    .from("daily_log_revisions")
+    .select(
+      "id, log_id, editor_id, editor_role, edited_at, log_status_at_edit, changed_fields, reason, snapshot, editor:profiles!editor_id(full_name)"
+    )
+    .eq("log_id", id)
+    .order("edited_at", { ascending: false });
+
+  const workItemIds = [
+    ...new Set([
+      ...(l.work_items ?? []).map((w) => w.work_item_id),
+      ...((revisionRows ?? []) as { snapshot?: DailyLogSnapshot }[]).flatMap((r) =>
+        (r.snapshot?.work_items ?? []).map((w) => w.work_item_id),
+      ),
+    ]),
+  ];
   const ancestry = await fetchWorkItemAncestry(supabase, workItemIds);
   const wiMap = new Map<string, WorkItemRow>();
   for (const [id, n] of ancestry) {
@@ -181,14 +202,6 @@ export default async function LogDetailPage({
     .order("created_at", { ascending: true });
   const apList = (approvals ?? []) as LogApproval[];
 
-  // 送出後編輯軌跡(post-submission edits) — 連 editor 名稱一起撈
-  const { data: revisionRows } = await supabase
-    .from("daily_log_revisions")
-    .select(
-      "id, log_id, editor_id, editor_role, edited_at, log_status_at_edit, changed_fields, reason, editor:profiles!editor_id(full_name)"
-    )
-    .eq("log_id", id)
-    .order("edited_at", { ascending: false });
   type RevisionRow = {
     id: string;
     editor_id: string | null;
@@ -197,9 +210,11 @@ export default async function LogDetailPage({
     log_status_at_edit: string;
     changed_fields: DailyLogEditableField[];
     reason: string | null;
+    snapshot: DailyLogSnapshot | null;
     editor: { full_name: string | null } | { full_name: string | null }[] | null;
   };
-  const revisions = ((revisionRows ?? []) as unknown as RevisionRow[]).map((r) => {
+  const revisionRowList = (revisionRows ?? []) as unknown as RevisionRow[];
+  const revisions = revisionRowList.map((r) => {
     const editor = Array.isArray(r.editor) ? r.editor[0] : r.editor;
     return {
       id: r.id,
@@ -211,6 +226,41 @@ export default async function LogDetailPage({
       reason: r.reason,
     };
   });
+
+  // 前後對照:snapshot 是「該次編輯之前」的內容,最新一筆的「之後」就是現值。
+  // 舊資料(2026-08 之前)沒有存 snapshot 的情況也要能過 — 缺的就跳過不做對照。
+  const currentSnapshot: DailyLogSnapshot = {
+    log_date: l.log_date,
+    weather: l.weather ?? null,
+    manpower: l.manpower ?? {},
+    work_items: l.work_items ?? [],
+    extra_items: l.extra_items ?? [],
+    unsigned_items: l.unsigned_items ?? [],
+    photos: normalizeLogPhotos(l.photos),
+    vendor_notices: l.vendor_notices ?? null,
+    notes: l.notes ?? null,
+  };
+  const diffById = new Map(
+    buildRevisionDiffs(
+      revisionRowList.map((r) => ({
+        id: r.id,
+        snapshot: r.snapshot as DailyLogSnapshot,
+        changedFields: r.changed_fields ?? [],
+      })),
+      currentSnapshot,
+      (wid) => {
+        const n = ancestry.get(wid);
+        return n ? { name: n.name, unit: n.unit } : null;
+      },
+    )
+      .filter((d) => revisionRowList.find((r) => r.id === d.id)?.snapshot)
+      .map((d) => [d.id, d] as const),
+  );
+
+  // 「經助理修改」標籤:只要有任何一次是辦公室助理改的就掛。
+  const editedByOffice = revisionRowList.some(
+    (r) => r.editor_role === "office_staff",
+  );
 
   const s = STATUS[l.status] ?? STATUS.draft;
   const remainingDays = getRemainingDays(l.cases?.expected_end, l.log_date);
@@ -274,6 +324,15 @@ export default async function LogDetailPage({
                 補件
               </span>
             )}
+            {editedByOffice && (
+              <a
+                href="#edit-trail"
+                className="inline-block rounded-full border border-[#C9B79C] bg-[#FAF3E8] px-2.5 py-0.5 text-xs text-[#8A6D3B] transition-colors hover:border-accent hover:text-accent"
+                title="送出後由辦公室助理修改過內容，點我看改了哪裡"
+              >
+                經助理修改
+              </a>
+            )}
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-primary md:text-3xl">
             {formatDateTW(l.log_date)} ·{" "}
@@ -295,6 +354,9 @@ export default async function LogDetailPage({
             )}
             {l.manpower?.accumulated_total !== undefined && (
               <span>累計出工 {l.manpower.accumulated_total} 人次</span>
+            )}
+            {!!l.manpower?.day_labor && (
+              <span className="text-accent">點工 {l.manpower.day_labor} 人</span>
             )}
           </div>
         </div>
@@ -346,6 +408,11 @@ export default async function LogDetailPage({
               pdfError={l.pdf_error}
             />
           )}
+          {/* 已核定的日誌不開放直接編輯 — 要改先撤回到審核關(助理 / 老闆) */}
+          {l.status === "approved" &&
+            (role === "office_staff" || role === "owner") && (
+              <RevokeApprovalButton logId={id} />
+            )}
           {(role === "site_supervisor" || role === "owner") && (
             <Button
               asChild
@@ -472,6 +539,24 @@ export default async function LogDetailPage({
 
       <Section title="二、外包人員及機具管理">
         <div className="space-y-5">
+          {/* 點工:臨時人力,只請款不簽約 → 與出工人數分開列 */}
+          {(!!l.manpower?.day_labor || !!l.manpower?.day_labor_note) && (
+            <div className="rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-4 py-3">
+              <p className="text-sm font-medium text-primary">
+                點工 {l.manpower?.day_labor ?? 0} 人
+                {l.manpower?.day_labor_accumulated !== undefined && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    （累計 {l.manpower.day_labor_accumulated} 人次，不併入出工人次）
+                  </span>
+                )}
+              </p>
+              {l.manpower?.day_labor_note && (
+                <p className="mt-1.5 whitespace-pre-line text-sm text-muted-foreground">
+                  {l.manpower.day_labor_note}
+                </p>
+              )}
+            </div>
+          )}
           <ExtraItemsTable
             rows={l.manpower?.subcontractors ?? []}
             cols={[
@@ -566,51 +651,67 @@ export default async function LogDetailPage({
         </Section>
       )}
 
-      {/* 送出後編輯軌跡 — 只在有編輯時顯示 */}
+      {/* 送出後編輯軌跡 — 只在有編輯時顯示。
+          業主要求:不用很顯眼,但要看得到改了哪裡、原本寫什麼(小字)。 */}
       {revisions.length > 0 && (
-        <Section title={`編輯軌跡 (${revisions.length})`}>
-          <ul className="space-y-2">
-            {revisions.map((r) => (
-              <li
-                key={r.id}
-                className="rounded-md border border-[#E0DCD6] bg-card px-3 py-2 text-sm"
-              >
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="font-medium text-primary">
-                    {r.editorName}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {ROLE_LABEL[r.editorRole] ?? r.editorRole}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    編輯時狀態：
-                    {STATUS_AT_EDIT_LABEL[r.logStatusAtEdit] ?? r.logStatusAtEdit}
-                  </span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {formatTW(r.editedAt)}
-                  </span>
-                </div>
-                {r.changedFields.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {r.changedFields.map((f) => (
-                      <span
-                        key={f}
-                        className="inline-block rounded-full border border-[#E0DCD6] bg-[#FAF7F2] px-2 py-0.5 text-xs text-muted-foreground"
-                      >
-                        {FIELD_LABEL[f] ?? f}
+        <div id="edit-trail" className="scroll-mt-20">
+          <Section title={`編輯軌跡 (${revisions.length})`}>
+            <ul className="space-y-2">
+              {revisions.map((r) => {
+                const diff = diffById.get(r.id);
+                return (
+                  <li
+                    key={r.id}
+                    className="rounded-md border border-[#E0DCD6] bg-card px-3 py-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="font-medium text-primary">
+                        {r.editorName}
                       </span>
-                    ))}
-                  </div>
-                )}
-                {r.reason && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    備註:{r.reason}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Section>
+                      <span className="text-xs text-muted-foreground">
+                        {ROLE_LABEL[r.editorRole] ?? r.editorRole}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        編輯時狀態：
+                        {STATUS_AT_EDIT_LABEL[r.logStatusAtEdit] ?? r.logStatusAtEdit}
+                      </span>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {formatTW(r.editedAt)}
+                      </span>
+                    </div>
+                    {r.changedFields.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {r.changedFields.map((f) => (
+                          <span
+                            key={f}
+                            className="inline-block rounded-full border border-[#E0DCD6] bg-[#FAF7F2] px-2 py-0.5 text-xs text-muted-foreground"
+                          >
+                            {FIELD_LABEL[f] ?? f}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {diff && diff.changes.length > 0 && (
+                      <div className="mt-2 border-t border-dashed border-[#E0DCD6] pt-2">
+                        <RevisionDiffRows changes={diff.changes} />
+                      </div>
+                    )}
+                    {!diff && (
+                      <p className="mt-1.5 text-xs text-muted-foreground/80">
+                        （這次編輯早於前後對照功能上線，只留下變動欄位）
+                      </p>
+                    )}
+                    {r.reason && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        備註:{r.reason}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </Section>
+        </div>
       )}
 
       {/* 簽核歷程 */}

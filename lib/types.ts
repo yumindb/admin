@@ -59,6 +59,14 @@ export type DailyLogManpower = {
   contract?: number;        // 舊資料相容
   today_total?: number;
   accumulated_total?: number;
+  /**
+   * 點工人數(2026-08 業主要求)。臨時加的人力,只請款不簽合約,
+   * 因此與 today_total(合約內／會簽約的出工)**分開累計**,兩者不相加。
+   */
+  day_labor?: number;
+  day_labor_accumulated?: number;
+  /** 這些點工今天做什麼 — 請款時要有依據 */
+  day_labor_note?: string;
   subcontractors?: DailyLogSubcontractor[];
   machines?: DailyLogMachine[];
 };

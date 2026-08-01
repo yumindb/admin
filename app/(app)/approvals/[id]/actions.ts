@@ -161,14 +161,14 @@ export async function approveStageAction(
     if (priorSigners.some((s) => s.approverId === user.id)) {
       return {
         ok: false as const,
-        error: "你已經簽過這份日誌了，等另一位老闆簽名就會完成核定",
+        error: "你已經簽過這份日誌了，等另一位核定人簽名就會完成核定",
       };
     }
 
-    // 需要幾簽:正常是 2;系統只有一位老闆帳號時退回 1(不然永遠等不到第二簽)
+    // 需要幾簽:正常是 2;系統只有一位核定人帳號時退回 1(不然永遠等不到第二簽)
     const required = await requiredApproveSignatures(supabase);
 
-    // compare-and-set:兩位老闆同時按時,只有一個請求的 UPDATE 會拿到 rows;
+    // compare-and-set:兩位核定人同時按時,只有一個請求的 UPDATE 會拿到 rows;
     // 落敗的那個重讀計數 → 發現已有 1 人簽 → 自己就是最後一簽,改走完成路徑。
     let settled = false;
     for (let attempt = 0; attempt < 2 && !settled; attempt++) {
@@ -211,7 +211,7 @@ export async function approveStageAction(
         finalized = willFinalize;
         settled = true;
       }
-      // 0 rows → 另一位老闆剛好同時簽,下一輪重讀計數再算一次
+      // 0 rows → 另一位核定人剛好同時簽,下一輪重讀計數再算一次
     }
     if (!settled) {
       return {
@@ -315,7 +315,7 @@ export async function approveStageAction(
 
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);
-  // awaitingSecond:UI 用來提示「已簽,還差另一位老闆」
+  // awaitingSecond:UI 用來提示「已簽,還差另一位核定人」
   return { ok: true as const, awaitingSecond: isApproveStage && !finalized };
 }
 
@@ -406,7 +406,7 @@ export async function batchApproveAction(payload: {
 }): Promise<{
   ok: string[];
   failed: { logId: string; reason: string }[];
-  /** 核定雙簽:這些只拿到我的第一簽,還要另一位老闆補簽 */
+  /** 核定雙簽:這些只拿到我的第一簽,還要另一位核定人補簽 */
   awaitingSecond: string[];
 }> {
   const { logIds, signatureUrl, comment } = payload;
@@ -461,7 +461,7 @@ export async function batchApproveAction(payload: {
 
   // 批簽彙總通知:一批只送一則(而不是 N 則),省官方帳號訊息額度。
   //   office_staff 批審核 → 通知老闆「N 份待核定」
-  //   owner 批核定 → 完成的依主任分組通知「已核定」;只拿到第一簽的通知另一位老闆
+  //   owner 批核定 → 完成的依主任分組通知「已核定」;只拿到第一簽的通知另一位核定人
   if (okList.length > 0) {
     const { user, role } = await getActor();
     const pendingSecond = new Set(awaitingSecond);
@@ -575,6 +575,95 @@ export async function forceRejectStuckLogAction(payload: {
 }
 
 /**
+ * 撤回核定(2026-08 業主要求)。
+ *
+ * 為什麼需要:
+ *   主任填錯 / 填太少,常常是核定完才被發現。已核定的日誌一律鎖住不能改,
+ *   以前只能整份重開。業主要求助理能把它拉回來改。
+ *
+ * 為什麼是「退回審核關」而不是「直接改已核定的日誌」:
+ *   核定＝兩位核定人已簽名並產出 PDF。如果允許直接改,已經簽過名的那份
+ *   PDF 內容就跟系統對不上(對外可能已寄出)。改走「撤回 → 重新核定」:
+ *     - 本輪簽名作廢(approve_signatures 歸零),要重簽才算數
+ *     - 舊 PDF 標成過期版本,重新核定時會重產
+ *     - log_approvals 留一筆撤回紀錄,誰在何時為什麼撤回查得到
+ *
+ * 撤回後 status='submitted' + current_stage='audit'(回到辦公室助理那關),
+ * 助理改完內容再往上送核定。
+ */
+export async function revokeApprovalAction(payload: {
+  logId: string;
+  reason: string;
+}) {
+  const { supabase, user, role } = await getActor();
+  if (!user || !role) return { ok: false as const, error: "未登入" };
+  if (role !== "office_staff" && role !== "owner") {
+    return { ok: false as const, error: "只有辦公室助理或老闆可以撤回核定" };
+  }
+  const reason = payload.reason?.trim();
+  if (!reason) return { ok: false as const, error: "請填撤回原因" };
+
+  const { data: log } = await supabase
+    .from("daily_logs")
+    .select("status, pdf_path")
+    .eq("id", payload.logId)
+    .maybeSingle();
+  if (!log) return { ok: false as const, error: "找不到日誌" };
+  if (log.status !== "approved") {
+    return { ok: false as const, error: "這份日誌不是已核定狀態" };
+  }
+
+  // 先寫軌跡再改狀態(同 saveLogAction 的 post_edit):
+  // 寧可留下一筆「嘗試撤回」的紀錄,也不要日誌被撤回卻查不到是誰做的。
+  // 助理寫 stage='approve' 的紀錄需要 migration-2.31 的 policy。
+  const { error: insErr } = await supabase.from("log_approvals").insert({
+    log_id: payload.logId,
+    stage: "approve",
+    approver_id: user.id,
+    decision: "rejected",
+    comment: `[撤回核定] ${reason}`,
+    signature_url: null,
+  });
+  if (insErr) {
+    return {
+      ok: false as const,
+      error:
+        "撤回失敗,簽核紀錄寫不進去(請確認 migration-2.31 已執行):" +
+        insErr.message,
+    };
+  }
+
+  // status guard:讀到 approved 之後才寫,擋住兩個人同時撤回
+  const { data: rows, error: updErr } = await supabase
+    .from("daily_logs")
+    .update({ status: "submitted", current_stage: "audit" })
+    .eq("id", payload.logId)
+    .eq("status", "approved")
+    .select("id");
+  if (updErr) return { ok: false as const, error: "撤回失敗:" + updErr.message };
+  if (!rows || rows.length === 0) {
+    return { ok: false as const, error: "日誌狀態已被他人變更,請重新整理" };
+  }
+
+  // 本輪核定簽名作廢 — 重新送上來要重簽(雙簽制下兩位都要重簽)
+  await resetApproveSignatures(supabase, payload.logId);
+
+  // 舊 PDF 留著(對帳用),但標成 pending:重新核定時會重產覆蓋。
+  // UI 端靠 status !== 'approved' 判斷「這是撤回前的版本」。
+  if (log.pdf_path) {
+    await supabase
+      .from("daily_logs")
+      .update({ pdf_status: "pending" })
+      .eq("id", payload.logId);
+  }
+
+  revalidatePath("/approvals");
+  revalidatePath("/logs");
+  revalidatePath(`/logs/${payload.logId}`);
+  return { ok: true as const };
+}
+
+/**
  * 強制刪除卡住的日誌(老闆 / 辦公室助理 only,卡 ≥ 30 天才開放)。
  * audit trigger 會自動寫 audit_logs(before_values 含整筆 daily_log JSON)。
  * cascade delete:log_approvals / daily_log_revisions 一併刪除。
@@ -633,7 +722,7 @@ export async function nextPendingRedirect(currentLogId: string) {
     .neq("id", currentLogId)
     .order("submitted_at", { ascending: true });
   let candidates = (data ?? []) as { id: string; submitted_at: string | null }[];
-  // 核定關雙簽:自己已簽過的不再跳過去(等另一位老闆)
+  // 核定關雙簽:自己已簽過的不再跳過去(等另一位核定人)
   if (allowedStage === "approve" && candidates.length > 0) {
     const signed = await findApproveSignedLogIds(supabase, user.id, candidates);
     candidates = candidates.filter((l) => !signed.has(l.id));

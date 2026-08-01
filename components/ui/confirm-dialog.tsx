@@ -36,6 +36,8 @@ export function ConfirmDialog({
   cancelText = "取消",
   danger = false,
   pending = false,
+  confirmDisabled = false,
+  children,
   onConfirm,
   onCancel,
 }: {
@@ -50,6 +52,10 @@ export function ConfirmDialog({
   danger?: boolean;
   /** server action 進行中 — 鎖住兩顆按鈕避免重按 */
   pending?: boolean;
+  /** 額外鎖住「確認」的條件(例:必填原因還沒填) */
+  confirmDisabled?: boolean;
+  /** 需要收使用者輸入(例:撤回原因)時塞在 details 下方 */
+  children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -98,6 +104,7 @@ export function ConfirmDialog({
               ))}
             </ul>
           )}
+          {children}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
           <Button
@@ -113,7 +120,7 @@ export function ConfirmDialog({
           <Button
             type="button"
             onClick={onConfirm}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
             className={
               danger
                 ? "bg-[#B91C1C] text-white hover:bg-[#991B1B]"

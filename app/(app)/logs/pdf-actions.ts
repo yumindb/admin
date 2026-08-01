@@ -25,11 +25,14 @@ export async function getPdfDownloadUrlAction(
     .maybeSingle();
   if (!log) return { ok: false, error: "找不到日誌" };
 
+  // 撤回核定的日誌 pdf_path 仍在(對帳保留),但那是撤回前的版本 —
+  // 不能再放出去,否則會拿到跟系統內容對不上的 PDF。
+  if (log.status !== "approved") {
+    return { ok: false, error: "日誌尚未核定通過，還沒有 PDF。" };
+  }
+
   let pdfPath = log.pdf_path as string | null;
   if (!pdfPath) {
-    if (log.status !== "approved") {
-      return { ok: false, error: "日誌尚未核定通過，還沒有 PDF。" };
-    }
     const res = await generatePdfForLog(logId);
     if (!res.ok) return { ok: false, error: res.error };
     pdfPath = res.pdfPath;

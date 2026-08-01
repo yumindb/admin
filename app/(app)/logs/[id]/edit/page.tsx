@@ -9,6 +9,7 @@ import type { DailyLog, DailyLogWorkItem, FieldReport, LogApproval } from "@/lib
 import {
   parseWeather,
   computeManpowerByCase,
+  computeDayLaborByCase,
   computeSubcontractorTotalsByCase,
   computeMachineTotalsByCase,
   normalizeLogPhotos,
@@ -190,6 +191,14 @@ export default async function EditLogPage({
     })),
     id,
   );
+  const priorDayLaborByCase = computeDayLaborByCase(
+    (priorRows ?? []).map((r) => ({
+      id: r.id as string,
+      case_id: r.case_id as string,
+      day_labor: (r.manpower as { day_labor?: number } | null)?.day_labor,
+    })),
+    id,
+  );
   const priorSubcontractorByCase = computeSubcontractorTotalsByCase(
     (priorRows ?? []).map((r) => ({
       id: r.id as string,
@@ -345,6 +354,7 @@ export default async function EditLogPage({
         currentDaySeq={currentDaySeq}
         priorAggregates={aggregates}
         priorManpowerByCase={priorManpowerByCase}
+        priorDayLaborByCase={priorDayLaborByCase}
         priorSubcontractorByCase={priorSubcontractorByCase}
         priorMachineByCase={priorMachineByCase}
         pendingReportsByCase={pendingReportsByCase}
@@ -353,6 +363,8 @@ export default async function EditLogPage({
           logDate: l.log_date,
           weather: parseWeather(l.weather),
           manpowerTodayTotal: l.manpower?.today_total ?? 0,
+          manpowerDayLabor: l.manpower?.day_labor ?? 0,
+          manpowerDayLaborNote: l.manpower?.day_labor_note ?? "",
           subcontractors: l.manpower?.subcontractors ?? [],
           machines: l.manpower?.machines ?? [],
           workItems: initialContract,

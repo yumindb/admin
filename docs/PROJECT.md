@@ -55,12 +55,19 @@ draft →[主任填表+簽名 fill]→ submitted+review
 ```
 
 - **核定關是雙簽**（2026-07-20 業主拍板）：要**兩位不同的 owner** 都簽名才 `approved`，
-  不限順序。第一簽完成後日誌仍停在 `approve`，並通知另一位老闆補簽。
+  不限順序。第一簽完成後日誌仍停在 `approve`，並通知另一位補簽。
+  ⚠ **UI 文案一律寫「核定人」不寫「老闆」**（2026-08 業主要求，畫面上不點名老闆）。
   計數在 `daily_logs.approve_signatures`（migration-2.29，compare-and-set 防同時簽），
   「本輪」以 `log_approvals.created_at >= daily_logs.submitted_at` 判斷（退回重送重新計）。
   系統只有一個 owner 帳號時自動退回單簽（見 `lib/approvals/dual-sign.ts`）。
 
 - 統一走 `approveStageAction` / `rejectStageAction`（role↔stage map 集中驗證）。
+- **辦公室助理可全權修改日誌內容**（工項、數量、照片、備註都可以）：
+  - `submitted` / `rejected` → 直接編輯（silent post_edit，寫 `daily_log_revisions`）
+  - `approved` → 不能直接改，先按「撤回核定」（`revokeApprovalAction`）退回 audit 關，
+    簽名作廢、PDF 標為過期，改完重走核定。需 migration-2.31 的 RLS policy。
+  - 改過的日誌在列表 / 詳情頁 / 待簽核清單掛「經助理修改」標籤，
+    編輯軌跡用 `lib/log-diff.ts` 把 snapshot 算成人看得懂的前後對照（原文小字）。
 - 卡住的日誌：owner / office_staff 可在逾時後「強制處理」（有 audit trail，含 DELETE trigger）。
 - 請假（`/leaves`）另有獨立簽核鏈，依申請人 role 自動往上送。
 
@@ -69,7 +76,7 @@ draft →[主任填表+簽名 fill]→ submitted+review
 | Route | 功能 |
 |---|---|
 | `/cases` `/cases/new` `/cases/[id]` | 案件 CRUD、標單 .xlsx 匯入 preview、工項樹 + 累計進度、合約外/未簽約區塊、出勤時間軸、座標 picker |
-| `/logs` `/logs/new` `/logs/[id]` | 施工日誌（工項勾選、percent/absolute 數量、照片+說明、天氣 chips、localStorage 草稿） |
+| `/logs` `/logs/new` `/logs/[id]` | 施工日誌（工項勾選、percent/absolute 數量、出工＋點工人數、照片+說明、天氣 chips、localStorage 草稿） |
 | `/approvals` | role-aware 待辦（同 URL 三種角色看到自己那關） |
 | `/field-reports` | 現場回報（field_assistant 為主；離線 IndexedDB 佇列） |
 | `/attendance` | GPS 上下班打卡（軟性 geofence、離線前景排隊） |
@@ -93,6 +100,9 @@ draft →[主任填表+簽名 fill]→ submitted+review
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
 - **RLS 是正式 role-based**（migration-2.10 起），不是 POC 全開版。改 policy 前先讀
   MIGRATIONS.md 2.10 / 2.14 / 2.15 / 2.18 的收緊歷史。
+- **`daily_logs.manpower` 是 jsonb**：出工（`today_total`）、點工（`day_labor` +
+  `day_labor_note`，臨時人力只請款不簽約，**與出工分開累計**）、外包工別、機具都在裡面，
+  加欄位不用 migration。
 - **attendance_events 是 immutable event log**：故意不開 UPDATE/DELETE，修正只能補新事件。
 - **Migration 流程**：新增 `docs/migration-2.X.sql`（必須冪等）→ 登記到 `docs/MIGRATIONS.md`
   → 由 Evelyn 貼到裕民 Supabase SQL editor 手動執行。**Claude 這邊的 Supabase MCP 連的是

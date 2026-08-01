@@ -125,7 +125,7 @@ export async function notifyLogAwaitingApproval(logId: string): Promise<void> {
 }
 
 /**
- * 核定關第一位老闆簽完 → 通知「另一位」老闆補簽(雙簽制,2026-07)。
+ * 核定關第一位核定人簽完 → 通知「另一位」核定人補簽(雙簽制,2026-07)。
  * 排除剛簽完的人,免得自己收到自己的提醒。
  */
 export async function notifyLogAwaitingSecondApproval(
@@ -146,7 +146,7 @@ export async function notifyLogAwaitingSecondApproval(
         `案件:${ctx.caseName}`,
         `日期:${fmtDate(ctx.logDate)}`,
         `主任:${ctx.supervisorName}`,
-        `${firstSignerName ?? "另一位老闆"}已簽,還差你這一簽`,
+        `${firstSignerName ?? "另一位核定人"}已簽,還差你這一簽`,
       ],
       tone: "amber",
       buttonLabel: "去核定",
@@ -155,7 +155,7 @@ export async function notifyLogAwaitingSecondApproval(
   });
 }
 
-/** 批簽的雙簽版:一位老闆批簽 N 份後,通知另一位老闆補簽(只送一則,省額度) */
+/** 批簽的雙簽版:一位核定人批簽 N 份後,通知另一位補簽(只送一則,省額度) */
 export async function notifyLogsBatchAwaitingSecondApproval(
   count: number,
   firstSignerId: string,
@@ -169,7 +169,7 @@ export async function notifyLogsBatchAwaitingSecondApproval(
     message: noticeFlex({
       title: `${count} 份日誌等你補簽`,
       lines: [
-        "另一位老闆已經簽過了",
+        "另一位核定人已經簽過了",
         "兩位都簽完才會完成核定並產出 PDF",
       ],
       tone: "amber",

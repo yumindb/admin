@@ -7,6 +7,7 @@ import type { PickerItem } from "@/components/work-items-picker";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 import {
   computeManpowerByCase,
+  computeDayLaborByCase,
   computeSubcontractorTotalsByCase,
   computeMachineTotalsByCase,
   parseWeather,
@@ -144,6 +145,13 @@ export default async function NewLogPage({
       id: l.id as string,
       case_id: l.case_id as string,
       today_total: (l.manpower as { today_total?: number } | null)?.today_total,
+    })),
+  );
+  const priorDayLaborByCase = computeDayLaborByCase(
+    priorRows.map((l) => ({
+      id: l.id as string,
+      case_id: l.case_id as string,
+      day_labor: (l.manpower as { day_labor?: number } | null)?.day_labor,
     })),
   );
   const priorSubcontractorByCase = computeSubcontractorTotalsByCase(
@@ -316,6 +324,7 @@ export default async function NewLogPage({
         dayLogCounts={dayLogCounts}
         priorAggregates={aggregates}
         priorManpowerByCase={priorManpowerByCase}
+        priorDayLaborByCase={priorDayLaborByCase}
         priorSubcontractorByCase={priorSubcontractorByCase}
         priorMachineByCase={priorMachineByCase}
         pendingReportsByCase={pendingReportsByCase}
