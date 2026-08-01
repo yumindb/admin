@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRevisionDiffs, diffSnapshot } from "../log-diff";
+import { buildRevisionDiffs, diffSnapshot, stableStringify } from "../log-diff";
 import type { DailyLogSnapshot } from "../types";
 
 const EMPTY: DailyLogSnapshot = {
@@ -98,10 +98,46 @@ describe("diffSnapshot", () => {
     ]);
   });
 
-  it("欄位被標記有變但算不出差異 → 仍列出該欄位,不留空白", () => {
-    const [change] = diffSnapshot(EMPTY, EMPTY, ["photos"], lookup);
-    expect(change.rows).toHaveLength(1);
-    expect(change.label).toBe("照片");
+  it("欄位被標記有變但實際沒差 → 整個欄位不列(jsonb key 順序造成的誤判)", () => {
+    expect(diffSnapshot(EMPTY, EMPTY, ["photos", "manpower"], lookup)).toEqual([]);
+  });
+
+  it("工項一次動很多筆 → 給總結,明細只列前 8 筆", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      work_item_id: `wi-${i}`,
+      qty: 1,
+    }));
+    const [change] = diffSnapshot(
+      EMPTY,
+      { ...EMPTY, work_items: many },
+      ["work_items"],
+      lookup,
+    );
+    expect(change.rows).toHaveLength(8);
+    expect(change.more).toBe(12);
+    expect(change.summary).toBe("新增 20 項");
+  });
+});
+
+describe("stableStringify", () => {
+  it("key 順序不同但內容相同 → 視為沒變", () => {
+    const fromDb = { machines: [], subcontractors: [], today_total: 3 };
+    const fromClient = { today_total: 3, subcontractors: [], machines: [] };
+    expect(stableStringify(fromDb)).toBe(stableStringify(fromClient));
+    // 對照:原本的比法會誤判成有變
+    expect(JSON.stringify(fromDb)).not.toBe(JSON.stringify(fromClient));
+  });
+
+  it("內容真的不同仍然判得出來", () => {
+    expect(stableStringify({ a: 1 })).not.toBe(stableStringify({ a: 2 }));
+  });
+
+  it("陣列順序有意義,不排序", () => {
+    expect(stableStringify([1, 2])).not.toBe(stableStringify([2, 1]));
+  });
+
+  it("undefined 欄位忽略(client 端沒填的欄位不算差異)", () => {
+    expect(stableStringify({ a: 1, b: undefined })).toBe(stableStringify({ a: 1 }));
   });
 });
 

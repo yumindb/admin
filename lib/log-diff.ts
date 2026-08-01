@@ -34,9 +34,19 @@ export type WorkItemLookup = (
 export type FieldChange = {
   field: DailyLogEditableField;
   label: string;
-  /** 每個 row 是一項具體改動;文字欄位只有一 row */
+  /** 每個 row 是一項具體改動;文字欄位只有一 row。多筆時只留前 MAX_ROWS 筆 */
   rows: { label?: string; before: string; after: string }[];
+  /** 一句話總結(工項一次改很多筆時,逐行列出反而看不懂) */
+  summary?: string;
+  /** 因為超過上限而沒列出的筆數 */
+  more?: number;
 };
+
+/**
+ * 單一欄位最多列幾行。
+ * 助理一次補 84 個工項是真的會發生的(主任漏勾一整區),逐行列出等於洗版。
+ */
+const MAX_ROWS = 8;
 
 export type RevisionDiff = {
   /** daily_log_revisions.id */
@@ -57,6 +67,28 @@ const FIELD_LABEL: Record<DailyLogEditableField, string> = {
 };
 
 export const EMPTY_MARK = "（空白）";
+
+/**
+ * key 順序無關的 JSON 序列化,用來比對「這個欄位真的變了嗎」。
+ *
+ * 為什麼需要:jsonb 寫進 Postgres 再讀回來,key 順序會被重排
+ * (例:`{today_total, subcontractors}` → `{subcontractors, today_total}`)。
+ * 直接 JSON.stringify 比對會把「內容一樣、順序不同」判成有變 →
+ * daily_log_revisions.changed_fields 出現一堆沒改的欄位。
+ */
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
+    .sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+    .join(",")}}`;
+}
 
 function text(v: string | null | undefined): string {
   const s = (v ?? "").trim();
@@ -146,8 +178,11 @@ function diffWorkItems(
   before: DailyLogWorkItem[],
   after: DailyLogWorkItem[],
   lookup: WorkItemLookup,
-): FieldChange["rows"] {
+): { rows: FieldChange["rows"]; summary?: string } {
   const rows: FieldChange["rows"] = [];
+  let added = 0;
+  let removed = 0;
+  let edited = 0;
   const bMap = new Map(before.map((w) => [w.work_item_id, w]));
   const aMap = new Map(after.map((w) => [w.work_item_id, w]));
   for (const id of new Set([...bMap.keys(), ...aMap.keys()])) {
@@ -161,17 +196,36 @@ function diffWorkItems(
       const aq = formatQty(aw, unit);
       const bn = (bw.note ?? "").trim();
       const an = (aw.note ?? "").trim();
-      if (bq !== aq) rows.push({ label: name, before: bq, after: aq });
+      if (bq !== aq) {
+        edited++;
+        rows.push({ label: name, before: bq, after: aq });
+      }
       if (bn !== an) {
+        edited++;
         rows.push({ label: `${name}（備註）`, before: text(bn), after: text(an) });
       }
     } else if (aw) {
+      added++;
       rows.push({ label: name, before: "（原本沒有這項）", after: formatQty(aw, unit) });
     } else if (bw) {
+      removed++;
       rows.push({ label: name, before: formatQty(bw, unit), after: "（已刪除）" });
     }
   }
-  return rows;
+
+  // 一次動很多筆時先給一句總結,細節只列前幾筆(完整內容仍在 snapshot)
+  const total = added + removed + edited;
+  const summary =
+    total > MAX_ROWS
+      ? [
+          added > 0 ? `新增 ${added} 項` : null,
+          removed > 0 ? `刪除 ${removed} 項` : null,
+          edited > 0 ? `數量／備註調整 ${edited} 項` : null,
+        ]
+          .filter(Boolean)
+          .join("、")
+      : undefined;
+  return { rows, summary };
 }
 
 /** 舊格式的自由填寫項目(extra_items / unsigned_items):比名稱與數量 */
@@ -223,12 +277,15 @@ function diffPhotos(
       rows.push({ label: "照片說明", before: text(bc), after: text(ac) });
     }
   }
-  if (rows.length === 0 && before.length === after.length) {
-    // 張數一樣但 jsonb 有變(換照片 / 重新標註)— 至少講一句,不要顯示空白
+  // 張數一樣但換了照片 / 重新標註(path 變了)。
+  // 只在 path 集合真的不同時才講 — 不然 jsonb key 順序造成的誤判會天天冒出來。
+  const bPaths = new Set(before.map((p) => p.path));
+  const swapped = after.filter((p) => !bPaths.has(p.path)).length;
+  if (rows.length === 0 && swapped > 0) {
     rows.push({
       label: "照片內容",
       before: `${before.length} 張`,
-      after: `${after.length} 張（有照片被更換或重新標註）`,
+      after: `${after.length} 張（其中 ${swapped} 張被更換或重新標註）`,
     });
   }
   return rows;
@@ -257,6 +314,7 @@ export function diffSnapshot(
   for (const field of fields) {
     const label = FIELD_LABEL[field] ?? field;
     let rows: FieldChange["rows"] = [];
+    let summary: string | undefined;
 
     switch (field) {
       case "log_date":
@@ -278,13 +336,16 @@ export function diffSnapshot(
       case "manpower":
         rows = diffManpower(snapshot.manpower, after.manpower);
         break;
-      case "work_items":
-        rows = diffWorkItems(
+      case "work_items": {
+        const r = diffWorkItems(
           snapshot.work_items ?? [],
           after.work_items ?? [],
           lookup,
         );
+        rows = r.rows;
+        summary = r.summary;
         break;
+      }
       case "extra_items":
         rows = diffLooseItems(snapshot.extra_items ?? [], after.extra_items ?? []);
         break;
@@ -311,12 +372,22 @@ export function diffSnapshot(
         break;
     }
 
-    // 欄位被標記為有變但算不出具體差異(例如只動了照片排序)→ 仍列出欄位名,
-    // 免得使用者看到「改了 3 個欄位」卻只列出 2 個而懷疑系統漏記。
-    if (rows.length === 0) {
-      rows = [{ before: "（內容有調整）", after: "（詳見目前內容）" }];
-    }
-    out.push({ field, label, rows });
+    // 算不出任何差異就整個欄位不列。
+    //
+    // 為什麼會有「被標記改過但實際沒差」的欄位:jsonb 存進 Postgres 再讀回來,
+    // key 的順序會被正規化,而 saveLogAction 是用 JSON.stringify 逐欄比對 —
+    // 同樣內容不同 key 順序會被判定成「有變」。與其列一行沒有內容的
+    //「（內容有調整）」污染畫面,不如不列;欄位名的小標籤仍會顯示。
+    // (根因已在 saveLogAction 改用 stableStringify 修掉,但既有紀錄仍帶著誤判。)
+    if (rows.length === 0) continue;
+
+    out.push({
+      field,
+      label,
+      rows: rows.slice(0, MAX_ROWS),
+      summary,
+      more: rows.length > MAX_ROWS ? rows.length - MAX_ROWS : undefined,
+    });
   }
 
   return out;

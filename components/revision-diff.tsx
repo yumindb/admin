@@ -12,7 +12,14 @@ export function RevisionDiffRows({ changes }: { changes: FieldChange[] }) {
     <div className="space-y-2">
       {changes.map((c) => (
         <div key={c.field}>
-          <p className="text-xs font-medium text-primary/80">{c.label}</p>
+          <p className="text-xs font-medium text-primary/80">
+            {c.label}
+            {c.summary && (
+              <span className="ml-1.5 font-normal text-muted-foreground">
+                — {c.summary}
+              </span>
+            )}
+          </p>
           <ul className="mt-1 space-y-1">
             {c.rows.map((row, i) => (
               <li key={i} className="text-xs leading-relaxed">
@@ -26,6 +33,11 @@ export function RevisionDiffRows({ changes }: { changes: FieldChange[] }) {
                 <span className="text-foreground">{row.after}</span>
               </li>
             ))}
+            {!!c.more && (
+              <li className="text-xs text-muted-foreground/70">
+                …另外 {c.more} 項變動沒有列出
+              </li>
+            )}
           </ul>
         </div>
       ))}

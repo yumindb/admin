@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateGeofence } from "@/lib/geo";
+import { stableStringify } from "@/lib/log-diff";
 import type {
   ApprovalStage,
   DailyLogManpower,
@@ -158,10 +159,14 @@ export async function saveLogAction(payload: SaveLogPayload) {
       notes: payload.notes || null,
     };
 
+    // ⚠ 一定要用 stableStringify:snapshot 是從 jsonb 讀回來的(key 被 Postgres
+    // 重排過),next 是 client 傳來的原始順序。直接 JSON.stringify 比會把
+    // 「內容一樣、key 順序不同」判成有變 → changed_fields 塞一堆沒改的欄位,
+    // 詳情頁的前後對照就會出現算不出差異的空欄位。
     const changed: DailyLogEditableField[] = [];
     for (const k of EDITABLE_FIELDS) {
-      const before = JSON.stringify(snapshot[k] ?? null);
-      const after = JSON.stringify(
+      const before = stableStringify(snapshot[k] ?? null);
+      const after = stableStringify(
         (next as Record<string, unknown>)[k] ?? null
       );
       if (before !== after) changed.push(k);
