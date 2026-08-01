@@ -254,6 +254,18 @@ function diffLooseItems(
   return rows;
 }
 
+/**
+ * 照片的比對 key。
+ *
+ * ⚠ daily_logs.photos 的 path 有兩種形態:storage path(`{uid}/{ts}-x.jpg`)與
+ * 完整 signed URL(編輯流程會把簽好的 URL 原樣存回去,token 每次都不一樣)。
+ * 直接比字串會把「同一張照片」判成被換掉 — 實測某份日誌 12 張全被誤報。
+ * 取最後兩段(資料夾/檔名)就能跨兩種形態對上同一張。
+ */
+function photoKey(path: string): string {
+  return (path ?? "").split("?")[0].split("/").slice(-2).join("/");
+}
+
 /** 照片:只比張數與說明文字(路徑對使用者沒意義) */
 function diffPhotos(
   before: LogPhoto[],
@@ -267,10 +279,10 @@ function diffPhotos(
       after: `${after.length} 張`,
     });
   }
-  // 同一張照片(同 path)的說明被改掉
-  const bMap = new Map(before.map((p) => [p.path, p.caption ?? ""]));
+  // 同一張照片的說明被改掉
+  const bMap = new Map(before.map((p) => [photoKey(p.path), p.caption ?? ""]));
   for (const p of after) {
-    const bc = bMap.get(p.path);
+    const bc = bMap.get(photoKey(p.path));
     if (bc === undefined) continue;
     const ac = p.caption ?? "";
     if (bc !== ac) {
@@ -279,8 +291,8 @@ function diffPhotos(
   }
   // 張數一樣但換了照片 / 重新標註(path 變了)。
   // 只在 path 集合真的不同時才講 — 不然 jsonb key 順序造成的誤判會天天冒出來。
-  const bPaths = new Set(before.map((p) => p.path));
-  const swapped = after.filter((p) => !bPaths.has(p.path)).length;
+  const bPaths = new Set(before.map((p) => photoKey(p.path)));
+  const swapped = after.filter((p) => !bPaths.has(photoKey(p.path))).length;
   if (rows.length === 0 && swapped > 0) {
     rows.push({
       label: "照片內容",

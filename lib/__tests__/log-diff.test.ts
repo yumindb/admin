@@ -102,6 +102,39 @@ describe("diffSnapshot", () => {
     expect(diffSnapshot(EMPTY, EMPTY, ["photos", "manpower"], lookup)).toEqual([]);
   });
 
+  it("同一張照片存成 signed URL 與 storage path → 不算被更換", () => {
+    const path = "uid-1/1785242484443-lhj1fb.jpg";
+    const before = { ...EMPTY, photos: [{ path, caption: "" }] };
+    const after = {
+      ...EMPTY,
+      photos: [
+        {
+          path: `https://xxx.supabase.co/storage/v1/object/sign/daily-photos/${path}?token=abc.def`,
+          caption: "",
+        },
+      ],
+    };
+    expect(diffSnapshot(before, after, ["photos"], lookup)).toEqual([]);
+  });
+
+  it("照片說明被改 → 跨 signed URL / path 仍對得上同一張", () => {
+    const path = "uid-1/a.jpg";
+    const before = { ...EMPTY, photos: [{ path, caption: "舊說明" }] };
+    const after = {
+      ...EMPTY,
+      photos: [
+        {
+          path: `https://x/storage/v1/object/sign/daily-photos/${path}?token=zz`,
+          caption: "新說明",
+        },
+      ],
+    };
+    const [change] = diffSnapshot(before, after, ["photos"], lookup);
+    expect(change.rows).toEqual([
+      { label: "照片說明", before: "舊說明", after: "新說明" },
+    ]);
+  });
+
   it("工項一次動很多筆 → 給總結,明細只列前 8 筆", () => {
     const many = Array.from({ length: 20 }, (_, i) => ({
       work_item_id: `wi-${i}`,
