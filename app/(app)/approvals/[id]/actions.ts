@@ -10,7 +10,21 @@ import {
   loadApproveSignersThisRound,
   requiredApproveSignatures,
 } from "@/lib/approvals/dual-sign";
+import { extractStoragePath } from "@/lib/supabase/storage";
 import type { ApprovalStage, UserRole } from "@/lib/types";
+
+const SIGNATURE_BUCKET = "signatures";
+
+/**
+ * 簽名圖進 DB 前收斂成 storage path。
+ *
+ * uploadSignatureAction / stampSignatureAction 回給 client 的是 signed URL
+ * (要當場預覽),client 原樣送回來 → 以前就直接存進 log_approvals.signature_url,
+ * 存的是幾小時後失效的 token。讀取端(PDF、簽核歷程)本來就會重新簽,存 path 才對。
+ */
+function signaturePath(url: string | null | undefined): string | null {
+  return url ? extractStoragePath(url, SIGNATURE_BUCKET) : null;
+}
 
 /**
  * 三關正式簽核流(Phase 2.3 起,Phase 2.5 起每關都收簽名):
@@ -278,7 +292,7 @@ export async function approveStageAction(
     approver_id: user.id,
     decision: "approved",
     comment: payload.comment?.trim() || null,
-    signature_url: payload.signatureUrl ?? null,
+    signature_url: signaturePath(payload.signatureUrl),
   });
   if (insErr) {
     console.error(
@@ -363,7 +377,7 @@ export async function rejectStageAction(payload: ActPayload) {
     approver_id: user.id,
     decision: "rejected",
     comment: payload.comment.trim(),
-    signature_url: payload.signatureUrl ?? null,
+    signature_url: signaturePath(payload.signatureUrl),
   });
   if (insErr) {
     console.error(

@@ -1012,3 +1012,27 @@ case_work_items
   簽核者要知道自己簽完為什麼還沒結案。
 - 其他地方的角色標籤(STAGE_LABEL「核定(老闆)」、ROLE_LABEL、PDF 簽章欄)
   暫時不動 — 那是角色名稱不是雙簽敘述,要一起換再議。
+
+## 2026-08-02 — 照片 / 簽名不再把 signed URL 存進 DB(migration-2.32)
+
+- **現象**:`daily_logs.photos[].path`、`field_reports.photos[].path`、
+  `log_approvals.signature_url` 存的全是帶 token 的完整 signed URL。
+  清查 production:424 + 162 張照片、64 筆簽名,**沒有一筆是 storage path**。
+- **成因**:上傳 action 回給前端的是 signed URL(前端要當場預覽),
+  前端把它原樣放進 `photos[].path` 送回來存。編輯既有日誌時更明顯 —
+  edit page 先把 DB 裡的路徑簽成 URL 餵給表單,存檔又寫回去,每存一次換一個 token。
+- **為什麼一直沒被發現**:讀取端全都有容錯(`extractStoragePath` /
+  `fetchAsDataUrl` 的 regex),所以畫面永遠是對的。代價是:
+  jsonb 肥十倍、備份裡存的是幾小時後就失效的 token、
+  任何「這兩筆是不是同一張照片」的比對都得先繞過 token
+  (log-diff 就因此誤報過「12 張全部被更換」)。
+- **修法**:在 **server action** 這層收斂(`normalizePhotoPaths` /
+  `signaturePath`),client 愛傳什麼傳什麼,進 DB 一律 `{userId}/{檔名}`。
+  沒有動前端的預覽流程 — 前端本來就需要可直接放進 `<img src>` 的 URL。
+- **post_edit 的比對也要正規化**:不然 2026-08 以前存成 signed URL 的日誌,
+  第一次被編輯就會誤報「照片改過」(其實只是換了寫法)。
+- **既有資料**:migration-2.32 清一次。函式刻意不綁 bucket 名
+  (早期簽名圖有 daily-photos / signatures 混用),且**轉不出來就回原值** —
+  最壞情況是「這筆沒清乾淨」,不會變成壞路徑害照片顯示不出來。
+- **daily_log_revisions.snapshot 不動**:那是當時的原始快照,審計紀錄
+  就該保留當時存的值;log-diff 比對照片改用「資料夾/檔名」當 key,兩種寫法都對得上。

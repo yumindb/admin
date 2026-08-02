@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateGeofence } from "@/lib/geo";
+import { normalizePhotoPaths } from "@/lib/supabase/storage";
 import type { FieldReportPhoto, UserRole } from "@/lib/types";
+
+const PHOTO_BUCKET = "daily-photos";
 
 /** 隱式 GPS 戳記(migration-2.22) */
 export type SubmitLocationInput = {
@@ -56,7 +59,8 @@ export async function createFieldReportAction(payload: ReportPayload) {
     case_id: payload.caseId,
     author_id: userId,
     note: trimmedNote || null,
-    photos: payload.photos,
+    // 上傳 action 回的是 signed URL(client 預覽用),進 DB 收斂成 storage path
+    photos: normalizePhotoPaths(payload.photos, PHOTO_BUCKET),
   };
   if (payload.submitLocation) {
     const loc = payload.submitLocation;
@@ -134,7 +138,7 @@ export async function updateFieldReportAction(payload: ReportPayload & { reportI
     .update({
       case_id: payload.caseId,
       note: trimmedNote || null,
-      photos: payload.photos,
+      photos: normalizePhotoPaths(payload.photos, PHOTO_BUCKET),
     })
     .eq("id", payload.reportId);
   if (error) return { ok: false, error: "更新失敗：" + error.message };

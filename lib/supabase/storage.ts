@@ -38,6 +38,32 @@ export function extractStoragePath(input: string, bucket: string): string {
 }
 
 /**
+ * 寫進 DB 前把照片路徑正規化成 storage path。
+ *
+ * 為什麼需要:上傳 action 回給 client 的是 signed URL(要即時預覽),而 client
+ * 把它原樣放進 `photos[].path` 送回來存 — 結果 daily_logs / field_reports 存的
+ * 全是**帶 token 的完整 URL**(2026-08 清查:424 + 162 張全部都是)。
+ * 顯示端因為 extractStoragePath 容錯所以看不出問題,但:
+ *   - jsonb 一張路徑從 ~40 bytes 變成 ~400 bytes
+ *   - 存的是幾小時後就失效的 token,對備份 / 匯出毫無意義
+ *   - 任何「比對是不是同一張照片」的程式都得先繞過 token(log-diff already does)
+ *
+ * 所以在 server action 這一層統一收斂:client 愛傳什麼傳什麼,進 DB 一律是
+ * `{userId}/{檔名}`。讀取端不用改(getSignedUrls 本來就吃兩種)。
+ */
+export function normalizePhotoPaths<
+  T extends { path: string; original_path?: string },
+>(photos: T[] | null | undefined, bucket: string): T[] {
+  return (photos ?? []).map((p) => ({
+    ...p,
+    path: extractStoragePath(p.path, bucket),
+    ...(p.original_path
+      ? { original_path: extractStoragePath(p.original_path, bucket) }
+      : {}),
+  }));
+}
+
+/**
  * 一次撈多個 path 的 signed URL,回傳 Map<input, signedUrl>。
  *
  * - input 可以是完整 URL(歷史資料)或 storage path(新資料)。回傳的 Map

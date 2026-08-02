@@ -6,6 +6,10 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateGeofence } from "@/lib/geo";
 import { stableStringify } from "@/lib/log-diff";
+import { extractStoragePath, normalizePhotoPaths } from "@/lib/supabase/storage";
+
+const PHOTO_BUCKET = "daily-photos";
+const SIGNATURE_BUCKET = "signatures";
 import type {
   ApprovalStage,
   DailyLogManpower,
@@ -89,6 +93,14 @@ export async function saveLogAction(payload: SaveLogPayload) {
     }
   }
 
+  // client 傳來的 photos[].path 是上傳 action 回的 signed URL(要即時預覽用),
+  // 進 DB 前一律收斂成 storage path — 見 normalizePhotoPaths 的說明。
+  const photos = normalizePhotoPaths(payload.photos, PHOTO_BUCKET);
+  // 填表人簽名同理:uploadSignatureAction / stampSignatureAction 回的是 signed URL
+  const fillSignaturePath = payload.fillSignatureUrl
+    ? extractStoragePath(payload.fillSignatureUrl, SIGNATURE_BUCKET)
+    : undefined;
+
   if (!payload.caseId) return { ok: false, error: "請選案件" };
   if (!payload.logDate) return { ok: false, error: "請選日期" };
   const hasContent =
@@ -154,9 +166,16 @@ export async function saveLogAction(payload: SaveLogPayload) {
       work_items: payload.workItems,
       extra_items: payload.extraItems,
       unsigned_items: payload.unsignedItems,
-      photos: payload.photos,
+      photos,
       vendor_notices: payload.vendorNotices || null,
       notes: payload.notes || null,
+    };
+
+    // 比對「有沒有真的改」時,舊快照的照片也要先正規化 — 否則 2026-08 之前
+    // 存成 signed URL 的日誌,第一次被編輯就會誤報「照片改過」(其實只是換寫法)。
+    const snapshotForCompare: Record<string, unknown> = {
+      ...snapshot,
+      photos: normalizePhotoPaths(snapshot.photos, PHOTO_BUCKET),
     };
 
     // ⚠ 一定要用 stableStringify:snapshot 是從 jsonb 讀回來的(key 被 Postgres
@@ -165,7 +184,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
     // 詳情頁的前後對照就會出現算不出差異的空欄位。
     const changed: DailyLogEditableField[] = [];
     for (const k of EDITABLE_FIELDS) {
-      const before = stableStringify(snapshot[k] ?? null);
+      const before = stableStringify(snapshotForCompare[k] ?? null);
       const after = stableStringify(
         (next as Record<string, unknown>)[k] ?? null
       );
@@ -302,7 +321,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       work_items: payload.workItems,
       extra_items: payload.extraItems,
       unsigned_items: payload.unsignedItems,
-      photos: payload.photos,
+      photos,
       vendor_notices: payload.vendorNotices || null,
       notes: payload.notes || null,
       status,
@@ -336,7 +355,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       work_items: payload.workItems,
       extra_items: payload.extraItems,
       unsigned_items: payload.unsignedItems,
-      photos: payload.photos,
+      photos,
       vendor_notices: payload.vendorNotices || null,
       notes: payload.notes || null,
       status,
@@ -363,7 +382,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
       stage: "fill",
       approver_id: user.id,
       decision: "approved",
-      signature_url: payload.fillSignatureUrl,
+      signature_url: fillSignaturePath,
     });
     if (sigErr) return { ok: false, error: "簽名儲存失敗：" + sigErr.message };
   }
