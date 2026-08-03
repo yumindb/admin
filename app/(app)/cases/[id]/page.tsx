@@ -206,7 +206,6 @@ export default async function CaseDetailPage({
     actor?.role === "office_staff" || actor?.role === "owner";
   const items = (workItems ?? []) as CaseWorkItem[];
   const importsList = (imports ?? []) as TenderImport[];
-  const lastImport = importsList[0];
 
   type LogForCase = Pick<
     DailyLog,
@@ -627,26 +626,32 @@ export default async function CaseDetailPage({
         );
       })()}
 
-      {lastImport && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#E0DCD6] bg-[#FAF7F2] px-5 py-4 text-base text-muted-foreground">
-          <div>
-            最後匯入：
-            <span className="ml-1 text-foreground">{lastImport.file_name}</span>
-            <span className="ml-3 text-sm">
-              {formatTW(lastImport.created_at)}
-            </span>
-            <span className="ml-3 text-sm">
-              （新增 {lastImport.imported_count} 項，略過 {lastImport.skipped_count} 項）
-            </span>
-          </div>
-          {canEditWorkItems && (
-            <UndoImportButton
-              caseId={c.id}
-              importId={lastImport.id}
-              fileName={lastImport.file_name}
-              importedCount={lastImport.imported_count}
-            />
-          )}
+      {/* 匯入紀錄 — 同案件可匯多份標單(附加模式),每筆都可個別撤銷 */}
+      {importsList.length > 0 && (
+        <div className="mb-6 divide-y divide-[#EAE5DE] rounded-lg border border-[#E0DCD6] bg-[#FAF7F2] px-5 py-1.5 text-base text-muted-foreground">
+          {importsList.map((imp, i) => (
+            <div
+              key={imp.id}
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2.5"
+            >
+              <div>
+                {i === 0 ? "最後匯入：" : "先前匯入："}
+                <span className="ml-1 text-foreground">{imp.file_name}</span>
+                <span className="ml-3 text-sm">{formatTW(imp.created_at)}</span>
+                <span className="ml-3 text-sm">
+                  （新增 {imp.imported_count} 項，略過 {imp.skipped_count} 項）
+                </span>
+              </div>
+              {canEditWorkItems && (
+                <UndoImportButton
+                  caseId={c.id}
+                  importId={imp.id}
+                  fileName={imp.file_name}
+                  importedCount={imp.imported_count}
+                />
+              )}
+            </div>
+          ))}
         </div>
       )}
 

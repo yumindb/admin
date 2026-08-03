@@ -7,6 +7,12 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { requireRole } from "@/lib/auth/require-role";
+import {
+  offsetSortPath,
+  planUndoImport,
+  rootSegment,
+  type UndoRow,
+} from "@/lib/import-plan";
 import type { ParsedNode } from "@/lib/tender-parser";
 
 const UuidSchema = z.string().uuid();
@@ -14,10 +20,14 @@ const UuidSchema = z.string().uuid();
 /**
  * 確認匯入：把 client 傳上來的扁平化節點寫進 case_work_items + tender_imports。
  *
- * 重複匯入合併規則：
- *   - 已存在 (case_id, tender_code, name) 且 modified_by_user = true → skip
- *   - 已存在且未修改 → update（quantity / unit / unit_price / total_price / brand_note / import_id）
- *   - 不存在 → insert
+ * 兩種模式（2026-08-03 起,業主要求同案件可再匯第二份標單）：
+ *   - append 附加：全部當新工項插入,sort_path root 段位移到既有樹之後,
+ *     完全不動既有資料。匯「另一份標單」用這個（有工項時的預設）。
+ *   - merge 合併更新：重新匯入「同一份」標單用,以 (case_id, tender_code, name) 比對：
+ *       - 已存在且 modified_by_user = true → skip（保留使用者修改）
+ *       - 已存在且未修改 → update（quantity / unit / unit_price / total_price / brand_note）
+ *         ⚠ 不改 import_id — 改了會讓「撤銷此次匯入」把既有工項一起刪掉（2026-08-03 修）
+ *       - 不存在 → insert
  *
  * parent_id 透過 sortPath 在 server-side 重建（client 用的暫時 id 在 server-side 重新生成）。
  */
@@ -40,9 +50,12 @@ type IncomingNode = Pick<
   | "skippedByUser"
 >;
 
+export type ImportMode = "append" | "merge";
+
 type ConfirmPayload = {
   caseId: string;
   fileName: string;
+  mode: ImportMode;
   nodes: IncomingNode[];
   stats: { rows: number; sections: number; items: number; specs: number; skipped: number };
   warnings: { row: number; msg: string }[];
@@ -75,26 +88,39 @@ export async function confirmImportAction(payload: ConfirmPayload) {
   if (impErr || !imp) return { ok: false, error: "匯入記錄寫入失敗：" + impErr?.message };
   const importId = imp.id as string;
 
-  // 2) 撈現有 work items 做 dedupe — 必須限定當前 case,否則跨案匯入會把
+  // 2) 依模式準備:
+  //    append — 只查既有樹最大 sort_path root 段,新樹整批位移排在後面,不做合併比對。
+  //    merge — 撈現有 work items 做 dedupe — 必須限定當前 case,否則跨案匯入會把
   //    新案的工項 parent_id 接到舊案的 row 上(bug fixed 2026-04-26)
   //    fetchAllRows:1000+ 項的案件重複匯入時,dedupe map 缺列會造成重複插入
-  const { data: existing, error: existErr } = await fetchAllRows((from, to) =>
-    supabase
-      .from("case_work_items")
-      .select("id, tender_code, name, modified_by_user")
-      .eq("case_id", payload.caseId)
-      .order("id", { ascending: true })
-      .range(from, to),
-  );
-  if (existErr) return { ok: false, error: "讀取現有工項失敗：" + existErr.message };
-
   const dedupeKey = (code: string | null, name: string) => `${code ?? ""}|${name}`;
   const existingMap = new Map<string, { id: string; modified: boolean }>();
-  for (const e of existing ?? []) {
-    existingMap.set(dedupeKey(e.tender_code as string | null, e.name as string), {
-      id: e.id as string,
-      modified: !!e.modified_by_user,
-    });
+  let sortBase = 0;
+  if (payload.mode === "append") {
+    const { data: top, error: topErr } = await supabase
+      .from("case_work_items")
+      .select("sort_path")
+      .eq("case_id", payload.caseId)
+      .order("sort_path", { ascending: false })
+      .limit(1);
+    if (topErr) return { ok: false, error: "讀取現有工項失敗：" + topErr.message };
+    sortBase = top?.[0] ? rootSegment(top[0].sort_path as string) : 0;
+  } else {
+    const { data: existing, error: existErr } = await fetchAllRows((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("id, tender_code, name, modified_by_user")
+        .eq("case_id", payload.caseId)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+    if (existErr) return { ok: false, error: "讀取現有工項失敗：" + existErr.message };
+    for (const e of existing ?? []) {
+      existingMap.set(dedupeKey(e.tender_code as string | null, e.name as string), {
+        id: e.id as string,
+        modified: !!e.modified_by_user,
+      });
+    }
   }
 
   // 3) 過濾使用者勾「略過」的 → 不寫入但記入 skipped_count
@@ -131,6 +157,8 @@ export async function confirmImportAction(payload: ConfirmPayload) {
     spec_text: string | null;
     import_id: string;
   };
+  // ⚠ UpdateRow 沒有 import_id:合併更新的既有列必須留在原本的匯入批次底下,
+  //   否則「撤銷此次匯入」會把它們一起刪掉(2026-08-03 業主回報的資料流失根因)。
   type UpdateRow = {
     id: string;
     parent_id: string | null;
@@ -143,16 +171,16 @@ export async function confirmImportAction(payload: ConfirmPayload) {
     total_price: number | null;
     brand_note: string | null;
     spec_text: string | null;
-    import_id: string;
   };
   const toInsert: InsertRow[] = [];
   const toUpdate: UpdateRow[] = [];
 
   for (const n of sorted) {
     const itemType = n.type === "section" ? "section" : n.type === "spec" ? "spec" : "item";
-    const key = dedupeKey(n.tenderCode, n.name);
-    const dup = existingMap.get(key);
+    // append 模式 existingMap 是空的 → 一律走 insert;sortPath 位移到既有樹後面
+    const dup = existingMap.get(dedupeKey(n.tenderCode, n.name));
     const parentServerId = n.parentId ? idMap.get(n.parentId) ?? null : null;
+    const sortPath = offsetSortPath(n.sortPath, sortBase);
 
     if (dup) {
       idMap.set(n.id, dup.id);
@@ -160,7 +188,7 @@ export async function confirmImportAction(payload: ConfirmPayload) {
       toUpdate.push({
         id: dup.id,
         parent_id: parentServerId,
-        sort_path: n.sortPath,
+        sort_path: sortPath,
         depth: n.depth,
         item_type: itemType,
         unit: n.unit,
@@ -169,7 +197,6 @@ export async function confirmImportAction(payload: ConfirmPayload) {
         total_price: n.totalPrice,
         brand_note: n.brandNote,
         spec_text: n.specText,
-        import_id: importId,
       });
       if (itemType !== "section") updatedCount++;
     } else {
@@ -179,7 +206,7 @@ export async function confirmImportAction(payload: ConfirmPayload) {
         id: newId,
         case_id: payload.caseId,
         parent_id: parentServerId,
-        sort_path: n.sortPath,
+        sort_path: sortPath,
         depth: n.depth,
         item_type: itemType,
         tender_code: n.tenderCode,
@@ -249,7 +276,6 @@ export async function confirmImportAction(payload: ConfirmPayload) {
               total_price: u.total_price,
               brand_note: u.brand_note,
               spec_text: u.spec_text,
-              import_id: u.import_id,
             })
             .eq("id", u.id);
           if (error && !firstErr) firstErr = error.message;
@@ -277,32 +303,102 @@ export async function redirectAfterImport(caseId: string) {
   redirect(`/cases/${caseId}`);
 }
 
+export type UndoImportResult = {
+  ok: boolean;
+  error?: string;
+  deleted?: number;
+  keptReferenced?: number;
+  keptModified?: number;
+  keptAsParent?: number;
+};
+
 /**
- * 撤銷某次匯入：刪除 case_work_items 中 import_id = importId 且 modified_by_user = false 的項目。
- * 已被使用者修改過的項目保留（避免誤刪手動調整）。tender_imports 那筆 row 也刪掉。
+ * 撤銷某次匯入：刪除這次匯入建立、且可以安全刪除的工項,tender_imports 那筆 row 也刪掉。
+ *
+ * 「安全」由 planUndoImport 判定,以下一律保留（2026-08-03 修,舊版直接
+ * delete by import_id,合併匯入後會把原有工項一起刪掉,日誌全變「已刪除工項」）：
+ *   - 手動修改過的（modified_by_user）
+ *   - 任何日誌（含草稿）已引用的 — 刪了日誌會出現「(已刪除工項)」
+ *   - 底下還掛著要保留子孫的分類層 — parent_id 是 ON DELETE CASCADE,
+ *     刪分類層會把保留中的子項一起帶走
+ * 保留下來的列 import_id 會因 tender_imports 刪除（FK on delete set null）自動歸零。
  */
-export async function undoImportAction(formData: FormData) {
+export async function undoImportAction(payload: {
+  caseId: string;
+  importId: string;
+}): Promise<UndoImportResult> {
   await requireRole(["office_staff", "owner"]);
 
-  const caseIdRaw = String(formData.get("caseId") ?? "");
-  const importIdRaw = String(formData.get("importId") ?? "");
-  const caseIdParse = UuidSchema.safeParse(caseIdRaw);
-  const importIdParse = UuidSchema.safeParse(importIdRaw);
-  if (!caseIdParse.success || !importIdParse.success) return;
+  const caseIdParse = UuidSchema.safeParse(payload.caseId);
+  const importIdParse = UuidSchema.safeParse(payload.importId);
+  if (!caseIdParse.success || !importIdParse.success) {
+    return { ok: false, error: "資料格式錯誤" };
+  }
   const caseId = caseIdParse.data;
   const importId = importIdParse.data;
 
   const supabase = await createClient();
 
-  await supabase
-    .from("case_work_items")
-    .delete()
-    .eq("case_id", caseId)
-    .eq("import_id", importId)
-    .eq("modified_by_user", false);
+  // 1) 撈整案工項（fetchAllRows:真實標單單案 1200+ 列）
+  const { data: rows, error: rowsErr } = await fetchAllRows<UndoRow>((from, to) =>
+    supabase
+      .from("case_work_items")
+      .select("id, parent_id, import_id, modified_by_user")
+      .eq("case_id", caseId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+  if (rowsErr) return { ok: false, error: "讀取工項失敗：" + rowsErr.message };
 
-  await supabase.from("tender_imports").delete().eq("id", importId);
+  // 2) 收集此案所有日誌引用到的 work_item_id（含草稿 — 草稿也會 dangling）
+  const { data: logs, error: logsErr } = await fetchAllRows<{
+    work_items: { work_item_id?: string }[] | null;
+  }>((from, to) =>
+    supabase
+      .from("daily_logs")
+      .select("work_items")
+      .eq("case_id", caseId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+  if (logsErr) return { ok: false, error: "讀取日誌失敗：" + logsErr.message };
+  const referencedIds = new Set<string>();
+  for (const log of logs ?? []) {
+    for (const w of log.work_items ?? []) {
+      if (w.work_item_id) referencedIds.add(w.work_item_id);
+    }
+  }
+
+  // 3) 算安全刪除集,分批刪（.in() 走 URL query string,一次塞太多 id 會爆長度）
+  const plan = planUndoImport(rows ?? [], importId, referencedIds);
+  const CHUNK = 100;
+  for (let i = 0; i < plan.deletableIds.length; i += CHUNK) {
+    const chunk = plan.deletableIds.slice(i, i + CHUNK);
+    const { error: delErr } = await supabase
+      .from("case_work_items")
+      .delete()
+      .in("id", chunk);
+    if (delErr) {
+      revalidatePath(`/cases/${caseId}`);
+      return { ok: false, error: "刪除工項失敗：" + delErr.message };
+    }
+  }
+
+  const { error: impDelErr } = await supabase
+    .from("tender_imports")
+    .delete()
+    .eq("id", importId);
+  if (impDelErr) {
+    revalidatePath(`/cases/${caseId}`);
+    return { ok: false, error: "刪除匯入紀錄失敗：" + impDelErr.message };
+  }
 
   revalidatePath(`/cases/${caseId}`);
-  redirect(`/cases/${caseId}`);
+  return {
+    ok: true,
+    deleted: plan.deletableIds.length,
+    keptReferenced: plan.keptReferenced,
+    keptModified: plan.keptModified,
+    keptAsParent: plan.keptAsParent,
+  };
 }
