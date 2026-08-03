@@ -43,6 +43,12 @@ server actions(簽核/請假/回報成功後)
 | 請假核准 / 退回 | 申請人 | green / red |
 | 現場回報 | office_staff(排除回報人) | amber |
 
+**按鈕一律深連到那一份**(2026-08):待簽核/待核定卡片的按鈕連
+`/approvals/{logId}`,不連清單。LINE 送出的訊息無法事後修改(API 沒有編輯
+/收回端點),舊卡片會永遠寫著「待核定」;深連讓已經簽過的人點下去被
+`approvals/[id]` 的 status / stage 檢查轉到 `/logs/[id]` 看到「已核定」,
+不會白點一趟。批簽彙總沒有單一 logId,維持連 `/approvals`。
+
 實際收件人還要過三道過濾(依序):
 
 1. **已綁定 LINE**(line_bindings.line_user_id 非空)
@@ -73,13 +79,34 @@ server actions(簽核/請假/回報成功後)
 - 由 `scripts/line-rich-menu.mjs` 產生與部署:
   `node scripts/line-rich-menu.mjs render`(只產 PNG 預覽)/ `deploy`(需
   `LINE_CHANNEL_ACCESS_TOKEN` env;冪等,重跑會換新圖並清舊選單)
-- 5 個選單:4 個角色(2×3 格,URI 按鈕連現有頁面)+ 1 個未綁定預設
-  (完成綁定 / 使用說明書)。每個角色選單的 alias 固定
+- 6 個選單:4 個角色(2×3 格,URI 按鈕連現有頁面)+ **老闆的「有待核定」版**
+  + 1 個未綁定預設(完成綁定 / 使用說明書)。每個選單的 alias 固定
   (`yumin-role-<role>`),runtime 由 alias 解析 id(`lib/line/richmenu.ts`)
 - 掛載時機:綁定成功 → webhook 掛角色選單;傳「解除綁定」→ 退回預設;
   /staff 改角色 → 自動重掛。**Rich Menu 免費,點擊不計訊息額度**
 - 改選單內容:編輯 script 裡的 `ROLE_MENUS` 後重跑 deploy;已綁定使用者
   的選單指到 alias 背後的新 id,無需重綁(個人 link 指舊 id 的,重綁一次即可)
+- 產圖需要品牌 badge 檔。script 依序找 `YUMIN_BADGE` env → parent 資料夾的
+  `yumin-badge-svg.svg` → 舊的 `D:/Evelyn/yumin/Logo/`(專案搬家前的路徑)
+
+### 「還有未核定」狀態(2026-08,Phil 要求)
+
+Rich Menu 是**一張固定圖 + 熱區,沒有動態徽章或數字**,唯一能反映狀態的方式
+是事先做好兩張圖、再依狀態換掉那個人掛的選單。切換走 richmenu API,
+**不計訊息額度**(不是推播),官方文件寫立即生效。
+
+- 兩態而已,**不顯示份數**(業主決定):份數要 11 張圖,而且漏掉任何一個觸發點
+  數字就不準 — 不準的數字比沒有更糟
+- 差異:待核定格右上一顆琥珀點(`ALERT`,用通知系統的待處理色,不用銅金 —
+  銅金留給 logo)+ 說明字改「有單等你簽」,以及 `chatBarText` 從「功能選單」
+  改成「有待核定」(收合時聊天室底部那條 bar,比格子裡的點更容易看到)
+- runtime:`lib/line/pending-menu.ts` 的 `syncOwnerApprovalMenus()`。
+  **每次都全體 owner 重算**(通常只有兩位),不做增量 → 不會漂移
+- 每位核定人狀態不同:雙簽制下這輪已簽過的人不算待辦,判斷沿用待辦清單
+  同一支 `findApproveSignedLogIds`
+- 刻意不看 `notifications_enabled` — 那是暫停推播的開關,選單是被動狀態不吵人
+- 觸發點:簽核 / 退回 / 批簽 / 強制退回的 `after()`、綁定完成、角色改成 owner、
+  傳「選單」重整;另外夜間 cron(`recheck-stuck-pdfs`)兜底重算一次
 
 ## ⚠ 訊息額度(成本)
 

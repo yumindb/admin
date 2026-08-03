@@ -18,6 +18,11 @@ import type { LeaveType, UserRole } from "@/lib/types";
  *
  * 額度提醒:官方帳號免費方案每月只有 200 則推播。批簽走彙總通知
  * (notifyLogsBatch*)避免一次批 20 份就吃掉 20 則。
+ *
+ * 待辦類通知的按鈕一律深連到那一份(`/approvals/{logId}`),不連清單:
+ * LINE 送出的訊息無法事後修改,舊卡片會一直寫著「待核定」。深連讓簽過的人
+ * 點下去自動被 approvals/[id] 轉到 /logs/[id] 看到已核定,不會白點一趟
+ * (2026-08 Phil 反映舊卡片分不出簽過沒)。
  */
 
 function fmtDate(dateStr: string | null): string {
@@ -96,7 +101,7 @@ export async function notifyLogSubmitted(logId: string): Promise<void> {
       ],
       tone: "amber",
       buttonLabel: "去審核",
-      buttonPath: "/approvals",
+      buttonPath: `/approvals/${logId}`,
     }),
   });
 }
@@ -147,7 +152,7 @@ export async function notifyLogAwaitingApproval(logId: string): Promise<void> {
       ],
       tone: "amber",
       buttonLabel: "去核定",
-      buttonPath: "/approvals",
+      buttonPath: `/approvals/${logId}`,
     }),
   });
 }
@@ -178,7 +183,7 @@ export async function notifyLogAwaitingSecondApproval(
       ],
       tone: "amber",
       buttonLabel: "去核定",
-      buttonPath: "/approvals",
+      buttonPath: `/approvals/${logId}`,
     }),
   });
 }

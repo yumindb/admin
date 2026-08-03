@@ -31,12 +31,26 @@ const sharp = require("sharp");
 
 const BASE_URL = process.env.APP_BASE_URL ?? "https://yumin-admin.vercel.app";
 const OUT_DIR = path.join(SCRIPT_DIR, "rich-menu-out");
-/** 銅金 badge(品牌定稿素材;在專案 parent 資料夾) */
-const BADGE_PNG = "D:/Evelyn/yumin/Logo/yumin-badge-png.png";
+/**
+ * 銅金 badge(品牌定稿素材,在專案 parent 資料夾)。
+ * 依序找:env 指定 → parent 資料夾的 SVG → 舊的 D:/Evelyn 路徑(專案搬家前)。
+ * 找到 .svg 會先用 sharp 轉點陣再嵌進去 — SVG 裡直接 <image> 引 SVG,
+ * librsvg 不一定畫得出來。
+ */
+const BADGE_CANDIDATES = [
+  process.env.YUMIN_BADGE,
+  path.join(SCRIPT_DIR, "..", "..", "yumin-badge-svg.svg"),
+  "D:/Evelyn/yumin/Logo/yumin-badge-png.png",
+].filter(Boolean);
 
 const NAVY = "#003153";
 const CREAM = "#F5F1EC";
 const INK = "#5A5050";
+/**
+ * 「還有未核定」的提示點。用通知系統的待處理琥珀色(lib/line/flex.ts 的 amber),
+ * 不用銅金 — 銅金是品牌 accent,鐵則是每張圖只出現一次(已給 logo)。
+ */
+const ALERT = "#D97706";
 const NAVY_ON_NAVY_SUB = "#AFC2CF"; // 海軍藍底上的次要字
 const SERIF = "Source Han Serif TW"; // 思源宋體(標題)
 const SANS = "Noto Sans TC"; // 思源黑體(說明)
@@ -125,6 +139,32 @@ const ROLE_MENUS = [
   },
 ];
 
+/**
+ * 老闆選單的「還有未核定」版本(2026-08 Phil 要求)。
+ *
+ * Rich Menu 沒有動態徽章 — 只能事先做好兩張圖,再依狀態換掉那個人掛的選單
+ * (runtime 在 lib/line/pending-menu.ts)。只做「有 / 沒有」兩態不做份數:
+ * 份數要 11 張圖,而且漏掉任何一個觸發點數字就不準,不準比沒有更糟。
+ *
+ * 兩個差異:待核定格右上一顆琥珀點 + 說明字,以及 chatBarText —
+ * chatBarText 是選單收合時聊天室底部那條 bar,選單沒點開也看得到,
+ * 其實比格子裡的點更容易被注意到。
+ */
+const OWNER_MENU = ROLE_MENUS.find((m) => m.key === "owner");
+const OWNER_PENDING_MENU = {
+  ...OWNER_MENU,
+  key: "owner_pending",
+  alias: "yumin-role-owner-pending",
+  name: "yumin-老闆選單-有待核定",
+  chatBarText: "有待核定",
+  cells: OWNER_MENU.cells.map((c) =>
+    c.label === "待核定" ? { ...c, sub: "有單等你簽", dot: true } : c,
+  ),
+};
+
+/** 走 2×3 格版型的選單(4 個角色 + 老闆的待核定版) */
+const GRID_MENUS = [...ROLE_MENUS, OWNER_PENDING_MENU];
+
 const DEFAULT_MENU = {
   key: "default",
   alias: "yumin-default",
@@ -141,9 +181,23 @@ const DEFAULT_MENU = {
 let badgeDataUri = null;
 async function loadBadge() {
   if (badgeDataUri) return badgeDataUri;
-  const buf = await readFile(BADGE_PNG);
-  badgeDataUri = `data:image/png;base64,${buf.toString("base64")}`;
-  return badgeDataUri;
+  for (const candidate of BADGE_CANDIDATES) {
+    let buf;
+    try {
+      buf = await readFile(candidate);
+    } catch {
+      continue; // 這台機器沒這個路徑,試下一個
+    }
+    if (candidate.toLowerCase().endsWith(".svg")) {
+      buf = await sharp(buf, { density: 600 }).resize({ height: 460 }).png().toBuffer();
+    }
+    badgeDataUri = `data:image/png;base64,${buf.toString("base64")}`;
+    return badgeDataUri;
+  }
+  throw new Error(
+    `找不到品牌 badge,試過:\n  ${BADGE_CANDIDATES.join("\n  ")}\n` +
+      `用 YUMIN_BADGE env 指定檔案路徑(.png 或 .svg)。`,
+  );
 }
 
 function iconSvg(name, color, size, x, y, strokeWidth = 2.6) {
@@ -204,6 +258,13 @@ async function roleMenuSvg(menu) {
       ${iconSvg(cell.icon, fg, 168, x + w / 2 - 84, y + 118)}
       <text x="${x + w / 2}" y="${y + 464}" text-anchor="middle" font-family="${SANS}" font-weight="700" font-size="102" fill="${fg}" letter-spacing="8">${cell.label}</text>
       <text x="${x + w / 2}" y="${y + 586}" text-anchor="middle" font-family="${SANS}" font-size="44" fill="${subFg}" letter-spacing="6">${cell.sub}</text>`;
+    // 「還有未核定」提示點:格子右上角,底色上加一圈同底色描邊拉開對比
+    if (cell.dot) {
+      const dx = x + w - 96;
+      const dy = y + 96;
+      const ring = cell.primary ? NAVY : CREAM;
+      cells += `<circle cx="${dx}" cy="${dy}" r="38" fill="${ALERT}" stroke="${ring}" stroke-width="10"/>`;
+    }
   });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${ROLE_W}" height="${ROLE_H}" viewBox="0 0 ${ROLE_W} ${ROLE_H}">
@@ -277,7 +338,7 @@ function menuAreas(menu) {
 async function renderAll() {
   await mkdir(OUT_DIR, { recursive: true });
   const files = new Map();
-  for (const menu of ROLE_MENUS) {
+  for (const menu of GRID_MENUS) {
     const png = await sharp(Buffer.from(await roleMenuSvg(menu))).png().toBuffer();
     await writeFile(path.join(OUT_DIR, `${menu.key}.png`), png);
     files.set(menu.key, png);
@@ -335,7 +396,7 @@ async function deploy() {
     (aliasList.aliases ?? []).map((a) => a.richMenuAliasId),
   );
 
-  const allMenus = [...ROLE_MENUS, DEFAULT_MENU];
+  const allMenus = [...GRID_MENUS, DEFAULT_MENU];
   const created = {};
   for (const menu of allMenus) {
     const size =
@@ -349,7 +410,7 @@ async function deploy() {
         size,
         selected: true,
         name: menu.name,
-        chatBarText: "功能選單",
+        chatBarText: menu.chatBarText ?? "功能選單",
         areas: menuAreas(menu),
       },
     );

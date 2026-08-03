@@ -138,6 +138,12 @@ export async function updateStaffAction(
       if (binding?.line_user_id) {
         const { linkRoleRichMenu } = await import("@/lib/line/richmenu");
         await linkRoleRichMenu(binding.line_user_id as string, data.role);
+        if (data.role === "owner") {
+          const { syncOwnerApprovalMenus } = await import(
+            "@/lib/line/pending-menu"
+          );
+          await syncOwnerApprovalMenus();
+        }
       }
     } catch (e) {
       console.error("[staff] rich menu 重掛失敗:", e);

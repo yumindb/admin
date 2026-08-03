@@ -20,6 +20,16 @@ const ALIAS_BY_ROLE: Record<UserRole, string> = {
   field_assistant: "yumin-role-field-assistant",
 };
 
+/**
+ * 老闆選單的「還有未核定」版本(2026-08 Phil 要求)。
+ *
+ * Rich Menu 是一張固定圖 + 熱區,沒有動態徽章 — 要在選單上顯示狀態,只能
+ * 事先做好兩張圖,再換掉那個人身上掛的選單。切換走的是 richmenu API,
+ * **不計訊息額度**(不是推播)。狀態只有「有/沒有」兩種,不顯示份數。
+ */
+export const OWNER_ALIAS = ALIAS_BY_ROLE.owner;
+export const OWNER_PENDING_ALIAS = "yumin-role-owner-pending";
+
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const aliasCache = new Map<string, { id: string; at: number }>();
 
@@ -49,14 +59,12 @@ async function resolveAlias(aliasId: string): Promise<string | null> {
   }
 }
 
-/** 綁定完成 / 角色變更時:把角色選單掛到這個 LINE 使用者 */
-export async function linkRoleRichMenu(
+/** 把指定 alias 的選單掛到這個 LINE 使用者(alias 不存在就安靜跳過) */
+export async function linkRichMenuByAlias(
   lineUserId: string,
-  role: UserRole,
+  alias: string,
 ): Promise<void> {
   if (!isLineConfigured()) return;
-  const alias = ALIAS_BY_ROLE[role];
-  if (!alias) return;
   const richMenuId = await resolveAlias(alias);
   if (!richMenuId) return;
   try {
@@ -71,7 +79,7 @@ export async function linkRoleRichMenu(
     );
     if (!res.ok) {
       console.error(
-        `[richmenu] link 失敗 (${role}):`,
+        `[richmenu] link 失敗 (${alias}):`,
         res.status,
         (await res.text()).slice(0, 200),
       );
@@ -79,6 +87,21 @@ export async function linkRoleRichMenu(
   } catch (e) {
     console.error("[richmenu] link 連線失敗:", e);
   }
+}
+
+/**
+ * 綁定完成 / 角色變更時:把角色選單掛到這個 LINE 使用者。
+ *
+ * owner 掛的是「沒有待核定」的基礎版;正確的待核定狀態由呼叫端接著跑
+ * `syncOwnerApprovalMenus()` 修正(見 lib/line/pending-menu.ts)。
+ */
+export async function linkRoleRichMenu(
+  lineUserId: string,
+  role: UserRole,
+): Promise<void> {
+  const alias = ALIAS_BY_ROLE[role];
+  if (!alias) return;
+  await linkRichMenuByAlias(lineUserId, alias);
 }
 
 /** 解除綁定時:解掛個人選單,退回未綁定預設選單 */

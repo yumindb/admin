@@ -324,6 +324,9 @@ export async function approveStageAction(
       } else if (nextStage === "approve") {
         await events.notifyLogAwaitingApproval(payload.logId);
       }
+      // 核定關的待辦有變 → 更新核定人的 LINE 選單狀態(有/沒有未核定)
+      const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
+      await syncOwnerApprovalMenus();
     });
   }
 
@@ -394,6 +397,8 @@ export async function rejectStageAction(payload: ActPayload) {
   after(async () => {
     const { notifyLogRejected } = await import("@/lib/notifications/events");
     await notifyLogRejected(payload.logId, rejectComment);
+    const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
+    await syncOwnerApprovalMenus();
   });
 
   revalidatePath("/approvals");
@@ -494,6 +499,8 @@ export async function batchApproveAction(payload: {
           await events.notifyLogsBatchAwaitingSecondApproval(waitingCount, actorId);
         }
       }
+      const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
+      await syncOwnerApprovalMenus();
     });
   }
 
@@ -581,6 +588,8 @@ export async function forceRejectStuckLogAction(payload: {
   after(async () => {
     const { notifyLogRejected } = await import("@/lib/notifications/events");
     await notifyLogRejected(payload.logId, reason, { forced: true });
+    const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
+    await syncOwnerApprovalMenus();
   });
 
   revalidatePath("/approvals");

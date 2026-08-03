@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { cleanupOldLogs } from "@/lib/retention";
 import { retryPendingNotifications } from "@/lib/notifications/notify";
+import { syncOwnerApprovalMenus } from "@/lib/line/pending-menu";
 
 // 三個工作合併:PDF flip 數秒,retention 數秒,通知重試最多 50 則。
 export const maxDuration = 60;
@@ -13,6 +14,8 @@ export const maxDuration = 60;
  *   1. 把卡在 pdf_status='generating' 太久(>10 分鐘)的日誌翻成 'failed'
  *   2. 清理過期的 login_attempts / daily_log_revisions / audit_logs(見 lib/retention)
  *   3. 重試沒送成的 LINE 通知 + 清 30 天前的 notification_queue(見 lib/notifications)
+ *   4. 重算老闆 Rich Menu 的「還有未核定」狀態(見 lib/line/pending-menu)—
+ *      平常由簽核事件即時同步,這裡只是兜底,防某次事件同步失敗後一直錯下去
  *
  * 觸發:每天 UTC 16:00(台北 00:00),見 vercel.json。
  *
@@ -88,6 +91,9 @@ export async function GET(request: Request) {
       notifications.error,
     );
   }
+
+  // 第四件事:老闆選單「還有未核定」狀態兜底重算(自己吞例外,不影響上面三件)
+  await syncOwnerApprovalMenus();
 
   return NextResponse.json({
     ok: !retentionError && !notifications.error,

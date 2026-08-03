@@ -152,6 +152,10 @@ async function handleEvent(event: LineEvent): Promise<void> {
     .maybeSingle();
   if (profile?.role) {
     await linkRoleRichMenu(userId, profile.role as UserRole);
+    if (profile.role === "owner") {
+      const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
+      await syncOwnerApprovalMenus();
+    }
   }
   // 明確喊「選單」的人給個回饋,其他訊息保持安靜
   if (text === "選單" && replyToken) {
@@ -235,6 +239,10 @@ async function handleBindingCode(
   // 依角色掛 Rich Menu(失敗不影響綁定)
   if (profile?.role) {
     await linkRoleRichMenu(userId, profile.role as UserRole);
+    if (profile.role === "owner") {
+      const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
+      await syncOwnerApprovalMenus();
+    }
   }
 
   if (replyToken) {
