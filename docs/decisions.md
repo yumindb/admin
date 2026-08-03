@@ -1036,3 +1036,20 @@ case_work_items
   最壞情況是「這筆沒清乾淨」,不會變成壞路徑害照片顯示不出來。
 - **daily_log_revisions.snapshot 不動**:那是當時的原始快照,審計紀錄
   就該保留當時存的值;log-diff 比對照片改用「資料夾/檔名」當 key,兩種寫法都對得上。
+
+## 2026-08-03 — Vercel 執行區域 hkg1 → syd1(貼著資料庫)
+
+- **量到的問題**(從台灣):`/logs` 1.3–2.0s、`/dashboard` 1.4–2.3s,
+  連沒有任何資料查詢的 `/login` 都要 1.2s;純靜態的 `/manual.html` 只要 0.22s。
+- **根因**:Supabase 在**雪梨**(`ap-southeast-2`,由 `db.<ref>.supabase.co`
+  的 IPv6 `2406:da1c:…` 比對 AWS ip-ranges 確認),而 Vercel function 在香港。
+  每個請求都要跨太平洋:`proxy.ts` 對所有非靜態路徑跑 `updateSession()`
+  (一次 Auth 查詢),頁面再疊自己的查詢,每趟 150–250ms。1.3s ≈ 5、6 趟。
+- **決定**:function 搬去 `syd1` 跟資料庫同機房。使用者那一趟變遠
+  (台灣↔香港 ~40ms → 台灣↔雪梨 ~120ms)但只付一次,跨海查詢是付 5、6 次。
+- **不是最佳解,只是現在能一行改完的解**:雪梨對台灣使用者本來就是錯的位置。
+  真正的解是 Supabase 搬東京 / 新加坡 + Vercel 設同一區(兩邊都快),
+  但那要建新專案、還原備份、搬 Storage、換金鑰,是獨立的維護任務。
+- **驗證方式**:`X-Vercel-Id` 回應標頭的第二段就是 function region
+  (`hkg1::hkg1::…` → `syd1::syd1::…`),改完直接 curl 就能確認 deploy 有生效 —
+  這也順便擋掉 2026-05-17 那種「改 vercel.json 造成 silent deploy failure」。
