@@ -7,12 +7,6 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { requireRole } from "@/lib/auth/require-role";
-import {
-  offsetSortPath,
-  planUndoImport,
-  rootSegment,
-  type UndoRow,
-} from "@/lib/import-plan";
 import type { ParsedNode } from "@/lib/tender-parser";
 
 const UuidSchema = z.string().uuid();
@@ -20,14 +14,10 @@ const UuidSchema = z.string().uuid();
 /**
  * 確認匯入：把 client 傳上來的扁平化節點寫進 case_work_items + tender_imports。
  *
- * 兩種模式（2026-08-03 起,業主要求同案件可再匯第二份標單）：
- *   - append 附加：全部當新工項插入,sort_path root 段位移到既有樹之後,
- *     完全不動既有資料。匯「另一份標單」用這個（有工項時的預設）。
- *   - merge 合併更新：重新匯入「同一份」標單用,以 (case_id, tender_code, name) 比對：
- *       - 已存在且 modified_by_user = true → skip（保留使用者修改）
- *       - 已存在且未修改 → update（quantity / unit / unit_price / total_price / brand_note）
- *         ⚠ 不改 import_id — 改了會讓「撤銷此次匯入」把既有工項一起刪掉（2026-08-03 修）
- *       - 不存在 → insert
+ * 重複匯入合併規則：
+ *   - 已存在 (case_id, tender_code, name) 且 modified_by_user = true → skip
+ *   - 已存在且未修改 → update（quantity / unit / unit_price / total_price / brand_note / import_id）
+ *   - 不存在 → insert
  *
  * parent_id 透過 sortPath 在 server-side 重建（client 用的暫時 id 在 server-side 重新生成）。
  */
@@ -50,12 +40,9 @@ type IncomingNode = Pick<
   | "skippedByUser"
 >;
 
-export type ImportMode = "append" | "merge";
-
 type ConfirmPayload = {
   caseId: string;
   fileName: string;
-  mode: ImportMode;
   nodes: IncomingNode[];
   stats: { rows: number; sections: number; items: number; specs: number; skipped: number };
   warnings: { row: number; msg: string }[];
