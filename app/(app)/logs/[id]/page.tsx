@@ -147,24 +147,35 @@ export default async function LogDetailPage({
           role === "owner"
         : false;
 
-  // 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
-  const { count: dayCount } = await supabase
-    .from("daily_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("case_id", l.case_id)
-    .eq("log_date", l.log_date)
-    .lte("created_at", l.created_at);
-  const daySeq = dayCount ?? 1;
-
-  // 送出後編輯軌跡(post-submission edits) — 連 editor 名稱與編輯前快照一起撈。
-  // 放在 ancestry 之前:快照裡可能引用「現在已經被改掉」的工項,名稱查表要一起帶。
-  const { data: revisionRows } = await supabase
-    .from("daily_log_revisions")
-    .select(
-      "id, log_id, editor_id, editor_role, edited_at, log_status_at_edit, changed_fields, reason, snapshot, editor:profiles!editor_id(full_name)"
-    )
-    .eq("log_id", id)
-    .order("edited_at", { ascending: false });
+  // 這三筆彼此無關,平行撈 — 序列跑等於白等兩趟 round trip。
+  //   1. 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
+  //   2. 送出後編輯軌跡(post-submission edits),連 editor 名稱與編輯前快照
+  //      (要在 ancestry 之前拿到:快照裡可能引用「現在已經被改掉」的工項,
+  //       名稱查表要一起帶)
+  //   3. 簽核歷程
+  const [dayCountRes, revisionRes, approvalsRes] = await Promise.all([
+    supabase
+      .from("daily_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("case_id", l.case_id)
+      .eq("log_date", l.log_date)
+      .lte("created_at", l.created_at),
+    supabase
+      .from("daily_log_revisions")
+      .select(
+        "id, log_id, editor_id, editor_role, edited_at, log_status_at_edit, changed_fields, reason, snapshot, editor:profiles!editor_id(full_name)"
+      )
+      .eq("log_id", id)
+      .order("edited_at", { ascending: false }),
+    supabase
+      .from("log_approvals")
+      .select("*")
+      .eq("log_id", id)
+      .order("created_at", { ascending: true }),
+  ]);
+  const daySeq = dayCountRes.count ?? 1;
+  const revisionRows = revisionRes.data;
+  const approvals = approvalsRes.data;
 
   const workItemIds = [
     ...new Set([
@@ -195,11 +206,6 @@ export default async function LogDetailPage({
     ancestry
   );
 
-  const { data: approvals } = await supabase
-    .from("log_approvals")
-    .select("*")
-    .eq("log_id", id)
-    .order("created_at", { ascending: true });
   const apList = (approvals ?? []) as LogApproval[];
 
   type RevisionRow = {
@@ -268,23 +274,25 @@ export default async function LogDetailPage({
 
   // Storage 已轉 private → signed URL(5 min)。歷史資料 path 是完整 public URL,
   // 新資料是 storage path,helper 同時吃兩種。
-  const photoSignedMap = await getSignedUrls(
-    "daily-photos",
-    rawLogPhotos.map((p) => p.path),
-    // 1h:照片牆有 lazy/分批載入,使用者看頁面超過 5 分鐘再展開,
-    // 縮圖才請求 — 5 分鐘效期會 400 破圖
-    3600,
-  );
+  // 簽核紀錄的簽名圖也轉 signed URL — 與照片同時簽,兩個 bucket 互不相干
+  const sigInputs = apList
+    .map((a) => a.signature_url)
+    .filter((s): s is string => !!s);
+  const [photoSignedMap, sigSignedMap] = await Promise.all([
+    getSignedUrls(
+      "daily-photos",
+      rawLogPhotos.map((p) => p.path),
+      // 1h:照片牆有 lazy/分批載入,使用者看頁面超過 5 分鐘再展開,
+      // 縮圖才請求 — 5 分鐘效期會 400 破圖
+      3600,
+    ),
+    getSignedUrls("signatures", sigInputs),
+  ]);
   const logPhotos = rawLogPhotos.map((p) => ({
     ...p,
     path: photoSignedMap.get(p.path) ?? p.path,
   }));
 
-  // 簽核紀錄的簽名圖也轉 signed URL
-  const sigInputs = apList
-    .map((a) => a.signature_url)
-    .filter((s): s is string => !!s);
-  const sigSignedMap = await getSignedUrls("signatures", sigInputs);
   const apListSigned = apList.map((a) => ({
     ...a,
     signature_url: a.signature_url
@@ -473,10 +481,12 @@ export default async function LogDetailPage({
           </div>
         );
       })()}
-      {l.status === "rejected" && isOwnerOfLog && (
+      {l.status === "rejected" && canEdit && (
         <div className="mb-6">
           <NextStepHint tone="warning" title="已被退回">
-            請查看下方「簽核歷程」的退回原因，點右上「編輯」修正後重新送出。
+            {isOwnerOfLog
+              ? "請查看下方「簽核歷程」的退回原因，點右上「編輯」修正後，在表單底按「送出核定」重新送審。"
+              : "請查看下方「簽核歷程」的退回原因，點右上「編輯」修正後按「存檔並重新送出」，日誌會回到你這關重新審核。"}
           </NextStepHint>
         </div>
       )}

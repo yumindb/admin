@@ -191,25 +191,32 @@ export async function saveLogAction(payload: SaveLogPayload) {
       if (before !== after) changed.push(k);
     }
 
-    if (changed.length === 0) {
+    // 已退回的日誌:這次存檔本身就是「修正完畢、重新送出」,即使內容沒動也要送回
+    // 簽核流程(2026-08 業主回報:助理改完退回的日誌只能存檔,沒有任何重送入口)。
+    const resubmitFromRejected = existing.status === "rejected";
+
+    if (changed.length === 0 && !resubmitFromRejected) {
       // 沒有改動就直接放行,不寫 revision
       return { ok: true, logId, unchanged: true };
     }
 
     // 先寫 revision,再 update。失敗就 reject 整個操作。
-    const { error: revErr } = await supabase
-      .from("daily_log_revisions")
-      .insert({
-        log_id: logId,
-        editor_id: user.id,
-        editor_role: role,
-        log_status_at_edit: existing.status,
-        snapshot,
-        changed_fields: changed,
-        reason: payload.editReason?.trim() || null,
-      });
-    if (revErr) {
-      return { ok: false, error: "寫入編輯紀錄失敗：" + revErr.message };
+    // 內容完全沒動的重送不留 revision(沒有前後對照可看),只做狀態轉移。
+    if (changed.length > 0) {
+      const { error: revErr } = await supabase
+        .from("daily_log_revisions")
+        .insert({
+          log_id: logId,
+          editor_id: user.id,
+          editor_role: role,
+          log_status_at_edit: existing.status,
+          snapshot,
+          changed_fields: changed,
+          reason: payload.editReason?.trim() || null,
+        });
+      if (revErr) {
+        return { ok: false, error: "寫入編輯紀錄失敗：" + revErr.message };
+      }
     }
 
     // 簽核階段重設規則(post_edit 時依角色決定退回到哪一關):
@@ -219,7 +226,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
     //   - submitted + 助理 改 + current_stage='audit' → 不變(助理在自己關卡內修正)
     //   - submitted + 主任 改 + current_stage='review' → 退到 audit
     //     (主任改完不再卡自己關卡;直接讓助理看新版本)
-    //   - rejected → current_stage 仍是 null,不變(主任後續再走 classic 重送)
+    //   - rejected → 一律回到 submitted + audit 關(助理重審 → 再上核定人)
     //   - 老闆 改 → 已被 status='approved' 阻擋進不來
     const existingStage =
       (existing.current_stage as ApprovalStage | null) ?? null;
@@ -230,6 +237,8 @@ export async function saveLogAction(payload: SaveLogPayload) {
       } else if (role === "office_staff" && existingStage === "approve") {
         nextStage = "audit";
       }
+    } else if (resubmitFromRejected) {
+      nextStage = "audit";
     }
     const stageChanged = nextStage !== existingStage;
 
@@ -238,6 +247,14 @@ export async function saveLogAction(payload: SaveLogPayload) {
     const expectedStatus = existing.status as string;
     const updatePayload: Record<string, unknown> = { ...next };
     if (stageChanged) updatePayload.current_stage = nextStage;
+    // 重送:submitted_at 要更新 — 雙簽的「本輪已簽人數」是用
+    // log_approvals.created_at >= daily_logs.submitted_at 判定的,不更新會把
+    // 退回前那一輪的核定簽名算進這一輪。
+    const resubmittedAt = resubmitFromRejected ? new Date().toISOString() : null;
+    if (resubmitFromRejected) {
+      updatePayload.status = "submitted";
+      updatePayload.submitted_at = resubmittedAt;
+    }
     const { data: updRows, error: updErr } = await supabase
       .from("daily_logs")
       .update(updatePayload)
@@ -254,10 +271,32 @@ export async function saveLogAction(payload: SaveLogPayload) {
       };
     }
 
+    if (resubmitFromRejected) {
+      // 重送 → 核定簽名計數歸零(上一輪的簽名不算數)。
+      // 獨立語句 + 忽略錯誤:migration-2.29 未跑時不影響重送本身。
+      await supabase
+        .from("daily_logs")
+        .update({ approve_signatures: 0 })
+        .eq("id", logId);
+
+      // 通知辦公室助理有退件修正完、重新進 audit 關。
+      // 放在 after():不阻塞 response,通知失敗也不影響日誌本身。
+      const notifyLogId = logId;
+      after(async () => {
+        const { notifyLogResubmitted } = await import("@/lib/notifications/events");
+        await notifyLogResubmitted(notifyLogId);
+      });
+    }
+
     revalidatePath("/logs");
     revalidatePath(`/logs/${logId}`);
     revalidatePath("/approvals");
-    return { ok: true, logId, stageReset: stageChanged ? nextStage : null };
+    return {
+      ok: true,
+      logId,
+      stageReset: stageChanged ? nextStage : null,
+      resubmitted: resubmitFromRejected,
+    };
   }
 
   // ============================================================
@@ -267,7 +306,33 @@ export async function saveLogAction(payload: SaveLogPayload) {
   // draft 時兩個欄位都 null。
   // 重送被退回的日誌(rejected → submit)同樣直接進 audit。
   // 若未來需要加回主任複核關,改這裡為 'review' 並恢復 NEXT_STAGE fill→review 即可。
-  const status = payload.intent === "submit" ? "submitted" : "draft";
+
+  // 編輯既有日誌前先讀當前狀態:classic 編輯只准動 draft / rejected,而且
+  // 「暫存」不可以把已退回的日誌打回 draft — 那會讓它從助理與核定人的清單整份
+  // 消失、也不發任何通知(2026-08 業主回報的失蹤日誌就是這樣來的)。
+  let existingStatus: string | null = null;
+  if (payload.logId) {
+    const { data: existingRow } = await supabase
+      .from("daily_logs")
+      .select("status")
+      .eq("id", payload.logId)
+      .maybeSingle();
+    if (!existingRow) return { ok: false, error: "找不到日誌" };
+    existingStatus = existingRow.status as string;
+    if (existingStatus !== "draft" && existingStatus !== "rejected") {
+      return {
+        ok: false,
+        error: "這份日誌已在簽核流程中，請用「儲存編輯」而不是重新送出",
+      };
+    }
+  }
+
+  const status =
+    payload.intent === "submit"
+      ? "submitted"
+      : existingStatus === "rejected"
+        ? "rejected"   // 已退回的日誌暫存 → 維持已退回,不降級成草稿
+        : "draft";
   const currentStage = payload.intent === "submit" ? "audit" : null;
   const submittedAt = payload.intent === "submit" ? new Date().toISOString() : null;
 
@@ -330,12 +395,22 @@ export async function saveLogAction(payload: SaveLogPayload) {
     if (submittedAt) updatePayload.submitted_at = submittedAt;
     if (submitLocFields) Object.assign(updatePayload, submitLocFields);
 
-    const { error } = await supabase
+    // ⚠ 一定要看 rowcount:`.eq("supervisor_id", user.id)` 或 RLS 擋下來時,
+    // PostgREST 回的是「0 筆更新、沒有 error」。只看 error 會回報送出成功但
+    // 資料庫完全沒動 — 使用者以為送出了、審核端永遠收不到。
+    const { data: updRows, error } = await supabase
       .from("daily_logs")
       .update(updatePayload)
       .eq("id", logId)
-      .eq("supervisor_id", user.id);
+      .eq("supervisor_id", user.id)
+      .select("id");
     if (error) return { ok: false, error: "儲存失敗：" + error.message };
+    if (!updRows || updRows.length === 0) {
+      return {
+        ok: false,
+        error: "沒有權限修改這份日誌（只有填表的工地主任本人可以重新送出）",
+      };
+    }
 
     // 重送 → 核定簽名計數歸零(雙簽制:上一輪的簽名不算數)。
     // 獨立語句 + 忽略錯誤:migration-2.29 未跑時不影響送出。

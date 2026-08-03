@@ -101,6 +101,34 @@ export async function notifyLogSubmitted(logId: string): Promise<void> {
   });
 }
 
+/**
+ * 被退回的日誌修正後重新送出 → 通知辦公室助理重新審核。
+ *
+ * 跟首次送出分開一個 event_type:訊息要講清楚這是「改好的退件」而不是新日誌,
+ * 去重視窗也才不會跟前一則「新日誌待審核」互相蓋掉。
+ */
+export async function notifyLogResubmitted(logId: string): Promise<void> {
+  const ctx = await loadLogContext(logId);
+  if (!ctx) return;
+  await sendNotification({
+    eventType: "log_resubmitted",
+    relatedId: logId,
+    recipients: { roles: ["office_staff"] },
+    altText: "退回的日誌已修正",
+    message: noticeFlex({
+      title: "退回的日誌已修正",
+      lines: [
+        `案件:${ctx.caseName}`,
+        `日期:${fmtDate(ctx.logDate)}`,
+        `主任:${ctx.supervisorName}`,
+      ],
+      tone: "amber",
+      buttonLabel: "去重新審核",
+      buttonPath: `/approvals/${logId}`,
+    }),
+  });
+}
+
 /** 辦公室審核通過 → 通知老闆核定 */
 export async function notifyLogAwaitingApproval(logId: string): Promise<void> {
   const ctx = await loadLogContext(logId);

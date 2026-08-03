@@ -53,6 +53,7 @@ export const CATEGORY_KEYS = NOTIFICATION_CATEGORIES.map(
 /** 每個 event_type 屬於哪個分類(events.ts 送出的每種事件都要在這裡登記) */
 export const EVENT_CATEGORY: Record<string, NotificationCategory> = {
   log_submitted: "logs_to_review",
+  log_resubmitted: "logs_to_review",
   log_to_approve: "logs_to_review",
   log_batch_to_approve: "logs_to_review",
   log_approved: "log_results",

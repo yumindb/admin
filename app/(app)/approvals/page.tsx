@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { getSignedUrl } from "@/lib/supabase/storage";
 import { findApproveSignedLogIds } from "@/lib/approvals/dual-sign";
 import { NextStepHint } from "@/components/next-step-hint";
@@ -47,24 +48,13 @@ const PAGE_COPY: Record<
 
 export default async function ApprovalsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user!.id)
-    .maybeSingle();
+  // layout 已載過(cache 命中),不重打 auth server
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
 
-  const role = (profile?.role ?? null) as UserRole | null;
-  const stage = role ? STAGE_FOR_ROLE[role] : null;
+  const role = actor.role as UserRole;
+  const stage = STAGE_FOR_ROLE[role];
   if (!stage) redirect("/logs");
-
-  // 簽名圖章(owner 先試用):批簽 modal 用。6h TTL 蓋掉整段簽核時間
-  const stampUrl =
-    role === "owner"
-      ? await getSignedUrl("signatures", `${user!.id}/stamp.png`, 6 * 60 * 60)
-      : null;
 
   let query = supabase
     .from("daily_logs")
@@ -75,18 +65,25 @@ export default async function ApprovalsPage() {
 
   // supervisor 只看自己的日誌(複核 = 自核 / 其他主任的我們暫不分)
   if (role === "site_supervisor") {
-    query = query.eq("supervisor_id", user!.id);
+    query = query.eq("supervisor_id", actor.id);
   }
 
-  const { data: pending } = await query;
-  let list = (pending ?? []) as LogRow[];
+  // 待簽清單與簽名圖章互不相干 — 一起發,不要讓 owner 多等一趟 storage 簽章。
+  // 簽名圖章(owner 先試用):批簽 modal 用。6h TTL 蓋掉整段簽核時間
+  const [pendingRes, stampUrl] = await Promise.all([
+    query,
+    role === "owner"
+      ? getSignedUrl("signatures", `${actor.id}/stamp.png`, 6 * 60 * 60)
+      : Promise.resolve(null),
+  ]);
+  let list = (pendingRes.data ?? []) as LogRow[];
 
   // 核定關雙簽:我已經簽過的先不顯示(等另一位核定人簽),另外算一個提示數字
   let awaitingOtherCount = 0;
   if (stage === "approve" && list.length > 0) {
     const signed = await findApproveSignedLogIds(
       supabase,
-      user!.id,
+      actor.id,
       list.map((l) => ({ id: l.id, submitted_at: l.submitted_at ?? null })),
     );
     awaitingOtherCount = signed.size;

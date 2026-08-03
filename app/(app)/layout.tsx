@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { BottomTabNav, type BottomTab } from "@/components/bottom-tab-nav";
 import { LogoutButton } from "@/components/logout-button";
 import { RouteProgress } from "@/components/route-progress";
@@ -24,61 +25,61 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  // actor 走 require-role 的 cache() 版本 — 同一個 request 內 layout 與 page
+  // 共用同一次 auth 驗證 + profile 查詢,不會各查一遍。
+  const actor = await tryGetActor();
+  if (!actor) {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, role, company")
-    .eq("id", user.id)
-    .single();
+  const supabase = await createClient();
+  const fullName = actor.fullName ?? emailToUsername(actor.email ?? undefined) ?? "未命名使用者";
+  const roleLabel = ROLE_LABEL[actor.role] ?? actor.role;
+  const company = getCompanyShort(actor.company ?? "裕民");
 
-  const fullName = profile?.full_name ?? emailToUsername(user.email) ?? "未命名使用者";
-  const roleLabel = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : "—";
-  const company = getCompanyShort(profile?.company ?? "裕民");
-
-  // 撈當前使用者角色對應的待簽數量,加在 nav 連結後做 badge
-  let approvalsBadge = 0;
+  // 兩個 badge 彼此無關 — 平行跑,不要排隊等對方
   const stageForRole: Record<string, "review" | "audit" | "approve" | null> = {
     site_supervisor: "review",
     office_staff: "audit",
     owner: "approve",
     field_assistant: null,
   };
-  const stage = profile?.role ? stageForRole[profile.role] ?? null : null;
-  if (stage) {
-    let countQuery = supabase
-      .from("daily_logs")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "submitted")
-      .eq("current_stage", stage);
-    if (profile?.role === "site_supervisor") {
-      countQuery = countQuery.eq("supervisor_id", user.id);
-    }
-    const { count } = await countQuery;
-    approvalsBadge = count ?? 0;
-  }
+  const stage = stageForRole[actor.role] ?? null;
+
+  const approvalsCountPromise = stage
+    ? (() => {
+        let q = supabase
+          .from("daily_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "submitted")
+          .eq("current_stage", stage);
+        if (actor.role === "site_supervisor") {
+          q = q.eq("supervisor_id", actor.id);
+        }
+        return q;
+      })()
+    : null;
 
   // 請假待簽 badge — 對應 role 在 current_step 的 pending 請假筆數(排除自己送的)
-  let leavesBadge = 0;
-  if (profile?.role && profile.role !== "field_assistant") {
-    const { count } = await supabase
-      .from("leave_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending")
-      .eq("current_step", profile.role)
-      .neq("applicant_id", user.id);
-    leavesBadge = count ?? 0;
-  }
+  const leavesCountPromise =
+    actor.role !== "field_assistant"
+      ? supabase
+          .from("leave_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending")
+          .eq("current_step", actor.role)
+          .neq("applicant_id", actor.id)
+      : null;
+
+  const [approvalsRes, leavesRes] = await Promise.all([
+    approvalsCountPromise,
+    leavesCountPromise,
+  ]);
+  const approvalsBadge = approvalsRes?.count ?? 0;
+  const leavesBadge = leavesRes?.count ?? 0;
 
   const { desktopNav, mobileTabs } = navByRole(
-    profile?.role,
+    actor.role,
     approvalsBadge,
     leavesBadge,
   );
@@ -198,9 +199,7 @@ export default async function AppLayout({
       <BottomTabNav tabs={mobileTabs} />
 
       {/* 首次登入依角色彈一次「最基本要做的事」小卡(依帳號記憶,可選以後不再顯示) */}
-      {profile?.role && (
-        <RoleWelcomeCard role={profile.role} fullName={fullName} userId={user.id} />
-      )}
+      <RoleWelcomeCard role={actor.role} fullName={fullName} userId={actor.id} />
     </div>
   );
 }

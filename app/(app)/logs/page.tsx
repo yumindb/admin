@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { Button } from "@/components/ui/button";
 import { BulkPdfDownloadButton } from "@/components/bulk-pdf-download-button";
 import { formatWeatherSummary, isBackfilledLog } from "@/lib/daily-log";
@@ -63,20 +65,15 @@ export default async function LogsPage({
   searchParams: Promise<{ case?: string; scope?: string; range?: string }>;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user!.id)
-    .maybeSingle();
+  // layout 已經載過同一份 actor(require-role 的 cache()),這裡是 cache 命中,
+  // 不會再打一次 auth server + profile。
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
 
   const sp = await searchParams;
   const caseFilterId = sp.case ?? null;
 
-  const role = profile?.role;
+  const role = actor.role;
   const isSupervisor = role === "site_supervisor";
   const isOfficeStaff = role === "office_staff";
   const canCreateLog = isSupervisor || role === "owner";
@@ -98,7 +95,7 @@ export default async function LogsPage({
     .order("created_at", { ascending: false });
 
   if (scope === "mine") {
-    query = query.eq("supervisor_id", user!.id);
+    query = query.eq("supervisor_id", actor.id);
   }
   if (caseFilterId) {
     query = query.eq("case_id", caseFilterId);

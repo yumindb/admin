@@ -19,7 +19,8 @@ import {
   type PickerValue,
   type OverflowAttempt,
 } from "@/components/work-items-picker";
-import type { WorkItemAggregateMap } from "@/lib/work-item-aggregates";
+import type { CaseFormData } from "@/lib/logs/case-form-data";
+import { loadCaseFormDataAction } from "./case-data-actions";
 import { ExtraItemsEditor, type ColumnDef } from "@/components/extra-items-editor";
 import {
   AddTempWorkItemDialog,
@@ -60,6 +61,13 @@ import type {
   LogPhoto,
 } from "@/lib/types";
 
+/**
+ * 案件下拉選單用的輕量資料 — 工項與累計「不」放這裡。
+ *
+ * 那些改成只帶「當下選中的那一案」(props.caseData),換案時再用
+ * loadCaseFormDataAction 補抓。原本一次帶所有 active 案件的全部工項
+ * (真實標單一案 1200+ 筆)進 client props,手機開表單要等很久。
+ */
 export type CaseOption = {
   id: string;
   name: string;
@@ -67,9 +75,8 @@ export type CaseOption = {
   company: string;
   location: string | null;
   expectedEnd: string | null;
-  workItems: PickerItem[];          // 合約內（item/spec/manual，含 section parent）
-  extraWorkItems: PickerItem[];     // 合約外（case_work_items.item_type='extra'；扁平）
-  unsignedWorkItems: PickerItem[];  // 未簽約（case_work_items.item_type='unsigned'；扁平）
+  /** 合約內工項數量 — 只給選單顯示「N 個工項可填」,不含工項本體 */
+  workItemCount: number;
 };
 
 export type PendingFieldReport = {
@@ -111,14 +118,9 @@ export function NewLogForm({
   initial,
   logId,
   editMode = "classic",
-  dayLogCounts,
+  logStatus,
+  caseData,
   currentDaySeq,
-  priorAggregates,
-  priorManpowerByCase,
-  priorDayLaborByCase,
-  priorSubcontractorByCase,
-  priorMachineByCase,
-  pendingReportsByCase,
   skipDraftRestore = false,
 }: {
   cases: CaseOption[];
@@ -127,24 +129,17 @@ export function NewLogForm({
   /** "classic" = 草稿/退回的工地主任流程(會重新送出 + 簽名);
    *  "post-submission" = 已送出後的 silent edit(audit-only,不重啟簽核也不重簽) */
   editMode?: "classic" | "post-submission";
+  /** 編輯既有日誌時的當前狀態 — 「已退回」的按鈕與說明跟「簽核中」不一樣 */
+  logStatus?: "draft" | "rejected" | "submitted";
   /** 「複製日誌」場景:不還原 / 也不寫 localStorage 草稿,以免覆蓋 prefill 內容 */
   skipDraftRestore?: boolean;
-  /** 開新日誌用：每案件每日的既有日誌筆數,用來算「當日第 NN 份」 */
-  dayLogCounts?: Record<string, Record<string, number>>;
+  /**
+   * 已載好的案件資料(工項 / 累計 / 當日份數 / 待整合回報),key = caseId。
+   * server 只放「一開始就選中的那一案」;主任換案時由本元件補抓後 merge 進來。
+   */
+  caseData?: Record<string, CaseFormData>;
   /** 編輯既有日誌用：直接傳該日誌在當日的 seq(1-based) */
   currentDaySeq?: number;
-  /** 各案件各工項的歷史累計與鎖定模式(由 server 撈 submitted/approved 日誌算出) */
-  priorAggregates?: WorkItemAggregateMap;
-  /** 各案件之前已累計的出工人次(submitted/approved 日誌 today_total 加總,編輯時排除自己) */
-  priorManpowerByCase?: Record<string, number>;
-  /** 各案件之前已累計的點工人次(day_labor 加總)— 與出工人次分開算,不相加 */
-  priorDayLaborByCase?: Record<string, number>;
-  /** 各案件 → 工別正規化名 → 之前累計人次(submitted/approved 日誌的 today 加總) */
-  priorSubcontractorByCase?: Record<string, Record<string, number>>;
-  /** 各案件 → 機具正規化名 → 之前累計使用數量 */
-  priorMachineByCase?: Record<string, Record<string, number>>;
-  /** 各案件待整合的現場回報(pending) */
-  pendingReportsByCase?: Record<string, PendingFieldReport[]>;
   initial?: {
     caseId: string;
     logDate: string;
@@ -239,6 +234,16 @@ export function NewLogForm({
   const [vendorNotices, setVendorNotices] = useState(initial?.vendorNotices ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [mergedReportIds, setMergedReportIds] = useState<string[]>([]);
+  // 這份日誌是被退回的 — 按鈕文字、提示、存檔後的去向都跟一般編輯不同
+  const isRejected = logStatus === "rejected";
+
+  // 案件資料(工項 / 累計 / 待整合回報)按案件延遲載入 —
+  // server 只給一開始選中的那一案,換案時補抓。
+  const [caseDataMap, setCaseDataMap] = useState<Record<string, CaseFormData>>(
+    caseData ?? {},
+  );
+  // 進行中的那一案放 ref 不放 state — 只是去重用的旗標,不需要重繪
+  const inFlightCaseRef = useRef<string | null>(null);
   // post-submission 編輯儲存前的確認 modal
   const [showPostEditConfirm, setShowPostEditConfirm] = useState(false);
   useBodyScrollLock(showPostEditConfirm);
@@ -428,7 +433,33 @@ export function NewLogForm({
     () => cases.find((c) => c.id === caseId),
     [cases, caseId]
   );
-  const items = selectedCase?.workItems ?? [];
+
+  // 選到還沒載過的案件 → 補抓該案的工項與累計。
+  // 已載過的留在 map 裡,來回切換不重打。
+  const cd = caseId ? caseDataMap[caseId] : undefined;
+  const caseDataLoading = !!caseId && !cd;
+  useEffect(() => {
+    if (!caseId || caseDataMap[caseId] || inFlightCaseRef.current === caseId) {
+      return;
+    }
+    inFlightCaseRef.current = caseId;
+    let cancelled = false;
+    (async () => {
+      const res = await loadCaseFormDataAction(caseId, logId);
+      if (inFlightCaseRef.current === caseId) inFlightCaseRef.current = null;
+      if (cancelled) return;
+      if (res.ok) {
+        setCaseDataMap((m) => ({ ...m, [caseId]: res.data }));
+      } else {
+        toast.error(res.error || "案件工項載入失敗，請重新整理");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId, caseDataMap, logId]);
+
+  const items = cd?.workItems ?? [];
 
   // 案件 picker 內的 unsigned PickerItem 列表 = 案件原有 + 本次新增的臨時項
   // 用 useMemo 而非 useEffect 避免 setState-in-effect 的 cascading render
@@ -444,29 +475,29 @@ export function NewLogForm({
   const unsignedItemsExtra = useMemo(
     () =>
       dedupById([
-        ...(selectedCase?.unsignedWorkItems ?? []),
+        ...(cd?.unsignedWorkItems ?? []),
         ...unsignedAdded,
       ]).map((it) => ({ ...it, totalQuantity: null })),
-    [selectedCase, unsignedAdded],
+    [cd, unsignedAdded],
   );
 
   const remainingDays = getRemainingDays(selectedCase?.expectedEnd, logDate);
 
   // 累計出工人次 = 之前 submitted/approved 日誌的 today_total 加總 + 本日輸入。
-  // 編輯模式下 priorManpowerByCase 已排除自己,不會雙倍計算。
-  const priorManpower = caseId ? priorManpowerByCase?.[caseId] ?? 0 : 0;
+  // 編輯模式下 caseData 的累計已排除自己,不會雙倍計算。
+  const priorManpower = cd?.priorManpower ?? 0;
   const todayTotalNum = todayTotal ? Number(todayTotal) : 0;
   const accumulatedTotalNum = priorManpower + (Number.isFinite(todayTotalNum) ? todayTotalNum : 0);
 
   // 點工累計走自己的一條線 — 業主要求與出工人次分開算(點工只請款、不簽合約)
-  const priorDayLabor = caseId ? priorDayLaborByCase?.[caseId] ?? 0 : 0;
+  const priorDayLabor = cd?.priorDayLabor ?? 0;
   const dayLaborNum = dayLabor ? Number(dayLabor) : 0;
   const accumulatedDayLaborNum =
     priorDayLabor + (Number.isFinite(dayLaborNum) ? dayLaborNum : 0);
 
   // 工別 / 機具 名稱 → 之前累計(目前案件)
-  const priorSubMap = caseId ? priorSubcontractorByCase?.[caseId] : undefined;
-  const priorMachineMap = caseId ? priorMachineByCase?.[caseId] : undefined;
+  const priorSubMap = cd?.priorSubcontractor;
+  const priorMachineMap = cd?.priorMachine;
 
   // 算「之前 N」+「本日 M」= 累計值。空白 trade 視為 0。
   const accumulatedSubcontractor = (s: DailyLogSubcontractor) => {
@@ -550,11 +581,9 @@ export function NewLogForm({
   );
 
   // 表報編號需要 案件 + 日期 + 當日序號(NN)
-  // 編輯模式直接用後端算好的 currentDaySeq;新建模式用 dayLogCounts 算 +1
+  // 編輯模式直接用後端算好的 currentDaySeq;新建模式用該案的當日份數 +1
   const daySeq = currentDaySeq
-    ?? (selectedCase && logDate
-      ? (dayLogCounts?.[selectedCase.id]?.[logDate] ?? 0) + 1
-      : 1);
+    ?? (logDate ? (cd?.dayLogCounts?.[logDate] ?? 0) + 1 : 1);
   const reportNumber =
     selectedCase && logDate
       ? buildReportNumber({
@@ -719,7 +748,7 @@ export function NewLogForm({
   //  別日的回報照片,改日期太繞。同日排前面,非同日的卡片上有日期標記防誤併。)
   const availableReports = useMemo<PendingFieldReport[]>(() => {
     if (!caseId) return [];
-    const list = pendingReportsByCase?.[caseId] ?? [];
+    const list = cd?.pendingReports ?? [];
     const filtered = list.filter((r) => !mergedReportIds.includes(r.id));
     if (!logDate) return filtered;
     // 同日的排前面,其餘維持時間序
@@ -727,7 +756,7 @@ export function NewLogForm({
       ...filtered.filter((r) => sameLocalDate(r.createdAt, logDate)),
       ...filtered.filter((r) => !sameLocalDate(r.createdAt, logDate)),
     ];
-  }, [caseId, pendingReportsByCase, mergedReportIds, logDate]);
+  }, [caseId, cd, mergedReportIds, logDate]);
 
   function toggleReportSelection(id: string) {
     setSelectedReportIds((prev) => {
@@ -1106,8 +1135,12 @@ export function NewLogForm({
         intent === "submit"
           ? "日誌已送出"
           : intent === "post_edit"
-            ? "日誌已更新"
-            : "草稿已儲存";
+            ? "resubmitted" in res && res.resubmitted
+              ? "已重新送出，等辦公室助理審核"
+              : "日誌已更新"
+            : isRejected
+              ? "修改已暫存 — 狀態還是「已退回」，要重新送審請按「送出核定」"
+              : "草稿已儲存";
       toast.success(successMsg);
       router.push(`/logs/${res.logId}`);
     });
@@ -1471,12 +1504,14 @@ export function NewLogForm({
       >
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾工項</p>
+        ) : caseDataLoading ? (
+          <p className="text-sm text-muted-foreground">正在載入這個案件的工項…</p>
         ) : (
           <WorkItemsPicker
             items={items}
             value={picked}
             onChange={setPicked}
-            aggregates={priorAggregates?.[caseId]}
+            aggregates={cd?.aggregates}
             onOverflow={handleOverflow}
             highlightItemId={highlightedItemId}
             onHighlightConsumed={() => setHighlightedItemId(null)}
@@ -1531,6 +1566,8 @@ export function NewLogForm({
       >
         {!caseId ? (
           <p className="text-sm text-muted-foreground">先選案件才能勾未簽約項目</p>
+        ) : caseDataLoading ? (
+          <p className="text-sm text-muted-foreground">正在載入這個案件的未簽約項目…</p>
         ) : (
           <div className="space-y-3">
             <div className="flex justify-end">
@@ -1551,7 +1588,7 @@ export function NewLogForm({
                 items={unsignedItemsExtra}
                 value={pickedUnsigned}
                 onChange={setPickedUnsigned}
-                aggregates={priorAggregates?.[caseId]}
+                aggregates={cd?.aggregates}
                 highlightItemId={highlightedItemId}
                 onHighlightConsumed={() => setHighlightedItemId(null)}
               />
@@ -1863,8 +1900,12 @@ export function NewLogForm({
 
       <NextStepHint tone="info">
         {editMode === "post-submission"
-          ? "這份日誌已送出。您的編輯會記錄一筆軌跡（誰、何時、改了哪些欄位）。若內容有變，流程會自動退回到辦公室助理階段重新審核，不需要重新簽名。"
-          : "「儲存草稿」可以晚點再回來填，只有您看得到。「送出核定」會通知老闆，送出後若要改要等被退回或請主管退回。"}
+          ? isRejected
+            ? "這份日誌被退回了。存檔會直接把它送回辦公室助理重新審核，並記錄一筆編輯軌跡（誰、何時、改了哪些欄位），不需要重新簽名。"
+            : "這份日誌已送出。這次的編輯會記錄一筆軌跡（誰、何時、改了哪些欄位）。若內容有變，流程會自動退回到辦公室助理階段重新審核，不需要重新簽名。"
+          : isRejected
+            ? "改完請按「送出核定」重新送審，記得在上面重新簽名。「暫存修改」只是先存起來，狀態還是「已退回」，沒有人會收到。"
+            : "「儲存草稿」可以晚點再回來填，只有您看得到。「送出核定」會通知老闆，送出後若要改要等被退回或請主管退回。"}
       </NextStepHint>
 
       {/* 動作 — 手機 sticky 緊貼底部 tab bar 上緣；桌機自然落地 */}
@@ -1890,7 +1931,7 @@ export function NewLogForm({
                 disabled={isPending || uploading}
                 className="border-[#E0DCD6]"
               >
-                {isPending ? "儲存中…" : "儲存草稿"}
+                {isPending ? "儲存中…" : isRejected ? "暫存修改" : "儲存草稿"}
               </Button>
               <Button
                 type="button"
@@ -1908,7 +1949,11 @@ export function NewLogForm({
               disabled={isPending || uploading}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              {isPending ? "儲存中…" : "儲存編輯"}
+              {isPending
+                ? "儲存中…"
+                : isRejected
+                  ? "存檔並重新送出"
+                  : "儲存編輯"}
             </Button>
           )}
         </div>
@@ -1958,11 +2003,13 @@ export function NewLogForm({
                 id="post-edit-confirm-title"
                 className="text-base font-semibold text-primary"
               >
-                確認儲存編輯
+                {isRejected ? "確認重新送出" : "確認儲存編輯"}
               </h2>
             </div>
             <div className="px-5 py-4 text-sm leading-relaxed text-foreground">
-              日誌已在簽核流程中。儲存後若內容有變，流程會自動退回到辦公室助理階段，由助理重新審核再交給老闆。是否仍要儲存？
+              {isRejected
+                ? "這份日誌之前被退回。存檔後會直接送回辦公室助理重新審核，通過後再交給核定人。是否送出？"
+                : "日誌已在簽核流程中。儲存後若內容有變，流程會自動退回到辦公室助理階段，由助理重新審核再交給老闆。是否仍要儲存？"}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[#E0DCD6] px-5 py-3">
               <Button
@@ -1981,7 +2028,7 @@ export function NewLogForm({
                 }}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                仍要儲存
+                {isRejected ? "送出" : "仍要儲存"}
               </Button>
             </div>
           </div>
@@ -2046,7 +2093,7 @@ function CasePicker({
               </span>
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              {selected.workItems.length} 個工項可填
+              {selected.workItemCount} 個工項可填
             </div>
           </div>
           <button
@@ -2105,7 +2152,7 @@ function CasePicker({
                       </span>
                     </div>
                     <div className="text-[11px] text-muted-foreground">
-                      {c.workItems.length} 個工項可填
+                      {c.workItemCount} 個工項可填
                     </div>
                   </div>
                 </label>

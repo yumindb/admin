@@ -1,21 +1,17 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { fetchAllRows } from "@/lib/db/fetch-all";
-import { NewLogForm, type CaseOption, type PendingFieldReport } from "../../new/new-log-form";
-import { NextStepHint } from "@/components/next-step-hint";
-import type { PickerItem } from "@/components/work-items-picker";
-import type { DailyLog, DailyLogWorkItem, FieldReport, LogApproval } from "@/lib/types";
+import { tryGetActor } from "@/lib/auth/require-role";
+import { NewLogForm, type CaseOption } from "../../new/new-log-form";
 import {
-  parseWeather,
-  computeManpowerByCase,
-  computeDayLaborByCase,
-  computeSubcontractorTotalsByCase,
-  computeMachineTotalsByCase,
-  normalizeLogPhotos,
-} from "@/lib/daily-log";
+  loadCaseFormData,
+  loadCaseWorkItemCounts,
+  type CaseFormData,
+} from "@/lib/logs/case-form-data";
+import { NextStepHint } from "@/components/next-step-hint";
+import type { DailyLog, DailyLogWorkItem, LogApproval } from "@/lib/types";
+import { parseWeather, normalizeLogPhotos } from "@/lib/daily-log";
 import { formatTW, formatDateTW } from "@/lib/datetime";
-import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { emailToUsername } from "@/lib/auth/username";
 
@@ -27,32 +23,25 @@ export default async function EditLogPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: log } = await supabase
-    .from("daily_logs")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (!log) notFound();
-  const l = log as DailyLog;
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, role")
-    .eq("id", user!.id)
-    .maybeSingle();
+  // layout 已載過(cache 命中);日誌本體與它無關,一起發
+  const [actor, logRes] = await Promise.all([
+    tryGetActor(),
+    supabase.from("daily_logs").select("*").eq("id", id).maybeSingle(),
+  ]);
+  if (!actor) redirect("/login");
+  if (!logRes.data) notFound();
+  const l = logRes.data as DailyLog;
 
   // 編輯權限分三條:
   //   1. supervisor 本人 + draft/rejected → 「主流程編輯」(會重新送出 + 簽名)
   //   2. supervisor 本人 + submitted     → 「送出後編輯」(silent, audit-only)
-  //   3. office_staff / owner + submitted/rejected → 「送出後編輯」(silent, audit-only)
+  //   3. office_staff / owner + submitted/rejected → 「送出後編輯」
+  //      (rejected 存檔即重新送審,見 saveLogAction 的 post_edit 分支)
   // approved 一律不可編輯。
   if (l.status === "approved") redirect(`/logs/${id}`);
 
-  const role = profile?.role ?? null;
-  const isSelf = l.supervisor_id === user!.id;
+  const role = actor.role;
+  const isSelf = l.supervisor_id === actor.id;
 
   let editMode: "classic" | "post-submission";
   if (role === "site_supervisor" && isSelf && (l.status === "draft" || l.status === "rejected")) {
@@ -67,160 +56,79 @@ export default async function EditLogPage({
     redirect(`/logs/${id}`);
   }
 
-  const { data: cases } = await supabase
-    .from("cases")
-    .select("id, name, code, company, location, expected_end")
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
-
-  const caseIds = (cases ?? []).map((c) => c.id);
-  // fetchAllRows:真實標單單案 1200+ 工項,跨案加總必超 PostgREST 1000 筆上限
-  const { data: workItems } = caseIds.length
-    ? await fetchAllRows((from, to) =>
-        supabase
-          .from("case_work_items")
+  // 這份日誌的案件是固定的 → 只撈這一案的工項與累計(排除自己避免雙倍計算)。
+  // 其餘查詢彼此無關,一起發。
+  const [casesRes, caseFormData, dayCountRes, rejRes] = await Promise.all([
+    supabase
+      .from("cases")
+      .select("id, name, code, company, location, expected_end")
+      .eq("status", "active")
+      .order("created_at", { ascending: false }),
+    loadCaseFormData(supabase, l.case_id, id),
+    // 這份日誌在當案當日是第幾份(編輯時序號不變)
+    supabase
+      .from("daily_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("case_id", l.case_id)
+      .eq("log_date", l.log_date)
+      .lte("created_at", l.created_at),
+    // 已退回 → 撈最新一筆退回紀錄(含 approver 名稱)給頂部 banner
+    l.status === "rejected"
+      ? supabase
+          .from("log_approvals")
           .select(
-            "id, case_id, parent_id, depth, item_type, tender_code, name, unit, quantity, sort_path"
+            "id, log_id, stage, approver_id, decision, comment, signature_url, created_at, approver:profiles!approver_id(full_name)"
           )
-          .in("case_id", caseIds)
-          .eq("skipped", false)
-          .order("sort_path", { ascending: true })
-          .order("id", { ascending: true })
-          .range(from, to),
-      )
-    : { data: [] };
+          .eq("log_id", id)
+          .eq("decision", "rejected")
+          .order("created_at", { ascending: false })
+          .limit(1)
+      : Promise.resolve({ data: null }),
+  ]);
 
-  // 與 /logs/new 同樣分組:合約內、未簽約。extra(追加合約)不在日誌出現,跳過。
-  const groupedContract = new Map<string, PickerItem[]>();
-  const groupedUnsigned = new Map<string, PickerItem[]>();
-  // 同時建一個 work_item_id → item_type 的查表,讓下方把 log 的 work_items 拆組
-  const itemTypeById = new Map<string, string>();
-  for (const w of workItems ?? []) {
-    const baseType = w.item_type as
-      | "section" | "item" | "spec" | "manual" | "extra" | "unsigned";
-    itemTypeById.set(w.id as string, baseType);
-    if (baseType === "extra") continue; // 追加合約已不在日誌 picker 出現
-    const pickerType: PickerItem["itemType"] =
-      baseType === "unsigned" ? "item" : baseType;
-    const item: PickerItem = {
-      id: w.id as string,
-      parentId:
-        baseType === "unsigned" ? null : (w.parent_id as string | null),
-      depth: baseType === "unsigned" ? 0 : (w.depth as number),
-      itemType: pickerType,
-      tenderCode: w.tender_code as string | null,
-      name: w.name as string,
-      unit: w.unit as string | null,
-      totalQuantity: w.quantity as number | null,
-    };
-    const caseId = w.case_id as string;
-    if (baseType === "unsigned") {
-      const arr = groupedUnsigned.get(caseId) ?? [];
-      arr.push(item);
-      groupedUnsigned.set(caseId, arr);
-    } else {
-      const arr = groupedContract.get(caseId) ?? [];
-      arr.push(item);
-      groupedContract.set(caseId, arr);
-    }
+  const cases = casesRes.data ?? [];
+  // 案件已結案 / 暫停時不在 active 清單裡 — 補進來,否則編輯舊日誌會看不到自己的案件
+  if (!cases.some((c) => c.id === l.case_id)) {
+    const { data: ownCase } = await supabase
+      .from("cases")
+      .select("id, name, code, company, location, expected_end")
+      .eq("id", l.case_id)
+      .maybeSingle();
+    if (ownCase) cases.unshift(ownCase);
   }
-
-  const caseOptions: CaseOption[] = (cases ?? []).map((c) => ({
+  const workItemCounts = await loadCaseWorkItemCounts(
+    supabase,
+    cases.map((c) => c.id as string),
+  );
+  const caseOptions: CaseOption[] = cases.map((c) => ({
     id: c.id as string,
     name: c.name as string,
     code: c.code as string | null,
     company: c.company as string,
     location: c.location as string | null,
     expectedEnd: c.expected_end as string | null,
-    workItems: groupedContract.get(c.id as string) ?? [],
-    extraWorkItems: [], // 追加合約已不在日誌 picker 出現，保留結構
-    unsignedWorkItems: groupedUnsigned.get(c.id as string) ?? [],
+    workItemCount: workItemCounts[c.id as string] ?? 0,
   }));
+  const caseData: Record<string, CaseFormData> = {
+    [l.case_id]: caseFormData,
+  };
+  const currentDaySeq = dayCountRes.count ?? 1;
 
-  // 把當前 log 的 work_items 依 item_type 拆組:合約內、未簽約、保留的 extra 引用。
+  // 把當前 log 的 work_items 拆組:合約內、未簽約、保留的 extra 引用。
   // extra(追加合約)的 historical 引用仍保留在 server 紀錄,但 picker 不顯示;
   // 用 preservedExtraWorkItems 帶回去儲存時原樣保留,讓進度與審計不丟失。
-  const logWorkItems = (l.work_items ?? []) as DailyLogWorkItem[];
+  const unsignedIds = new Set(caseFormData.unsignedWorkItems.map((w) => w.id));
+  const contractIds = new Set(caseFormData.workItems.map((w) => w.id));
   const initialContract: DailyLogWorkItem[] = [];
   const initialUnsigned: DailyLogWorkItem[] = [];
   const initialPreservedExtra: DailyLogWorkItem[] = [];
-  for (const w of logWorkItems) {
-    const t = itemTypeById.get(w.work_item_id);
-    if (t === "extra") {
-      initialPreservedExtra.push(w);
-      continue;
-    }
-    if (t === "unsigned") initialUnsigned.push(w);
-    else initialContract.push(w);   // 包含找不到對應 case_work_items 的 dangling 引用
+  for (const w of (l.work_items ?? []) as DailyLogWorkItem[]) {
+    if (unsignedIds.has(w.work_item_id)) initialUnsigned.push(w);
+    else if (contractIds.has(w.work_item_id)) initialContract.push(w);
+    // 兩邊都不在 → extra(追加合約)或已被刪掉的 dangling 引用,原樣保留不顯示
+    else initialPreservedExtra.push(w);
   }
 
-  // 計算這份日誌在當案當日是第幾份(編輯時序號不變)
-  const { count: dayCount } = await supabase
-    .from("daily_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("case_id", l.case_id)
-    .eq("log_date", l.log_date)
-    .lte("created_at", l.created_at);
-  const currentDaySeq = dayCount ?? 1;
-
-  // 撈所有 submitted/approved 日誌的 work_items 算各工項已累計與模式鎖定;
-  // 排除「自己」(編輯中的這份)避免重複計算
-  const { data: priorRows } = caseIds.length
-    ? await fetchAllRows((from, to) =>
-        supabase
-          .from("daily_logs")
-          .select("id, case_id, created_at, work_items, manpower, status")
-          .in("case_id", caseIds)
-          .in("status", ["submitted", "approved"])
-          .order("id", { ascending: true })
-          .range(from, to),
-      )
-    : { data: [] };
-  const priorLogs = (priorRows ?? []).map((r) => ({
-    id: r.id as string,
-    case_id: r.case_id as string,
-    created_at: r.created_at as string,
-    work_items: (r.work_items as DailyLogWorkItem[] | null) ?? [],
-  }));
-  const aggregates = computeWorkItemAggregates(priorLogs, id);
-  const priorManpowerByCase = computeManpowerByCase(
-    (priorRows ?? []).map((r) => ({
-      id: r.id as string,
-      case_id: r.case_id as string,
-      today_total: (r.manpower as { today_total?: number } | null)?.today_total,
-    })),
-    id,
-  );
-  const priorDayLaborByCase = computeDayLaborByCase(
-    (priorRows ?? []).map((r) => ({
-      id: r.id as string,
-      case_id: r.case_id as string,
-      day_labor: (r.manpower as { day_labor?: number } | null)?.day_labor,
-    })),
-    id,
-  );
-  const priorSubcontractorByCase = computeSubcontractorTotalsByCase(
-    (priorRows ?? []).map((r) => ({
-      id: r.id as string,
-      case_id: r.case_id as string,
-      subcontractors:
-        (r.manpower as { subcontractors?: { trade?: string; today?: number }[] } | null)
-          ?.subcontractors ?? [],
-    })),
-    id,
-  );
-  const priorMachineByCase = computeMachineTotalsByCase(
-    (priorRows ?? []).map((r) => ({
-      id: r.id as string,
-      case_id: r.case_id as string,
-      machines:
-        (r.manpower as { machines?: { name?: string; today?: number }[] } | null)
-          ?.machines ?? [],
-    })),
-    id,
-  );
-
-  // 若 log 為 rejected，撈最新一筆退回的 approval (含 approver 名稱) 用於頂部 banner
   type RejectionRow = LogApproval & {
     approver: { full_name: string | null } | { full_name: string | null }[] | null;
   };
@@ -229,68 +137,25 @@ export default async function EditLogPage({
     at: string;
     approverName: string;
   } | null = null;
-  if (l.status === "rejected") {
-    const { data: rejRows } = await supabase
-      .from("log_approvals")
-      .select(
-        "id, log_id, stage, approver_id, decision, comment, signature_url, created_at, approver:profiles!approver_id(full_name)"
-      )
-      .eq("log_id", id)
-      .eq("decision", "rejected")
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const r = (rejRows ?? [])[0] as RejectionRow | undefined;
-    if (r) {
-      const approver = Array.isArray(r.approver) ? r.approver[0] : r.approver;
-      latestRejection = {
-        comment: r.comment ?? "（沒有填寫原因）",
-        at: r.created_at,
-        approverName: approver?.full_name ?? "審核人",
-      };
-    }
+  const rejRow = ((rejRes.data ?? []) as RejectionRow[])[0];
+  if (rejRow) {
+    const approver = Array.isArray(rejRow.approver)
+      ? rejRow.approver[0]
+      : rejRow.approver;
+    latestRejection = {
+      comment: rejRow.comment ?? "（沒有填寫原因）",
+      at: rejRow.created_at,
+      approverName: approver?.full_name ?? "審核人",
+    };
   }
 
-  // 撈該案件的 pending 現場回報
-  const { data: reportRows } = await supabase
-    .from("field_reports")
-    .select("id, case_id, note, photos, created_at, author:profiles!author_id(full_name)")
-    .eq("case_id", l.case_id)
-    .eq("status", "pending")
-    .order("created_at", { ascending: true });
-
-  type ReportRowWithAuthor = Pick<
-    FieldReport,
-    "id" | "case_id" | "note" | "photos" | "created_at"
-  > & {
-    author: { full_name: string | null } | { full_name: string | null }[] | null;
-  };
-  const pendingReportsByCase: Record<string, PendingFieldReport[]> = {};
-  for (const row of (reportRows ?? []) as unknown as ReportRowWithAuthor[]) {
-    const author = Array.isArray(row.author) ? row.author[0] : row.author;
-    const list = pendingReportsByCase[row.case_id] ?? [];
-    list.push({
-      id: row.id,
-      caseId: row.case_id,
-      note: row.note ?? "",
-      photos: row.photos ?? [],
-      authorName: author?.full_name ?? "未命名",
-      createdAt: row.created_at,
-    });
-    pendingReportsByCase[row.case_id] = list;
-  }
-
-  // Storage 已轉 private — 對 initial photos + 待整合 reports 的照片一次 sign
-  // original_path(標註前原圖)也要簽:重新標註時 annotator 要載得出原圖
+  // Storage 已轉 private — 對這份日誌的既有照片簽 URL。
+  // original_path(標註前原圖)也要簽:重新標註時 annotator 要載得出原圖。
+  // (待整合回報的照片已在 loadCaseFormData 內簽好)
   const initialPhotos = normalizeLogPhotos(l.photos);
-  const allReportPhotos: { path: string; original_path?: string }[] = [];
-  for (const list of Object.values(pendingReportsByCase)) {
-    for (const r of list) {
-      for (const p of r.photos) allReportPhotos.push(p);
-    }
-  }
   const photoSignedMap = await getSignedUrls(
     "daily-photos",
-    [...initialPhotos, ...allReportPhotos].flatMap((p) =>
+    initialPhotos.flatMap((p) =>
       p.original_path ? [p.path, p.original_path] : [p.path],
     ),
   );
@@ -301,17 +166,6 @@ export default async function EditLogPage({
       ? { original_path: photoSignedMap.get(p.original_path) ?? p.original_path }
       : {}),
   }));
-  for (const list of Object.values(pendingReportsByCase)) {
-    for (const r of list) {
-      r.photos = r.photos.map((p) => ({
-        ...p,
-        path: photoSignedMap.get(p.path) ?? p.path,
-        ...(p.original_path
-          ? { original_path: photoSignedMap.get(p.original_path) ?? p.original_path }
-          : {}),
-      }));
-    }
-  }
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -341,23 +195,21 @@ export default async function EditLogPage({
       )}
       {editMode === "post-submission" && (
         <p className="mb-7 text-sm text-muted-foreground">
-          此日誌已送出（{l.status === "rejected" ? "已退回" : "簽核中"}），這次的編輯會記錄誰在何時改了哪些欄位。若內容有變，簽核流程會自動退回到辦公室助理階段重新審核（不需要重新簽名）。已核定的日誌不開放編輯。
+          {l.status === "rejected"
+            ? "這份日誌被退回了。改完按「存檔並重新送出」，會直接送回辦公室助理重新審核，通過後再交給核定人（不需要重新簽名）。這次的編輯會記錄誰在何時改了哪些欄位。"
+            : "此日誌已送出（簽核中），這次的編輯會記錄誰在何時改了哪些欄位。若內容有變，簽核流程會自動退回到辦公室助理階段重新審核（不需要重新簽名）。已核定的日誌不開放編輯。"}
         </p>
       )}
       {editMode === "classic" && <div className="mb-7" />}
 
       <NewLogForm
         editMode={editMode}
+        logStatus={l.status as "draft" | "rejected" | "submitted"}
         cases={caseOptions}
-        currentUserName={profile?.full_name ?? emailToUsername(user?.email) ?? "未命名使用者"}
+        currentUserName={actor.fullName ?? emailToUsername(actor.email ?? undefined) ?? "未命名使用者"}
         logId={id}
         currentDaySeq={currentDaySeq}
-        priorAggregates={aggregates}
-        priorManpowerByCase={priorManpowerByCase}
-        priorDayLaborByCase={priorDayLaborByCase}
-        priorSubcontractorByCase={priorSubcontractorByCase}
-        priorMachineByCase={priorMachineByCase}
-        pendingReportsByCase={pendingReportsByCase}
+        caseData={caseData}
         initial={{
           caseId: l.case_id,
           logDate: l.log_date,

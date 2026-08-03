@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/types";
 
@@ -16,9 +17,19 @@ export type Actor = {
   role: UserRole;
   fullName: string | null;
   isActive: boolean;
+  email: string | null;
+  company: string | null;
 };
 
-async function loadActor(): Promise<Actor | null> {
+/**
+ * ⚠ 一定要包 React `cache()`。
+ *
+ * `auth.getUser()` 每次都會真的打一趟 Supabase Auth server 驗 JWT(不是本地解),
+ * 而一次導覽會經過 middleware → layout → page(→ 有些頁還有子元件)。沒有 cache
+ * 的話光「你是誰」就要來回三四次,加上每次都重撈一次 profile — 2026-08 業主回報
+ * 「按一下都很慢」的主因之一。cache() 讓同一個 request 內只查一次。
+ */
+const loadActor = cache(async function loadActor(): Promise<Actor | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -27,7 +38,7 @@ async function loadActor(): Promise<Actor | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, role, full_name, is_active")
+    .select("id, role, full_name, is_active, company")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -43,8 +54,10 @@ async function loadActor(): Promise<Actor | null> {
     role: profile.role as UserRole,
     fullName: (profile.full_name as string | null) ?? null,
     isActive: !!profile.is_active,
+    email: user.email ?? null,
+    company: (profile.company as string | null) ?? null,
   };
-}
+});
 
 /**
  * 拿登入者 + role;未登入 / 被停用 / 沒 profile → throw。

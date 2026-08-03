@@ -51,8 +51,17 @@ draft →[主任填表+簽名 fill]→ submitted+review
      →[主任複核 review]→ submitted+audit
      →[辦公室審核 audit]→ submitted+approve
      →[老闆核定+簽名 approve ×2]→ approved（自動產 PDF）
-     →[任一關退回]→ rejected →[主任編輯重送]→ 回到 review
+     →[任一關退回]→ rejected →[修正重送]→ 回到 audit
 ```
+
+- **退回後的重送有兩條路**（2026-08 修，業主回報「改完只能存檔、送不出去」）：
+  - **主任本人**：`/logs/[id]/edit` 是 classic 模式 → 改完按「送出核定」，要**重新手寫簽名**
+    （會再寫一筆 `fill` 的 log_approvals）。同頁的「暫存修改」不會把日誌打回 `draft`，
+    狀態維持 `rejected`（以前會降級成 draft，整份從所有人清單消失且不發通知）。
+  - **辦公室助理 / 核定人**：post-submission 模式 → 「存檔並重新送出」直接把日誌送回
+    `submitted` + `audit`，不需要重簽（與「助理可改簽核中日誌」一致）。同時更新
+    `submitted_at`、`approve_signatures` 歸零（雙簽的「本輪」靠 submitted_at 判定），
+    並發 `log_resubmitted` LINE 通知。內容沒動也照送 — 按鈕語意就是重送。
 
 - **核定關是雙簽**（2026-07-20 業主拍板）：要**兩位不同的 owner** 都簽名才 `approved`，
   不限順序。第一簽完成後日誌仍停在 `approve`，並通知另一位補簽。
@@ -134,6 +143,12 @@ draft →[主任填表+簽名 fill]→ submitted+review
 7. **手機優先**：主任/工人介面觸控目標 ≥ 44px、表單回饋用 sonner toast、爛訊號要能存草稿
 8. **UI 文案**：台灣繁體、全形標點、對話感、不用「您」；引導提示一律用 `<NextStepHint>` 元件
 9. **會影響效能／DB 查詢量／storage 成本的功能，動工前先警告 Evelyn**
+   - **auth 一律走 `tryGetActor()` / `getActor()`**（`lib/auth/require-role.ts`，已包 React
+     `cache()`）。不要在 page / layout 自己寫 `supabase.auth.getUser()` + 撈 profile —
+     那是真的打一趟 Supabase Auth server，一次導覽重複三四遍就是使用者說的「很慢」。
+   - **同一頁的獨立查詢用 `Promise.all`**，不要一個個 await 排隊。
+   - **日誌表單的工項／累計只撈「當下這一案」**（`lib/logs/case-form-data.ts`），
+     換案時由 client 呼 `loadCaseFormDataAction` 補抓。不要再一次撈全部 active 案件。
 10. **不確定的事查證，查不到就明說，不要編造**（包含 production DB 狀態）
 
 ## 設計原則（簡述；詳見 `.claude/agents/frontend-designer.md`）
