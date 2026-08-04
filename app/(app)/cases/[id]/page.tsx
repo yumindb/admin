@@ -931,7 +931,7 @@ function LegacyAggregateTable<
                 return (
                   <td
                     key={c.key}
-                    className={`h-14 px-4 align-top ${
+                    className={`px-4 py-2 align-top ${
                       c.align === "right"
                         ? "text-right tabular-nums"
                         : ""

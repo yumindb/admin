@@ -815,16 +815,16 @@ function GroupRows({
         const wi = wiMap.get(w.work_item_id);
         return (
           <tr key={w.work_item_id} className="border-b border-[#E0DCD6]">
-            <td className="h-14 px-4 align-top font-mono text-sm text-muted-foreground">
+            <td className="px-4 py-2 align-top font-mono text-sm text-muted-foreground">
               {wi?.tender_code ?? "—"}
             </td>
-            <td className="h-14 px-4 align-top">
+            <td className="px-4 py-2 align-top">
               {wi?.name ?? "（已刪除工項）"}
             </td>
-            <td className="h-14 px-4 align-top text-right tabular-nums">
+            <td className="px-4 py-2 align-top text-right tabular-nums">
               {formatLogQty(w.qty, w.qty_mode, wi?.unit ?? null)}
             </td>
-            <td className="h-14 px-4 align-top text-sm text-muted-foreground">
+            <td className="px-4 py-2 align-top text-sm text-muted-foreground">
               {w.note ?? ""}
             </td>
           </tr>
@@ -880,14 +880,14 @@ function NewExtraUnsignedTable({
             const meta = wiMap.get(w.work_item_id);
             return (
               <tr key={`${w.work_item_id}-${i}`} className="border-b border-[#E0DCD6]">
-                <td className="h-14 px-4 align-top">
+                <td className="px-4 py-2 align-top">
                   <div>{meta?.name ?? "（已刪除）"}</div>
                 </td>
-                <td className="h-14 px-4 align-top">{meta?.unit ?? "—"}</td>
-                <td className="h-14 px-4 text-right align-top tabular-nums">
+                <td className="px-4 py-2 align-top">{meta?.unit ?? "—"}</td>
+                <td className="px-4 py-2 text-right align-top tabular-nums">
                   {formatLogQty(w.qty, w.qty_mode, meta?.unit ?? null)}
                 </td>
-                <td className="h-14 px-4 align-top text-sm text-muted-foreground">
+                <td className="px-4 py-2 align-top text-sm text-muted-foreground">
                   {w.note ?? ""}
                 </td>
               </tr>

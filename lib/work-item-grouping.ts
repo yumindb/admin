@@ -11,6 +11,8 @@ export type WorkItemNode = {
   tender_code: string | null;
   name: string;
   unit: string | null;
+  /** zero-padded 階層路徑,如 "0001.0002.0010" — 字串比大小就是標單順序 */
+  sort_path: string | null;
 };
 
 export type WorkItemGroup<T> = {
@@ -26,6 +28,11 @@ export type WorkItemGroup<T> = {
 /**
  * spec 類型的 row 會往上找到第一個非 spec 的祖先當 group。
  * item / section / manual 類型的 row 直接以自己為 group(selfOnly=true,UI 可選擇不畫 header)。
+ *
+ * 輸出一律照 `sort_path`(標單項次順序)排,不是主任勾選的先後順序 —
+ * 日誌／簽核頁／PDF 都吃這個函式,不排的話同一份日誌會出現 (1)(2)(6)(7)(5)(9)(8)
+ * 這種跳號,對照紙本標單很難看。sort_path 是 zero-padded 字串,直接字串比大小即可。
+ * 查不到節點的(工項被刪掉)排在最後,同順位維持原本的相對順序(Array.sort 是穩定的)。
  */
 export function groupWorkItemsByAncestor<T>(
   selected: T[],
@@ -75,7 +82,34 @@ export function groupWorkItemsByAncestor<T>(
     g.items.push(sel);
   }
 
-  return order.map((k) => groups.get(k)!);
+  // 組內先排,再排組本身 — 組的順位用該 ancestor 自己的 sort_path
+  for (const g of groups.values()) {
+    g.items.sort((a, b) =>
+      compareSortPath(
+        nodeMap.get(getId(a))?.sort_path,
+        nodeMap.get(getId(b))?.sort_path
+      )
+    );
+  }
+  return order
+    .map((k) => groups.get(k)!)
+    .sort((a, b) =>
+      compareSortPath(
+        a.groupId ? nodeMap.get(a.groupId)?.sort_path : undefined,
+        b.groupId ? nodeMap.get(b.groupId)?.sort_path : undefined
+      )
+    );
+}
+
+/** sort_path 比大小;null / undefined(節點查不到)一律排最後 */
+function compareSortPath(
+  a: string | null | undefined,
+  b: string | null | undefined
+): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /**
@@ -97,7 +131,7 @@ export async function fetchWorkItemAncestry(
   while (pending.length) {
     const { data } = await client
       .from("case_work_items")
-      .select("id, parent_id, item_type, tender_code, name, unit")
+      .select("id, parent_id, item_type, tender_code, name, unit, sort_path")
       .in("id", pending);
     const rows = (data ?? []) as WorkItemNode[];
     const next: string[] = [];
