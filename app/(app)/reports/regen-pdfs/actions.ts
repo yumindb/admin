@@ -14,7 +14,16 @@ import { fetchAllRows } from "@/lib/db/fetch-all";
  * generatePdfForLog 上傳是 upsert、路徑固定 {caseId}/{logId}.pdf,重跑冪等。
  */
 
-export async function listRegenTargetsAction(): Promise<
+export async function listRegenTargetsAction(opts?: {
+  /**
+   * 只挑「已核定但還沒有 PDF」的。
+   *
+   * 2026-08-04:暫停核定雙簽後,把 19 份卡在核定關(已有一位核定人簽名)的日誌
+   * 回填成已核定 — 它們的 PDF 從來沒產過。整批重產 32 份要等很久,
+   * 而其中 13 份的 PDF 早就好了。
+   */
+  missingPdfOnly?: boolean;
+}): Promise<
   | {
       ok: true;
       targets: { id: string; logDate: string; caseName: string }[];
@@ -24,15 +33,17 @@ export async function listRegenTargetsAction(): Promise<
   await requireRole(["office_staff", "owner"]);
 
   const supabase = createServiceClient();
-  const { data, error } = await fetchAllRows((from, to) =>
-    supabase
+  const { data, error } = await fetchAllRows((from, to) => {
+    let q = supabase
       .from("daily_logs")
       .select("id, log_date, pdf_path, cases(name)")
-      .eq("status", "approved")
+      .eq("status", "approved");
+    if (opts?.missingPdfOnly) q = q.is("pdf_path", null);
+    return q
       .order("log_date", { ascending: false })
       .order("id", { ascending: true })
-      .range(from, to),
-  );
+      .range(from, to);
+  });
   if (error) return { ok: false, error: "讀取日誌清單失敗" };
 
   const targets = (data ?? []).map((r) => {

@@ -22,6 +22,7 @@ import {
 } from "@/lib/work-item-grouping";
 import { getSignedUrl, getSignedUrls } from "@/lib/supabase/storage";
 import { loadApproveSignersThisRound } from "@/lib/approvals/dual-sign";
+import { isDualSignEnabled } from "@/lib/settings";
 import { buildRevisionDiffs } from "@/lib/log-diff";
 import { RevisionDiffRows } from "@/components/revision-diff";
 import { formatTW } from "@/lib/datetime";
@@ -86,6 +87,9 @@ export default async function ApprovalDetailPage({
     role === "owner"
       ? await getSignedUrl("signatures", `${user!.id}/stamp.png`, 6 * 60 * 60)
       : null;
+
+  // 核定要幾位簽 — 2026-08 起可在人員管理頁關掉雙簽(第二位核定人未到職)
+  const dualSign = await isDualSignEnabled(supabase);
 
   // 核定關雙簽(2026-07):本輪已簽的人不再顯示簽名面板
   let alreadySignedApprove = false;
@@ -634,9 +638,11 @@ export default async function ApprovalDetailPage({
           <div className="mb-4">
             <NextStepHint tone="info">
               {allowedStage === "approve"
-                ? approveSignedCount > 0
-                  ? "另一位核定人已經簽過了，你這一簽完成後就會核定通過並自動產生 PDF。"
-                  : "核定要兩位核定人都簽名。你先簽完後，系統會通知另一位核定人補簽。"
+                ? !dualSign
+                  ? "目前是單簽（第二位核定人尚未到職）：你簽完這份就完成核定並自動產生 PDF。"
+                  : approveSignedCount > 0
+                    ? "另一位核定人已經簽過了，你這一簽完成後就會核定通過並自動產生 PDF。"
+                    : "核定要兩位核定人都簽名。你先簽完後，系統會通知另一位核定人補簽。"
                 : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。小地方不用退回 —— 點右上「直接修改這份」就能改，改了誰改的、改了哪裡都會留紀錄；要主任自己重做才切到「退回」分頁。`}
             </NextStepHint>
           </div>

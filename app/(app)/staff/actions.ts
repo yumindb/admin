@@ -246,3 +246,46 @@ export async function toggleActiveAction(formData: FormData): Promise<StaffActio
   revalidatePath("/staff");
   return { ok: true };
 }
+
+/**
+ * 核定雙簽開關(2026-08-04 業主:第二位核定人還沒到職,先關掉)。
+ *
+ * 為什麼放在人員管理頁:這條規則講的是「要幾個人簽」,跟帳號是同一件事;
+ * 而且能改帳號角色的人本來就能左右核定權,不需要另立一個更嚴的權限。
+ *
+ * 寫入走 service-role — app_settings 沒有 INSERT/UPDATE policy(見 migration-2.34),
+ * 角色由上面的 requireManager() 擋。誰改的記在 updated_by,並由 audit trigger
+ * 留一筆 audit_logs。
+ */
+export async function setDualSignAction(
+  enabled: boolean,
+): Promise<StaffActionResult> {
+  const auth = await requireManager();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const admin = createServiceClient();
+  const { error } = await admin.from("app_settings").upsert(
+    {
+      key: "approval.dual_sign_enabled",
+      value: enabled,
+      description:
+        "核定關是否需要兩位不同的核定人都簽名才完成。false = 一位簽完即核定完成。",
+      updated_by: auth.currentUserId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "key" },
+  );
+  if (error) {
+    return {
+      ok: false,
+      error:
+        "設定儲存失敗（請確認 migration-2.34 已執行）：" + error.message,
+    };
+  }
+
+  // 影響簽核流程與各頁文案 → 相關頁面都要重新產生
+  revalidatePath("/staff");
+  revalidatePath("/approvals");
+  revalidatePath("/logs");
+  return { ok: true };
+}

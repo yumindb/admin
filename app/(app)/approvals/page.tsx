@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { getSignedUrl } from "@/lib/supabase/storage";
 import { findApproveSignedLogIds } from "@/lib/approvals/dual-sign";
+import { isDualSignEnabled } from "@/lib/settings";
 import { NextStepHint } from "@/components/next-step-hint";
 import { BatchApprovalsList } from "./batch-actions";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
@@ -70,11 +71,13 @@ export default async function ApprovalsPage() {
 
   // 待簽清單與簽名圖章互不相干 — 一起發,不要讓 owner 多等一趟 storage 簽章。
   // 簽名圖章(owner 先試用):批簽 modal 用。6h TTL 蓋掉整段簽核時間
-  const [pendingRes, stampUrl] = await Promise.all([
+  const [pendingRes, stampUrl, dualSign] = await Promise.all([
     query,
     role === "owner"
       ? getSignedUrl("signatures", `${actor.id}/stamp.png`, 6 * 60 * 60)
       : Promise.resolve(null),
+    // 核定要幾位簽 — 文案要跟著設定走(2026-08 第二位核定人未到職,暫行單簽)
+    isDualSignEnabled(supabase),
   ]);
   let list = (pendingRes.data ?? []) as LogRow[];
 
@@ -132,7 +135,10 @@ export default async function ApprovalsPage() {
           每關退回都會回到「我的日誌」讓主任修正後重送。
           {(role === "office_staff" || role === "owner") &&
             "小地方不用退回 —— 每張卡片下方的「直接修改這份」可以當場改，改動會留前後對照紀錄。"}
-          {stage === "approve" && "核定要兩位核定人都簽名才算完成。"}
+          {stage === "approve" &&
+            (dualSign
+              ? "核定要兩位核定人都簽名才算完成。"
+              : "目前是單簽：你簽完這份就完成核定並自動產生 PDF。")}
         </NextStepHint>
       </div>
 

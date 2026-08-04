@@ -27,8 +27,9 @@ export default async function RegenPdfsPage() {
         PDF 批次重產
       </h1>
       <p className="mb-7 text-base text-muted-foreground">
-        把所有已核定日誌的 PDF 用目前的版面重新產生一次（例如簽名比例修正後，
-        讓舊件也套用新版面）。內容與簽核紀錄不會變，只是重新排版。
+        兩種用法：「<b>只補還沒有 PDF 的</b>」把缺 PDF 的已核定日誌補齊（最常用）；
+        「<b>重產全部</b>」把所有已核定日誌用目前的版面重跑一次（例如簽名比例修正後，
+        讓舊件也套用新版面）。兩者都不會動內容與簽核紀錄，只是產生／重新排版 PDF。
       </p>
       <RegenPdfsClient />
     </div>

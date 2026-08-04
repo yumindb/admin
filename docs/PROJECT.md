@@ -50,7 +50,7 @@
 draft →[主任填表+簽名 fill]→ submitted+review
      →[主任複核 review]→ submitted+audit
      →[辦公室審核 audit]→ submitted+approve
-     →[老闆核定+簽名 approve ×2]→ approved（自動產 PDF）
+     →[核定人簽名 approve ×2（可設定成 ×1，見下）]→ approved（自動產 PDF）
      →[任一關退回]→ rejected →[修正重送]→ 回到 audit
 ```
 
@@ -65,10 +65,17 @@ draft →[主任填表+簽名 fill]→ submitted+review
 
 - **核定關是雙簽**（2026-07-20 業主拍板）：要**兩位不同的 owner** 都簽名才 `approved`，
   不限順序。第一簽完成後日誌仍停在 `approve`，並通知另一位補簽。
+  ⚠ **2026-08-04 起雙簽是可切換的，而且 production 目前是「關閉」（單簽）**：
+  第二位核定人還沒到職。開關在 `/staff`（人員管理）頁最上方，值存在
+  `app_settings.approval.dual_sign_enabled`（migration-2.34），
+  由 `lib/settings.ts` 的 `isDualSignEnabled()` 讀、`requiredApproveSignatures()` 套用。
+  設定讀不到（migration 沒跑、查詢失敗）一律 fallback 成雙簽 = 上線前的行為。
+  當時卡在核定關、已有一位簽名的 19 份日誌已回填成 `approved`（見 decisions.md）。
   ⚠ **UI 文案一律寫「核定人」不寫「老闆」**（2026-08 業主要求，畫面上不點名老闆）。
   計數在 `daily_logs.approve_signatures`（migration-2.29，compare-and-set 防同時簽），
   「本輪」以 `log_approvals.created_at >= daily_logs.submitted_at` 判斷（退回重送重新計）。
-  系統只有一個 owner 帳號時自動退回單簽（見 `lib/approvals/dual-sign.ts`）。
+  **啟用中的** owner 帳號只有一位時也會自動退回單簽（見 `lib/approvals/dual-sign.ts`；
+  2026-08-04 前沒濾 `is_active`，停用的離職核定人也被算成「還有人可以簽」→ 日誌卡死）。
 
 - 統一走 `approveStageAction` / `rejectStageAction`（role↔stage map 集中驗證）。
 - **簽核意見與內容變動會發站內消息**（2026-08-04 業主要求）：任一關「通過**但有填意見**」、
@@ -104,7 +111,7 @@ draft →[主任填表+簽名 fill]→ submitted+review
 | `/dashboard` | owner / office_staff 紅黃綠健康卡片 |
 | `/my-cases` | field_assistant / supervisor 的個人案件視角 |
 | `/reports/*` | 出勤、簽核延遲、未簽約、工項、案件總覽等報表 + xlsx 匯出 |
-| `/staff` | 帳號管理（office_staff / owner） |
+| `/staff` | 帳號管理 + 核定簽名規則開關（單簽／雙簽）（office_staff / owner） |
 | `/account` | 個人設定（改密碼、LINE 通知綁定） |
 | `/api/cron/*` | Vercel cron 入口（見下方「排程」節） |
 | `/api/line/webhook` | LINE 官方帳號 webhook（綁定碼、解除綁定；詳見 [`docs/LINE.md`](LINE.md)） |
@@ -131,7 +138,7 @@ draft →[主任填表+簽名 fill]→ submitted+review
 - 表：profiles, cases, case_work_items, daily_logs, log_approvals, tender_imports,
   field_reports, daily_log_revisions, extra_contracts, login_attempts, audit_logs,
   attendance_events, leave_requests, leave_approvals, line_bindings,
-  notification_queue, app_messages（+ storage buckets:
+  notification_queue, app_messages, app_settings（+ storage buckets:
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
 - **RLS 是正式 role-based**（migration-2.10 起），不是 POC 全開版。改 policy 前先讀
   MIGRATIONS.md 2.10 / 2.14 / 2.15 / 2.18 的收緊歷史。

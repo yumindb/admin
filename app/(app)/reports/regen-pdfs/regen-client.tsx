@@ -23,20 +23,24 @@ export function RegenPdfsClient() {
   // 「停止」用 ref:running 迴圈是 async,state 讀到的是舊 closure
   const stopRef = useRef(false);
 
-  async function run() {
+  async function run(missingPdfOnly = false) {
     setPhase("running");
     stopRef.current = false;
     setDone(0);
     setFailures([]);
 
-    const list = await listRegenTargetsAction();
+    const list = await listRegenTargetsAction({ missingPdfOnly });
     if (!list.ok) {
       toast.error(list.error);
       setPhase("idle");
       return;
     }
     if (list.targets.length === 0) {
-      toast.info("沒有已核定的日誌，不用重產");
+      toast.info(
+        missingPdfOnly
+          ? "每份已核定日誌都有 PDF 了，不用補"
+          : "沒有已核定的日誌，不用重產",
+      );
       setPhase("idle");
       return;
     }
@@ -90,12 +94,23 @@ export function RegenPdfsClient() {
             按下開始後會逐份重產，過程中請保持這個頁面開著。
             隨時可以停止，已重產的不會白做（重跑會直接覆蓋、可重複執行）。
           </p>
-          <Button
-            onClick={() => void run()}
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            開始重產全部已核定 PDF
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {/* 補缺是常見情境(例:2026-08-04 回填成已核定的那批從沒產過 PDF),
+                放主按鈕;整批重產留給「改版面要全部重排」那種少見情況。 */}
+            <Button
+              onClick={() => void run(true)}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              只補「還沒有 PDF」的
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void run(false)}
+              className="border-[#E0DCD6]"
+            >
+              重產全部已核定 PDF
+            </Button>
+          </div>
         </div>
       )}
 

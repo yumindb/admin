@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getCompanyShort } from "@/lib/companies";
 import {
@@ -31,6 +32,7 @@ import {
   resetPasswordAction,
   toggleActiveAction,
   setNotificationPrefsAction,
+  setDualSignAction,
 } from "./actions";
 import {
   NOTIFICATION_CATEGORIES,
@@ -122,10 +124,16 @@ export function StaffManager({
   currentUserId,
   currentUserRole,
   staffByRole,
+  dualSignEnabled,
+  activeOwnerCount,
 }: {
   currentUserId: string;
   currentUserRole: UserRole;
   staffByRole: Record<UserRole, StaffRow[]>;
+  /** 核定關要不要兩位核定人都簽(migration-2.34 的 app_settings)*/
+  dualSignEnabled: boolean;
+  /** 啟用中的核定人帳號數 — 開雙簽前要先確認真的有兩位 */
+  activeOwnerCount: number;
 }) {
   const [modal, setModal] = useState<ModalMode>(null);
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
@@ -210,6 +218,13 @@ export function StaffManager({
           停用後該員無法登入，歷史簽核記錄保留。改密碼後請當面／LINE 告知本人。
         </NextStepHint>
       </div>
+
+      {canManage && (
+        <DualSignSetting
+          enabled={dualSignEnabled}
+          activeOwnerCount={activeOwnerCount}
+        />
+      )}
 
       {/* 搜尋：姓名 / 帳號 / 電話 — 三家公司幾十人時用得到 */}
       <div className="mb-3 rounded-lg border border-[#E0DCD6] bg-card px-4 py-2.5">
@@ -1472,5 +1487,91 @@ function NotifyModal({
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+/**
+ * 核定簽名規則設定(2026-08-04)。
+ *
+ * 業主原話:「第二個核定人還沒到位,暫時先把要有第二個核定人核定完才結案的
+ * 功能關掉。」— 雙簽是 2026-07-20 業主自己拍板的內控,所以做成開關而不是拿掉:
+ * 第二位到職那天在這裡打開就好。
+ *
+ * 文案要把「關掉代表什麼」講明白 — 這是內控規則,不是外觀選項。
+ */
+function DualSignSetting({
+  enabled,
+  activeOwnerCount,
+}: {
+  enabled: boolean;
+  activeOwnerCount: number;
+}) {
+  const router = useRouter();
+  const [optimistic, setOptimistic] = useState(enabled);
+  const [isPending, startTransition] = useTransition();
+
+  // server 端狀態變了(別人改的 / revalidate 回來)→ 跟著同步
+  useEffect(() => setOptimistic(enabled), [enabled]);
+
+  function toggle(next: boolean) {
+    setOptimistic(next);
+    startTransition(async () => {
+      const res = await setDualSignAction(next);
+      if (!res.ok) {
+        setOptimistic(!next);
+        toast.error(res.error ?? "設定失敗");
+        return;
+      }
+      toast.success(
+        next
+          ? "已改成雙簽：核定要兩位核定人都簽名才完成"
+          : "已改成單簽：一位核定人簽完就完成核定",
+      );
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-[#E0DCD6] bg-card px-4 py-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold text-primary">核定簽名規則</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {optimistic
+              ? "目前：核定關要「兩位不同的核定人」都簽名，日誌才會完成核定並產出 PDF。"
+              : "目前：一位核定人簽名就完成核定並產出 PDF（第二位核定人尚未到職時的暫行做法）。"}
+          </p>
+          {optimistic && activeOwnerCount < 2 && (
+            <p className="mt-1.5 text-sm text-[#B91C1C]">
+              ⚠ 目前只有 {activeOwnerCount} 個啟用中的核定人帳號。系統會自動退回單簽，
+              否則日誌會永遠等不到第二個人。
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={optimistic}
+          aria-label="核定雙簽"
+          disabled={isPending}
+          onClick={() => toggle(!optimistic)}
+          className={`relative inline-flex h-11 w-[4.5rem] shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
+            optimistic
+              ? "border-[#003153] bg-[#003153]"
+              : "border-[#E0DCD6] bg-[#F5F1EC]"
+          }`}
+        >
+          <span
+            className={`inline-block size-9 rounded-full bg-white shadow-sm transition-transform ${
+              optimistic ? "translate-x-[2.05rem]" : "translate-x-[0.15rem]"
+            }`}
+          />
+        </button>
+      </div>
+      <p className="mt-2.5 text-xs text-muted-foreground">
+        第二位核定人到職後，把這個開關打開就會恢復雙簽（不用改程式）。
+        改動會記錄是誰在什麼時候改的。已經完成核定的日誌不受影響。
+      </p>
+    </div>
   );
 }

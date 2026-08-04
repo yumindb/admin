@@ -7,21 +7,66 @@ import {
 } from "../approvals/dual-sign";
 
 /**
- * 用 stub client 驗核定雙簽的「本輪」判斷 —
- * 退回重送後,上一輪的簽名不能算數(否則第二輪只要一個人簽就會完成)。
+ * 用 stub client 驗核定簽名規則:
+ *   - 「本輪」判斷 — 退回重送後,上一輪的簽名不能算數
+ *     (否則第二輪只要一個人簽就會完成)
+ *   - 需要幾簽 — 設定開關(migration-2.34)、啟用中的核定人帳號數、查詢失敗時的預設
  */
 type Row = Record<string, unknown>;
 
-function stubClient(rows: Row[], count?: number) {
-  const chain = {
-    select: () => chain,
-    eq: () => chain,
-    in: () => chain,
-    order: () => Promise.resolve({ data: rows, error: null }),
-    then: (resolve: (v: { data: Row[]; error: null; count?: number }) => void) =>
-      resolve({ data: rows, error: null, count }),
+type StubOpts = {
+  /** app_settings 裡 approval.dual_sign_enabled 的值;undefined = 沒有那一列 */
+  dualSign?: boolean;
+  /** 讀設定時出錯(例:migration 還沒跑) */
+  settingsError?: boolean;
+  /** 數 profiles 時出錯 */
+  profilesError?: boolean;
+  /** 收集所有 .eq(col, val) — 用來驗查詢條件真的有下 */
+  eqCalls?: [string, unknown][];
+};
+
+function stubClient(rows: Row[], count?: number, opts: StubOpts = {}) {
+  const makeChain = (table: string) => {
+    const chain: Record<string, unknown> = {};
+    const self = () => chain;
+    chain.select = self;
+    chain.in = self;
+    chain.eq = (col: string, val: unknown) => {
+      opts.eqCalls?.push([col, val]);
+      return chain;
+    };
+    chain.order = () => Promise.resolve({ data: rows, error: null });
+    chain.maybeSingle = () => {
+      if (table === "app_settings") {
+        if (opts.settingsError) {
+          return Promise.resolve({
+            data: null,
+            error: { code: "42P01", message: "app_settings 不存在" },
+          });
+        }
+        return Promise.resolve({
+          data: opts.dualSign === undefined ? null : { value: opts.dualSign },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    };
+    // profiles 的 count 查詢:chain 本身是 thenable
+    chain.then = (
+      resolve: (v: {
+        data: Row[] | null;
+        error: unknown;
+        count?: number | null;
+      }) => void,
+    ) =>
+      resolve(
+        opts.profilesError
+          ? { data: null, error: { message: "x" }, count: null }
+          : { data: rows, error: null, count },
+      );
+    return chain;
   };
-  return { from: () => chain } as never;
+  return { from: (table: string) => makeChain(table) } as never;
 }
 
 describe("findApproveSignedLogIds", () => {
@@ -71,25 +116,49 @@ describe("loadApproveSignersThisRound", () => {
 });
 
 describe("requiredApproveSignatures", () => {
-  it("兩位以上老闆帳號 → 需要兩簽", async () => {
+  it("設定開啟雙簽 + 兩位以上核定人帳號 → 需要兩簽", async () => {
+    expect(
+      await requiredApproveSignatures(stubClient([], 2, { dualSign: true })),
+    ).toBe(2);
+    expect(
+      await requiredApproveSignatures(stubClient([], 5, { dualSign: true })),
+    ).toBe(2);
+  });
+
+  it("設定關掉雙簽 → 一簽即可(2026-08-04:第二位核定人未到職)", async () => {
+    expect(
+      await requiredApproveSignatures(stubClient([], 5, { dualSign: false })),
+    ).toBe(1);
+  });
+
+  it("沒有設定那一列 → 維持雙簽(預設值要是比較嚴的那一邊)", async () => {
     expect(await requiredApproveSignatures(stubClient([], 2))).toBe(2);
-    expect(await requiredApproveSignatures(stubClient([], 5))).toBe(2);
   });
 
-  it("只有一位老闆帳號 → 退回單簽(不然日誌永遠卡住)", async () => {
-    expect(await requiredApproveSignatures(stubClient([], 1))).toBe(1);
+  it("設定表不存在(migration 沒跑)→ 維持雙簽,不因為讀不到就放寬", async () => {
+    expect(
+      await requiredApproveSignatures(stubClient([], 2, { settingsError: true })),
+    ).toBe(2);
   });
 
-  it("查詢失敗 → 用預設值,不因為查不到就放寬", async () => {
-    const failing = {
-      from: () => ({
-        select: () => ({
-          eq: () => Promise.resolve({ data: null, error: { message: "x" }, count: null }),
-        }),
-      }),
-    } as never;
-    expect(await requiredApproveSignatures(failing)).toBe(
-      REQUIRED_APPROVE_SIGNATURES,
-    );
+  it("只有一位啟用中的核定人 → 退回單簽(不然日誌永遠卡住)", async () => {
+    expect(
+      await requiredApproveSignatures(stubClient([], 1, { dualSign: true })),
+    ).toBe(1);
+  });
+
+  it("數核定人時只算啟用中的(停用的離職者不能被當成第二簽)", async () => {
+    const eqCalls: [string, unknown][] = [];
+    await requiredApproveSignatures(stubClient([], 2, { dualSign: true, eqCalls }));
+    expect(eqCalls).toContainEqual(["role", "owner"]);
+    expect(eqCalls).toContainEqual(["is_active", true]);
+  });
+
+  it("數帳號失敗 → 用預設值,不因為查不到就放寬", async () => {
+    expect(
+      await requiredApproveSignatures(
+        stubClient([], undefined, { dualSign: true, profilesError: true }),
+      ),
+    ).toBe(REQUIRED_APPROVE_SIGNATURES);
   });
 });
