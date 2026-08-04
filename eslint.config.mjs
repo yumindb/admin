@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 其他 session 的 git worktree(含各自的 .next build 產物)— 不掃,
+    // 否則本機 lint 會撿到幾百個編譯產物的假錯誤(CI 沒這個資料夾所以看不到)
+    ".claude/**",
     // 開發用一次性腳本(seed / e2e 截圖),不是產品程式碼
     "_work/**",
   ]),

@@ -1,0 +1,103 @@
+name: Run migration SQL (manual)
+
+# 手動執行 docs/migration-*.sql 用。**只有 workflow_dispatch**,不會自動觸發。
+#
+# 為什麼有這支:平常 migration 是 Evelyn 貼進 Supabase SQL Editor(見 docs/PROJECT.md),
+# 那仍然是預設做法。但有些情況需要在 runner 上跑:
+#   - 資料清理型 migration 想先用唯讀 dry-run 在真實資料上驗證
+#   - 之後搬遷專案時的 dump / restore 也走同一條路
+#
+# 安全設計:
+#   - 檔名限定 docs/migration-*.sql,不能拿來跑任意檔案
+#   - dry-run 模式只跑唯讀 SELECT,碰不到資料
+#   - apply 模式用 ON_ERROR_STOP=1;SQL 檔本身包在 transaction 裡,
+#     自我檢查沒過就整份 rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "要執行的檔案(限 docs/migration-*.sql)"
+        required: true
+        default: "docs/migration-2.32.sql"
+      mode:
+        description: "dry-run = 只跑唯讀預覽;apply = 真的執行"
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate input path
+        run: |
+          case "${{ inputs.file }}" in
+            docs/migration-*.sql) ;;
+            *) echo "::error::只允許 docs/migration-*.sql"; exit 1 ;;
+          esac
+          test -f "${{ inputs.file }}" || { echo "::error::找不到檔案"; exit 1; }
+
+      - name: Install Postgres client 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Dry run (read-only)
+        if: inputs.mode == 'dry-run'
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$PGURL" -v ON_ERROR_STOP=1 <<'SQL'
+          \echo '=== 目前有多少值還是完整網址 ==='
+          select 'daily_logs.photos' as col, count(*) as rows_with_url
+            from public.daily_logs where photos::text ~ '/object/(sign|public)/'
+          union all
+          select 'field_reports.photos', count(*)
+            from public.field_reports where photos::text ~ '/object/(sign|public)/'
+          union all
+          select 'log_approvals.signature_url', count(*)
+            from public.log_approvals where signature_url ~ '^https?://';
+
+          \echo '=== 轉換後會長什麼樣(前 8 筆,唯讀) ==='
+          select left(p->>'path', 60) || '…' as before,
+                 regexp_replace(split_part(p->>'path', '?', 1),
+                                '^.*/object/(?:sign|public)/[^/]+/', '') as after
+            from public.daily_logs, jsonb_array_elements(photos) p
+           where photos::text ~ '/object/(sign|public)/'
+           limit 8;
+
+          \echo '=== 有沒有會轉成空字串的異常值(應為 0) ==='
+          select count(*) as would_become_empty
+            from public.daily_logs, jsonb_array_elements(photos) p
+           where regexp_replace(split_part(p->>'path', '?', 1),
+                                '^.*/object/(?:sign|public)/[^/]+/', '') = '';
+
+          \echo '=== 照片元素總數(apply 後必須一模一樣) ==='
+          select
+            (select count(*) from public.daily_logs, jsonb_array_elements(photos)
+               where jsonb_typeof(photos) = 'array') as daily_logs_photos,
+            (select count(*) from public.field_reports, jsonb_array_elements(photos)
+               where jsonb_typeof(photos) = 'array') as field_reports_photos,
+            (select count(*) from public.log_approvals
+               where signature_url is not null) as signatures;
+          SQL
+
+      - name: Apply
+        if: inputs.mode == 'apply'
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          echo "執行 ${{ inputs.file }}"
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f "${{ inputs.file }}"

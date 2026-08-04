@@ -22,8 +22,18 @@
 --   砍成 `<path>`。用 regexp 抓 `/object/(sign|public)/<bucket>/` 之後、`?` 之前那段。
 --   非 http 開頭的(已經是 path)原樣不動 → 冪等,重跑無害。
 --
--- 跑法:Supabase SQL Editor 貼上執行。冪等。
+-- 跑法:Supabase SQL Editor 貼上執行(整份一起)。冪等。
+--
+-- 安全設計(這支跟其他 migration 不同,它會大量改既有資料):
+--   1. 整份包在單一 transaction 裡。
+--   2. 動手前先把「照片元素總數」記進暫存表。
+--   3. COMMIT 前自我檢查:元素數量必須完全一致、不能有空字串或 null 路徑、
+--      也不能還殘留 http 開頭的值。任何一項不符就 RAISE EXCEPTION →
+--      **整份自動 rollback,資料一個字都不會變**。
+--   最壞情況是「這次沒清成功」,不會是「路徑被改壞、照片破圖」。
 -- ==========================================================================
+
+begin;
 
 -- 共用:從任意輸入抽出 storage path。
 --
@@ -66,6 +76,18 @@ $$;
 --
 --   預期 after 長這樣:`c51b444c-5f92-42e5-9423-c5152813c850/1785242484443-lhj1fb.jpg`
 -- --------------------------------------------------------------------------
+
+-- --------------------------------------------------------------------------
+-- 0.5 動手前先記下「照片元素總數」,COMMIT 前要比對回來(防 jsonb_agg 掉元素)
+-- --------------------------------------------------------------------------
+create temp table _photo_counts_before on commit drop as
+select
+  (select count(*) from public.daily_logs, jsonb_array_elements(photos)
+     where jsonb_typeof(photos) = 'array') as daily_logs_photos,
+  (select count(*) from public.field_reports, jsonb_array_elements(photos)
+     where jsonb_typeof(photos) = 'array') as field_reports_photos,
+  (select count(*) from public.log_approvals
+     where signature_url is not null) as signatures;
 
 -- --------------------------------------------------------------------------
 -- 1. daily_logs.photos — [{path, caption, original_path?}, ...]
@@ -146,9 +168,70 @@ where signature_url is not null
 --    log-diff 比對照片時用「資料夾/檔名」當 key,跨兩種寫法都對得上。
 -- --------------------------------------------------------------------------
 
+-- --------------------------------------------------------------------------
+-- 5. COMMIT 前自我檢查 — 任何一項不符就整份 rollback
+-- --------------------------------------------------------------------------
+do $$
+declare
+  b record;
+  a_dl bigint; a_fr bigint; a_sig bigint;
+  bad bigint;
+begin
+  select * into b from _photo_counts_before;
+
+  select count(*) into a_dl
+    from public.daily_logs, jsonb_array_elements(photos)
+   where jsonb_typeof(photos) = 'array';
+  select count(*) into a_fr
+    from public.field_reports, jsonb_array_elements(photos)
+   where jsonb_typeof(photos) = 'array';
+  select count(*) into a_sig
+    from public.log_approvals where signature_url is not null;
+
+  if a_dl <> b.daily_logs_photos then
+    raise exception '照片數量對不上:daily_logs 原本 % 張,現在 % 張', b.daily_logs_photos, a_dl;
+  end if;
+  if a_fr <> b.field_reports_photos then
+    raise exception '照片數量對不上:field_reports 原本 % 張,現在 % 張', b.field_reports_photos, a_fr;
+  end if;
+  if a_sig <> b.signatures then
+    raise exception '簽名數量對不上:原本 % 筆,現在 % 筆', b.signatures, a_sig;
+  end if;
+
+  -- 路徑不能變成空的 / null(那會直接破圖)
+  select count(*) into bad
+    from public.daily_logs, jsonb_array_elements(photos) p
+   where jsonb_typeof(photos) = 'array'
+     and (p->>'path' is null or btrim(p->>'path') = '');
+  if bad > 0 then
+    raise exception 'daily_logs 有 % 張照片路徑變成空值', bad;
+  end if;
+
+  select count(*) into bad
+    from public.field_reports, jsonb_array_elements(photos) p
+   where jsonb_typeof(photos) = 'array'
+     and (p->>'path' is null or btrim(p->>'path') = '');
+  if bad > 0 then
+    raise exception 'field_reports 有 % 張照片路徑變成空值', bad;
+  end if;
+
+  -- 路徑該長成 `資料夾/檔名`,不該還帶著網域
+  select count(*) into bad
+    from public.daily_logs, jsonb_array_elements(photos) p
+   where jsonb_typeof(photos) = 'array' and p->>'path' ~ '^https?://';
+  if bad > 0 then
+    raise exception 'daily_logs 還有 % 張照片是完整網址', bad;
+  end if;
+
+  raise notice '自我檢查通過:daily_logs % 張、field_reports % 張、簽名 % 筆,數量與轉換都正確',
+    a_dl, a_fr, a_sig;
+end $$;
+
 -- 清掉輔助函式:public schema 的 function 會被 PostgREST 當成 RPC 對外開放,
 -- 這支只是 migration 的臨時工具,不留在正式 schema。
 drop function if exists public.storage_path_from(text);
+
+commit;
 
 notify pgrst, 'reload schema';
 

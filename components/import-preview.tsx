@@ -11,17 +11,30 @@ import {
   type ParsedNode,
   type ParseResult,
 } from "@/lib/tender-parser";
-import { confirmImportAction } from "@/app/(app)/cases/[id]/import/actions";
+import {
+  confirmImportAction,
+  type ImportMode,
+} from "@/app/(app)/cases/[id]/import/actions";
 
 type ParsedState = ParseResult & { sheetName: string; fileName: string };
 
-export function ImportPreview({ caseId }: { caseId: string }) {
+export function ImportPreview({
+  caseId,
+  existingCount = 0,
+}: {
+  caseId: string;
+  /** 案件既有工項數;> 0 時顯示「附加 / 合併更新」模式選擇 */
+  existingCount?: number;
+}) {
   const router = useRouter();
   const [parsed, setParsed] = useState<ParsedState | null>(null);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
   const [parseError, setParseError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [submitMsg, setSubmitMsg] = useState<string | null>(null);
+  // 匯第二份標單是常態(追加、分包),預設「附加」— 完全不動既有資料;
+  // 「合併更新」只適合重新匯入同一份檔案
+  const [mode, setMode] = useState<ImportMode>(existingCount > 0 ? "append" : "merge");
 
   async function onFileChange(file: File | null) {
     setParseError(null);
@@ -92,6 +105,7 @@ export function ImportPreview({ caseId }: { caseId: string }) {
       const res = await confirmImportAction({
         caseId,
         fileName: parsed.fileName,
+        mode,
         nodes,
         stats: parsed.stats,
         warnings: parsed.warnings,
@@ -99,9 +113,10 @@ export function ImportPreview({ caseId }: { caseId: string }) {
       if (!res.ok) {
         setSubmitMsg("匯入失敗：" + res.error);
       } else {
-        const total = (res.importedCount ?? 0) + (res.updatedCount ?? 0);
         setSubmitMsg(
-          `匯入完成：新增/更新 ${total} 項，略過 ${res.skippedFromUI ?? 0} 項`
+          mode === "append"
+            ? `匯入完成：附加 ${res.importedCount ?? 0} 項，略過 ${res.skippedFromUI ?? 0} 項`
+            : `匯入完成：新增 ${res.importedCount ?? 0} 項、更新 ${res.updatedCount ?? 0} 項，略過 ${res.skippedFromUI ?? 0} 項`
         );
         // 給 user 看 1 秒結果再跳走
         setTimeout(() => router.push(`/cases/${caseId}`), 800);
@@ -185,9 +200,30 @@ export function ImportPreview({ caseId }: { caseId: string }) {
           {/* Step 3: 確認 */}
           <div className="rounded-lg border border-[#E0DCD6] bg-card p-6 md:p-7">
             <div className="mb-3 text-base font-semibold text-primary md:text-lg">3. 確認匯入</div>
+
+            {/* 案件已有工項 → 選這份標單要「附加」還是「合併更新」 */}
+            {existingCount > 0 && (
+              <div className="mb-4 grid gap-3 md:grid-cols-2">
+                <ModeCard
+                  checked={mode === "append"}
+                  onSelect={() => setMode("append")}
+                  title="附加到現有工項後面"
+                  hint="適合匯入另一份標單（追加、分包）。全部當新工項加入，完全不會動到現有的資料。"
+                />
+                <ModeCard
+                  checked={mode === "merge"}
+                  onSelect={() => setMode("merge")}
+                  title="更新現有工項"
+                  hint="適合重新匯入同一份標單。編碼＋名稱相同的工項會更新數量單價，你手動改過的不會被覆蓋。"
+                />
+              </div>
+            )}
+
             <div className="mb-4">
               <NextStepHint tone="info">
-                重複匯入會合併，你在工項頁改過的內容不會被覆蓋。勾「略過」的列也不會寫入。
+                {mode === "append"
+                  ? `這份標單會接在現有 ${existingCount} 筆工項後面，現有資料不會被更動。勾「略過」的列不會寫入。`
+                  : "編碼＋名稱相同的工項會合併更新，你在工項頁改過的內容不會被覆蓋。勾「略過」的列也不會寫入。"}
               </NextStepHint>
             </div>
             {submitMsg && (
@@ -217,6 +253,42 @@ export function ImportPreview({ caseId }: { caseId: string }) {
         </>
       )}
     </div>
+  );
+}
+
+function ModeCard({
+  checked,
+  onSelect,
+  title,
+  hint,
+}: {
+  checked: boolean;
+  onSelect: () => void;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <label
+      className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3.5 transition-colors ${
+        checked
+          ? "border-primary bg-[#F0F4F8]"
+          : "border-[#E0DCD6] bg-white hover:border-[#C8C2BA]"
+      }`}
+    >
+      <input
+        type="radio"
+        name="import-mode"
+        checked={checked}
+        onChange={onSelect}
+        className="mt-1 h-4 w-4 accent-[#003153]"
+      />
+      <span>
+        <span className="block text-sm font-medium text-foreground">{title}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+          {hint}
+        </span>
+      </span>
+    </label>
   );
 }
 

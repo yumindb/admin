@@ -19,11 +19,14 @@ export default async function ImportPage({
   }
 
   const supabase = await createClient();
-  const { data: caseRow } = await supabase
-    .from("cases")
-    .select("id, name, code")
-    .eq("id", id)
-    .maybeSingle();
+  const [{ data: caseRow }, { count: existingCount }] = await Promise.all([
+    supabase.from("cases").select("id, name, code").eq("id", id).maybeSingle(),
+    // 有既有工項時,ImportPreview 會多出「附加 / 合併」模式選擇
+    supabase
+      .from("case_work_items")
+      .select("id", { count: "exact", head: true })
+      .eq("case_id", id),
+  ]);
 
   if (!caseRow) notFound();
   const c = caseRow as Pick<Case, "id" | "name" | "code">;
@@ -48,7 +51,7 @@ export default async function ImportPage({
         {c.name}
       </p>
 
-      <ImportPreview caseId={id} />
+      <ImportPreview caseId={id} existingCount={existingCount ?? 0} />
     </div>
   );
 }

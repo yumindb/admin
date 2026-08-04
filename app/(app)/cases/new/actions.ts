@@ -237,6 +237,8 @@ export async function createCaseAction(
   if (tender) {
     const importRes = await confirmImportAction({
       caseId,
+      // 新案件必為空 → append(免掉 merge 模式的既有工項 dedupe 查詢)
+      mode: "append",
       fileName: tender.fileName,
       nodes: tender.nodes,
       stats: tender.stats,
