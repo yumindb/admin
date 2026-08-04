@@ -33,6 +33,61 @@ export function offsetSortPath(sortPath: string, base: number): string {
   return segs.join(".");
 }
 
+export type MergeKeyNode = {
+  id: string;
+  parentId: string | null;
+  tenderCode: string | null;
+  name: string;
+  sortPath: string;
+};
+
+/**
+ * 合併匯入的比對鍵 —「從 root 到自己的 (項次代號|名稱) 路徑」+ 同層同鍵的出現序號。
+ *
+ * 為什麼不能只用 (tender_code, name)（2026-08-04 業主案件 YM-2026-001 少列的根因）：
+ *   機電標單每個配電盤底下都有一模一樣的 `-3 | D-FUSE 500V 2A W/BASE`、
+ *   `-10 | PVC WIRE&五金另料&壓克力銘牌`。只比對代號+名稱，「藥局盤的 D-FUSE」會撞上
+ *   「K1 盤的 D-FUSE」，後面章節那幾列被判成重複而跳過 → 標單短少、日誌引用接到別的盤，
+ *   撤銷匯入時還會把別人的列一起算進來。父層自己也可能同名（該案有兩個 "E1L" PANEL，
+ *   靠項次代號 8 / 10 才分得開），所以路徑每一層都要帶項次代號。
+ *
+ * 序號的用途：檔案裡真的有兩列同層同名同代號時（該案 0027.0001「PVC 電線 2.0mm」就有兩份），
+ *   不加序號第二列會永遠被判成第一列的重複而消失。
+ *
+ * ⚠ 兩邊必須用「同一個母體」建鍵才對得起來：DB 端傳整案的列，解析端傳「實際會寫進 DB 的
+ *   節點」(usable)。把使用者勾略過的節點混進來會讓序號錯位，重匯就變成重複插入。
+ */
+export function buildMergeKeys(nodes: MergeKeyNode[]): Map<string, string> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const memo = new Map<string, string>();
+  const visiting = new Set<string>();
+  const own = (n: MergeKeyNode) => `${n.tenderCode ?? ""}|${n.name}`;
+
+  function path(n: MergeKeyNode): string {
+    const hit = memo.get(n.id);
+    if (hit !== undefined) return hit;
+    if (visiting.has(n.id)) return own(n); // 資料異常成環:退回只用自己這層
+    visiting.add(n.id);
+    const parent = n.parentId ? byId.get(n.parentId) : undefined;
+    const full = parent ? `${path(parent)} / ${own(n)}` : own(n);
+    visiting.delete(n.id);
+    memo.set(n.id, full);
+    return full;
+  }
+
+  // 依 sortPath 排序,讓「同層第幾個」在 DB 端與解析端算出同一個序號
+  const ordered = [...nodes].sort((a, b) => a.sortPath.localeCompare(b.sortPath));
+  const seen = new Map<string, number>();
+  const keys = new Map<string, string>();
+  for (const n of ordered) {
+    const p = path(n);
+    const i = seen.get(p) ?? 0;
+    seen.set(p, i + 1);
+    keys.set(n.id, `${p}#${i}`);
+  }
+  return keys;
+}
+
 export type UndoRow = {
   id: string;
   parent_id: string | null;

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildMergeKeys,
   offsetSortPath,
   planUndoImport,
   rootSegment,
+  type MergeKeyNode,
   type UndoRow,
 } from "../import-plan";
 
@@ -109,5 +111,71 @@ describe("planUndoImport", () => {
     const rows = [row("x", "y", IMP), row("y", "x", IMP)];
     const plan = planUndoImport(rows, IMP, new Set());
     expect(plan.deletableIds).toEqual([]);
+  });
+});
+
+describe("buildMergeKeys", () => {
+  const n = (
+    id: string,
+    parentId: string | null,
+    tenderCode: string | null,
+    name: string,
+    sortPath: string,
+  ): MergeKeyNode => ({ id, parentId, tenderCode, name, sortPath });
+
+  it("跨章節同名同代號不再互撞 — 各自帶章節路徑", () => {
+    // 真實機電標單:每個配電盤底下都有一模一樣的 `-3 | D-FUSE`
+    const keys = buildMergeKeys([
+      n("k1", null, "3", '"K1" PANEL', "0008"),
+      n("k1-dfuse", "k1", "-3", "D-FUSE 500V 2A W/BASE", "0008.0003"),
+      n("ph", null, "5", '"藥局" PANEL', "0010"),
+      n("ph-dfuse", "ph", "-3", "D-FUSE 500V 2A W/BASE", "0010.0003"),
+    ]);
+    expect(keys.get("k1-dfuse")).not.toBe(keys.get("ph-dfuse"));
+    expect(keys.get("k1-dfuse")).toBe('3|"K1" PANEL / -3|D-FUSE 500V 2A W/BASE#0');
+  });
+
+  it("父層同名時靠父層項次代號分開(該案有兩個 \"E1L\" PANEL)", () => {
+    const keys = buildMergeKeys([
+      n("e1", null, "8", '"E1L" PANEL', "0014"),
+      n("e1-mccb", "e1", "-3", "MCCB 3P 100AF", "0014.0003"),
+      n("e2", null, "10", '"E1L" PANEL', "0016"),
+      n("e2-mccb", "e2", "-3", "MCCB 3P 100AF", "0016.0003"),
+    ]);
+    expect(keys.get("e1-mccb")).not.toBe(keys.get("e2-mccb"));
+  });
+
+  it("同層真的有兩列一模一樣時,用序號分開(第二列不會被吃掉)", () => {
+    const keys = buildMergeKeys([
+      n("s", null, "7", "PVC 電線 & XLPE CABLE", "0027"),
+      n("a", "s", "-1", "PVC 電線 2.0mm", "0027.0001"),
+      n("b", "s", "-1", "PVC 電線 2.0mm", "0027.0001"),
+    ]);
+    expect(keys.get("a")).toMatch(/#0$/);
+    expect(keys.get("b")).toMatch(/#1$/);
+  });
+
+  it("DB 端與解析端母體一致時,鍵可以對上(重匯同一份 = 全部命中)", () => {
+    const tree = (prefix: string) => [
+      n(`${prefix}s`, null, "一", "高低壓配電盤", "0003"),
+      n(`${prefix}a`, `${prefix}s`, "-1", "CASE：", "0003.0001"),
+      n(`${prefix}b`, `${prefix}s`, "-2", "MCCB", "0003.0002"),
+    ];
+    const dbKeys = [...buildMergeKeys(tree("db")).values()].sort();
+    const fileKeys = [...buildMergeKeys(tree("file")).values()].sort();
+    expect(fileKeys).toEqual(dbKeys);
+  });
+
+  it("父層被略過(不在母體內)時當成 root,不會炸掉", () => {
+    const keys = buildMergeKeys([n("orphan", "gone", "-1", "孤兒項", "0005.0001")]);
+    expect(keys.get("orphan")).toBe("-1|孤兒項#0");
+  });
+
+  it("資料成環時不會無限迴圈", () => {
+    const keys = buildMergeKeys([
+      n("x", "y", "1", "X", "0001"),
+      n("y", "x", "2", "Y", "0002"),
+    ]);
+    expect(keys.size).toBe(2);
   });
 });

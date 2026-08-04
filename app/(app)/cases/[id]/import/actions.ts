@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { requireRole } from "@/lib/auth/require-role";
 import {
+  buildMergeKeys,
   offsetSortPath,
   planUndoImport,
   rootSegment,
@@ -23,7 +24,9 @@ const UuidSchema = z.string().uuid();
  * 兩種模式（2026-08-03 起,業主要求同案件可再匯第二份標單）：
  *   - append 附加：全部當新工項插入,sort_path root 段位移到既有樹之後,
  *     完全不動既有資料。匯「另一份標單」用這個（有工項時的預設）。
- *   - merge 合併更新：重新匯入「同一份」標單用,以 (case_id, tender_code, name) 比對：
+ *   - merge 合併更新：重新匯入「同一份」標單用,以 buildMergeKeys 的「章節路徑」比對
+ *     （祖先鏈 + 自己的 項次代號|名稱 + 同層序號;2026-08-04 起。舊版只比對
+ *      (tender_code, name),跨章節同名的列會互撞而被跳過 → 標單短少）：
  *       - 已存在且 modified_by_user = true → skip（保留使用者修改）
  *       - 已存在且未修改 → update（quantity / unit / unit_price / total_price / brand_note）
  *         ⚠ 不改 import_id — 改了會讓「撤銷此次匯入」把既有工項一起刪掉（2026-08-03 修）
@@ -93,8 +96,15 @@ export async function confirmImportAction(payload: ConfirmPayload) {
   //    merge — 撈現有 work items 做 dedupe — 必須限定當前 case,否則跨案匯入會把
   //    新案的工項 parent_id 接到舊案的 row 上(bug fixed 2026-04-26)
   //    fetchAllRows:1000+ 項的案件重複匯入時,dedupe map 缺列會造成重複插入
-  const dedupeKey = (code: string | null, name: string) => `${code ?? ""}|${name}`;
-  const existingMap = new Map<string, { id: string; modified: boolean }>();
+  type ExistingRow = {
+    id: string;
+    parent_id: string | null;
+    tender_code: string | null;
+    name: string;
+    sort_path: string;
+    modified_by_user: boolean | null;
+  };
+  const existingByKey = new Map<string, { id: string; modified: boolean }>();
   let sortBase = 0;
   if (payload.mode === "append") {
     const { data: top, error: topErr } = await supabase
@@ -106,20 +116,32 @@ export async function confirmImportAction(payload: ConfirmPayload) {
     if (topErr) return { ok: false, error: "讀取現有工項失敗：" + topErr.message };
     sortBase = top?.[0] ? rootSegment(top[0].sort_path as string) : 0;
   } else {
-    const { data: existing, error: existErr } = await fetchAllRows((from, to) =>
-      supabase
-        .from("case_work_items")
-        .select("id, tender_code, name, modified_by_user")
-        .eq("case_id", payload.caseId)
-        .order("id", { ascending: true })
-        .range(from, to),
+    const { data: existing, error: existErr } = await fetchAllRows<ExistingRow>(
+      (from, to) =>
+        supabase
+          .from("case_work_items")
+          .select("id, parent_id, tender_code, name, sort_path, modified_by_user")
+          .eq("case_id", payload.caseId)
+          // sort_path 不保證唯一(標單本身可能有重複列),再用 id 當 tie-break 讓分頁穩定
+          .order("sort_path", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
     );
     if (existErr) return { ok: false, error: "讀取現有工項失敗：" + existErr.message };
-    for (const e of existing ?? []) {
-      existingMap.set(dedupeKey(e.tender_code as string | null, e.name as string), {
-        id: e.id as string,
-        modified: !!e.modified_by_user,
-      });
+    const existingRows = existing ?? [];
+    const existingKeys = buildMergeKeys(
+      existingRows.map((e) => ({
+        id: e.id,
+        parentId: e.parent_id,
+        tenderCode: e.tender_code,
+        name: e.name,
+        sortPath: e.sort_path,
+      })),
+    );
+    for (const e of existingRows) {
+      const key = existingKeys.get(e.id);
+      if (!key) continue;
+      existingByKey.set(key, { id: e.id, modified: !!e.modified_by_user });
     }
   }
 
@@ -139,6 +161,21 @@ export async function confirmImportAction(payload: ConfirmPayload) {
   const idMap = new Map<string, string>();
   // 把 nodes 依 sortPath 排序,確保 parent 在前(map 才能查到 parentServerId)
   const sorted = [...usable].sort((a, b) => a.sortPath.localeCompare(b.sortPath));
+
+  // merge 模式:用跟 DB 端同一套規則替新節點建鍵。母體必須是 usable(實際會寫進 DB 的),
+  // 混入使用者勾略過的節點會讓同層序號錯位。append 模式不比對,一律當新列插入。
+  const incomingKeys =
+    payload.mode === "merge"
+      ? buildMergeKeys(
+          usable.map((n) => ({
+            id: n.id,
+            parentId: n.parentId,
+            tenderCode: n.tenderCode,
+            name: n.name,
+            sortPath: n.sortPath,
+          })),
+        )
+      : null;
 
   type InsertRow = {
     id: string;
@@ -177,8 +214,9 @@ export async function confirmImportAction(payload: ConfirmPayload) {
 
   for (const n of sorted) {
     const itemType = n.type === "section" ? "section" : n.type === "spec" ? "spec" : "item";
-    // append 模式 existingMap 是空的 → 一律走 insert;sortPath 位移到既有樹後面
-    const dup = existingMap.get(dedupeKey(n.tenderCode, n.name));
+    // append 模式 incomingKeys 是 null → 一律走 insert;sortPath 位移到既有樹後面
+    const mergeKey = incomingKeys?.get(n.id);
+    const dup = mergeKey ? existingByKey.get(mergeKey) : undefined;
     const parentServerId = n.parentId ? idMap.get(n.parentId) ?? null : null;
     const sortPath = offsetSortPath(n.sortPath, sortBase);
 
