@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateGeofence } from "@/lib/geo";
-import { stableStringify } from "@/lib/log-diff";
+import { FIELD_LABEL, stableStringify } from "@/lib/log-diff";
 import { extractStoragePath, normalizePhotoPaths } from "@/lib/supabase/storage";
 
 const PHOTO_BUCKET = "daily-photos";
@@ -288,6 +288,20 @@ export async function saveLogAction(payload: SaveLogPayload) {
       });
     }
 
+    // 站內消息:日誌被改了,主任與前面關卡經手過的人都該知道(2026-08-04 業主追加)。
+    // 以前只有畫面上一個「經助理修改」標籤 — 要人自己點進去才看得到。
+    // 重送的情況多通知全部辦公室助理(這份會回到他們的待審核清單)。
+    const editorId = user.id;
+    const changedLabels = changed.map((f) => FIELD_LABEL[f] ?? f);
+    const editedLogId = logId;
+    const wasResubmit = resubmitFromRejected;
+    after(async () => {
+      const { messageLogEdited } = await import("@/lib/notifications/events");
+      await messageLogEdited(editedLogId, editorId, changedLabels, {
+        resubmitted: wasResubmit,
+      });
+    });
+
     revalidatePath("/logs");
     revalidatePath(`/logs/${logId}`);
     revalidatePath("/approvals");
@@ -466,8 +480,21 @@ export async function saveLogAction(payload: SaveLogPayload) {
   // 放在 after():不阻塞 response,通知失敗也不影響日誌本身。
   if (payload.intent === "submit" && logId) {
     const notifyLogId = logId;
+    // 站內消息只發「重送」— 首次送出靠導覽列的「待審核」紅字就夠了,
+    // 每天每份日誌都發一則消息只會把真正要看的意見洗掉
+    // (業主拍板的原則:有話要說才發消息)。
+    const isResubmit = existingStatus === "rejected";
+    const editorId = user.id;
     after(async () => {
-      const { notifyLogSubmitted } = await import("@/lib/notifications/events");
+      const { notifyLogSubmitted, messageLogEdited } = await import(
+        "@/lib/notifications/events"
+      );
+      if (isResubmit) {
+        // classic 重送算不出前後差異(這條路徑沒寫 revision)→ 傳 null
+        await messageLogEdited(notifyLogId, editorId, null, {
+          resubmitted: true,
+        });
+      }
       await notifyLogSubmitted(notifyLogId);
     });
   }

@@ -298,13 +298,19 @@ export function ApprovalActions({
             </>
           )}
 
-          <Textarea
-            rows={2}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="備註（選填，例如：照片不錯、補充說明等）"
-            className="mt-3"
-          />
+          {/* 意見 =「通過,但下次注意一下」。2026-08-04 前這欄寫了沒人看得到
+              (只躺在日誌最底下的簽核歷程),現在填了會發站內消息給主任
+              與前面關卡的經手人 — 文案要講清楚,不然沒人知道它會送出去。 */}
+          <label className="mt-3 block text-sm text-muted-foreground">
+            意見（選填）— 填了會發消息通知主任，他一登入就看得到
+            <Textarea
+              rows={2}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="例如：這幾張照片再補拍清楚一點、下次記得填點工人數"
+              className="mt-1.5"
+            />
+          </label>
 
           <Button
             size="xl"

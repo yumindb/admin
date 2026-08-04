@@ -10,6 +10,7 @@ import { RoleWelcomeCard } from "@/components/role-welcome-card";
 import { logoutAction } from "../login/actions";
 import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
+import { countUnreadMessages } from "@/lib/notifications/messages";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
@@ -71,9 +72,13 @@ export default async function AppLayout({
           .neq("applicant_id", actor.id)
       : null;
 
-  const [approvalsRes, leavesRes] = await Promise.all([
+  const [approvalsRes, leavesRes, unreadMessages] = await Promise.all([
     approvalsCountPromise,
     leavesCountPromise,
+    // 站內消息未讀數(2026-08:簽核意見要在 App 裡看得到)。
+    // partial index (profile_id) where read_at is null,查詢很輕;
+    // migration-2.33 還沒跑時回 0,不會讓整個 layout 掛掉。
+    countUnreadMessages(supabase, actor.id),
   ]);
   const approvalsBadge = approvalsRes?.count ?? 0;
   const leavesBadge = leavesRes?.count ?? 0;
@@ -125,6 +130,38 @@ export default async function AppLayout({
           </div>
 
           <div className="flex items-center gap-4 text-sm">
+            {/* 消息 — 簽核意見 / 退回原因的站內通道(不需綁 LINE)。
+                全角色、手機桌機都放這顆:業主 2026-08「底下的人不會跳通知出來」
+                的解法就是這個紅點。有未讀時鈴鐺會閃。 */}
+            <Link
+              href="/messages"
+              aria-label={
+                unreadMessages > 0 ? `消息（${unreadMessages} 則未讀）` : "消息"
+              }
+              title="消息"
+              className="relative inline-flex size-9 items-center justify-center rounded-full border border-[#A07850]/40 text-[#E8E4DE] transition-colors hover:bg-white/5"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+                className={unreadMessages > 0 ? "animate-pulse" : undefined}
+              >
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              {unreadMessages > 0 && (
+                <span className="absolute -right-1 -top-1 inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[11px] font-semibold tabular-nums leading-[1.15rem] text-white">
+                  {unreadMessages > 99 ? "99+" : unreadMessages}
+                </span>
+              )}
+            </Link>
             {/* 使用說明 — 全角色、全裝置都看得到的求助入口(公開靜態頁,開新分頁) */}
             <a
               href="/manual.html"

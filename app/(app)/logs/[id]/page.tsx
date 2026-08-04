@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { formatTW, formatDateTW } from "@/lib/datetime";
@@ -26,6 +27,7 @@ import type {
   LogApproval,
 } from "@/lib/types";
 import { buildRevisionDiffs } from "@/lib/log-diff";
+import { findUnreadForRelated } from "@/lib/notifications/messages";
 import { RevisionDiffRows } from "@/components/revision-diff";
 import { RevokeApprovalButton } from "./revoke-approval-button";
 import {
@@ -153,7 +155,9 @@ export default async function LogDetailPage({
   //      (要在 ancestry 之前拿到:快照裡可能引用「現在已經被改掉」的工項,
   //       名稱查表要一起帶)
   //   3. 簽核歷程
-  const [dayCountRes, revisionRes, approvalsRes] = await Promise.all([
+  //   4. 這份日誌有沒有「我還沒讀」的簽核意見消息 — 有就在頁首標出來,
+  //      並在回應送出後標成已讀(人已經看到了,鈴鐺的紅點不用再留著)
+  const [dayCountRes, revisionRes, approvalsRes, unreadMessages] = await Promise.all([
     supabase
       .from("daily_logs")
       .select("id", { count: "exact", head: true })
@@ -172,10 +176,23 @@ export default async function LogDetailPage({
       .select("*")
       .eq("log_id", id)
       .order("created_at", { ascending: true }),
+    findUnreadForRelated(supabase, actor.id, id),
   ]);
   const daySeq = dayCountRes.count ?? 1;
   const revisionRows = revisionRes.data;
   const approvals = approvalsRes.data;
+
+  // 看過就算讀過 — 標已讀放 after(),不擋畫面;失敗頂多紅點多留一次。
+  if (unreadMessages.length > 0) {
+    const unreadIds = unreadMessages.map((m) => m.id);
+    after(async () => {
+      await supabase
+        .from("app_messages")
+        .update({ read_at: new Date().toISOString() })
+        .in("id", unreadIds)
+        .eq("profile_id", actor.id);
+    });
+  }
 
   const workItemIds = [
     ...new Set([
@@ -432,6 +449,49 @@ export default async function LogDetailPage({
           )}
         </div>
       </div>
+
+      {/* 有人在這份日誌上留了意見、而我還沒讀過 — 擺在最上面,
+          不然它只會躺在頁面最底下的簽核歷程裡(業主 2026-08 回報的原始問題)。 */}
+      {unreadMessages.length > 0 && (
+        <div className="mb-6">
+          <NextStepHint
+            tone="warning"
+            title={
+              unreadMessages.every((m) => m.event_type === "log_edited")
+                ? "這份日誌有更動"
+                : "簽核人留了意見"
+            }
+          >
+            <div className="space-y-2">
+              {unreadMessages.map((m) => (
+                <div key={m.id}>
+                  <p className="text-sm font-medium">{m.title}</p>
+                  {m.body && (
+                    <p className="mt-0.5 whitespace-pre-line text-sm leading-relaxed">
+                      {m.body}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs opacity-80">
+              完整簽核紀錄在下方
+              <a href="#approval-trail" className="underline underline-offset-2">
+                「簽核歷程」
+              </a>
+              {revisions.length > 0 && (
+                <>
+                  ；改了哪裡看
+                  <a href="#edit-trail" className="underline underline-offset-2">
+                    「編輯軌跡」
+                  </a>
+                </>
+              )}
+              。
+            </p>
+          </NextStepHint>
+        </div>
+      )}
 
       {/* 下一步提示 — 依日誌狀態給不同訊息 */}
       {l.status === "draft" && isOwnerOfLog && (
@@ -724,7 +784,8 @@ export default async function LogDetailPage({
         </div>
       )}
 
-      {/* 簽核歷程 */}
+      {/* 簽核歷程 — id 給站內消息 / 上方 banner 深連過來(scroll-mt 避開固定 header) */}
+      <div id="approval-trail" className="scroll-mt-20">
       <Section title="簽核歷程">
         {!apList.length ? (
           <p className="text-sm text-muted-foreground">尚未送出</p>
@@ -750,10 +811,16 @@ export default async function LogDetailPage({
                 <span className="ml-auto text-xs text-muted-foreground">
                   {formatTW(a.created_at)}
                 </span>
+                {/* 意見不再是灰色小字 — 這正是業主寫了、底下的人卻沒看到的東西 */}
                 {a.comment && (
-                  <p className="basis-full text-xs text-muted-foreground">
-                    {a.comment}
-                  </p>
+                  <div className="basis-full rounded-md border border-[#C9B79C] bg-[#FAF3E8] px-3 py-2">
+                    <span className="text-xs font-medium text-[#8A6D3B]">
+                      意見
+                    </span>
+                    <p className="mt-0.5 whitespace-pre-line text-sm leading-relaxed text-foreground">
+                      {a.comment}
+                    </p>
+                  </div>
                 )}
                 {a.signature_url && (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -768,6 +835,7 @@ export default async function LogDetailPage({
           </ul>
         )}
       </Section>
+      </div>
     </div>
   );
 }

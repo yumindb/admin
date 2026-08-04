@@ -40,6 +40,7 @@
 | 34 | [`migration-2.30.sql`](migration-2.30.sql) | 儀表板警示「先不理」:dashboard_dismissals(per-user、7 天後自動再提醒)+ RLS | 必跑 |
 | 35 | [`migration-2.31.sql`](migration-2.31.sql) | 撤回核定:log_approvals 開放 office_staff/owner 寫「approve 關 + decision=rejected」的紀錄(順帶修好助理強制退回核定關日誌時軌跡寫不進去的洞)| 必跑 |
 | 36 | [`migration-2.32.sql`](migration-2.32.sql) | 資料清理:daily_logs.photos / field_reports.photos / log_approvals.signature_url 裡的 signed URL 收斂成 storage path(程式端已於同批修好,這支只清既有資料)| 建議跑(不跑不會壞,只是資料肥) |
+| 37 | [`migration-2.33.sql`](migration-2.33.sql) | 站內消息:app_messages 表 + RLS(只讀自己、只能標自己已讀;寫入限 service-role)— 簽核意見要在 App 裡跳出來,不必綁 LINE | 必跑 ✅ **production 已於 2026-08-04 執行**(Supabase MCP `apply_migration`,已驗證:RLS on、2 policies、4 indexes)|
 
 ## 排錯
 

@@ -54,7 +54,7 @@ export type RevisionDiff = {
   changes: FieldChange[];
 };
 
-const FIELD_LABEL: Record<DailyLogEditableField, string> = {
+export const FIELD_LABEL: Record<DailyLogEditableField, string> = {
   log_date: "日期",
   weather: "天氣",
   manpower: "出工 / 點工 / 外包 / 機具",

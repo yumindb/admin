@@ -71,8 +71,18 @@ draft →[主任填表+簽名 fill]→ submitted+review
   系統只有一個 owner 帳號時自動退回單簽（見 `lib/approvals/dual-sign.ts`）。
 
 - 統一走 `approveStageAction` / `rejectStageAction`（role↔stage map 集中驗證）。
+- **簽核意見與內容變動會發站內消息**（2026-08-04 業主要求）：任一關「通過**但有填意見**」、
+  退回、強制退回、撤回核定、**送出後被修改**（含退回改完重送）→ 寫 `app_messages`，
+  收件人是該份日誌的主任 ＋ 前面關卡的經手人（排除操作者本人）；重送再加上全部
+  辦公室助理（那份會回到他們的待審核清單）。
+  **通過而沒填意見不發、首次送出也不發**（業主原話：「有意見，再有消息就好」；
+  首次送出靠導覽列「待審核」紅字就夠了）。
+  站內消息不需綁 LINE、不吃官方帳號額度 — 見下方「通知有兩條路」。
 - **辦公室助理可全權修改日誌內容**（工項、數量、照片、備註都可以）：
-  - `submitted` / `rejected` → 直接編輯（silent post_edit，寫 `daily_log_revisions`）
+  - `submitted` / `rejected` → 直接編輯（silent post_edit，寫 `daily_log_revisions`）。
+    入口有三個：日誌詳情頁右上「編輯」、**審核頁標題右側「直接修改這份」**、
+    **待簽列表每張卡片下緣的「直接修改這份」**（後兩個是 2026-08-04 補的 —
+    功能一直都在，但助理整天待在 `/approvals`，那裡沒按鈕等於沒有這個功能）
   - `approved` → 不能直接改，先按「撤回核定」（`revokeApprovalAction`）退回 audit 關，
     簽名作廢、PDF 標為過期，改完重走核定。需 migration-2.31 的 RLS policy。
   - 改過的日誌在列表 / 詳情頁 / 待簽核清單掛「經助理修改」標籤，
@@ -90,6 +100,7 @@ draft →[主任填表+簽名 fill]→ submitted+review
 | `/field-reports` | 現場回報（field_assistant 為主；離線 IndexedDB 佇列） |
 | `/attendance` | GPS 上下班打卡（軟性 geofence、離線前景排隊） |
 | `/leaves` | 請假申請 + 簽核 |
+| `/messages` | 消息中心（簽核意見 / 退回原因 / 撤回核定；header 鈴鐺紅點進來）|
 | `/dashboard` | owner / office_staff 紅黃綠健康卡片 |
 | `/my-cases` | field_assistant / supervisor 的個人案件視角 |
 | `/reports/*` | 出勤、簽核延遲、未簽約、工項、案件總覽等報表 + xlsx 匯出 |
@@ -100,12 +111,27 @@ draft →[主任填表+簽名 fill]→ submitted+review
 
 登入方式：**帳號（username）+ 密碼**，不是 email（server 端 username→email 映射）。
 
+## 通知有兩條路（兩條都送，互不影響）
+
+| | LINE 推播 | 站內消息 |
+|---|---|---|
+| 程式 | `lib/notifications/notify.ts` + `events.ts` 的 `notify*` | `lib/notifications/messages.ts` + `events.ts` 的 `message*` |
+| 收得到的人 | **只有綁定 LINE 且分類開關有開的人** | 所有啟用中的收件人，不用綁任何東西 |
+| 成本 | 官方帳號免費額度 200 則/月（批簽走彙總省額度）| 0（自己的 DB）|
+| 看得到的地方 | LINE 對話 | header 鈴鐺紅點 → `/messages`；日誌詳情頁頂部 banner |
+| 送什麼 | 待辦推進、核定、退回等全流程事件 | 只送「有話要說」類：簽核意見、退回原因、撤回核定、日誌被修改 / 重送 |
+
+⚠ **要通知「底下的人」時不能只呼叫 `notify*`。** 2026-08-04 業主回報「我核過的日誌
+有在下面給意見，可是底下的人不會跳通知」— 原因就是主任 / 助理都沒綁 LINE
+（問過也沒有想綁的意思，助理習慣用電腦），`sendNotification()` 直接把他們濾掉了。
+新增「一定要讓對方知道」的事件時，兩條都要接。
+
 ## 資料庫
 
 - 表：profiles, cases, case_work_items, daily_logs, log_approvals, tender_imports,
   field_reports, daily_log_revisions, extra_contracts, login_attempts, audit_logs,
   attendance_events, leave_requests, leave_approvals, line_bindings,
-  notification_queue（+ storage buckets:
+  notification_queue, app_messages（+ storage buckets:
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
 - **RLS 是正式 role-based**（migration-2.10 起），不是 POC 全開版。改 policy 前先讀
   MIGRATIONS.md 2.10 / 2.14 / 2.15 / 2.18 的收緊歷史。

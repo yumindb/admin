@@ -24,6 +24,9 @@ export const RETENTION_DAYS = {
   login_attempts_success: 365,
   daily_log_revisions: 365,
   audit_logs: 365,
+  // 站內消息只是「把人帶去看意見」的信封,意見正本永遠在 log_approvals,
+  // 90 天後這個信封沒有留存價值(未讀的也一樣 — 三個月沒看就不會看了)
+  app_messages: 90,
 } as const;
 
 export type RetentionResult = {
@@ -45,6 +48,7 @@ export async function cleanupOldLogs(
     }),
     deleteOlderThan(supabase, "daily_log_revisions", "created_at", RETENTION_DAYS.daily_log_revisions),
     deleteOlderThan(supabase, "audit_logs", "changed_at", RETENTION_DAYS.audit_logs),
+    deleteOlderThan(supabase, "app_messages", "created_at", RETENTION_DAYS.app_messages),
   ]);
 }
 

@@ -12,7 +12,8 @@ export const maxDuration = 60;
  * 共用同一個 endpoint 一次跑完):
  *
  *   1. 把卡在 pdf_status='generating' 太久(>10 分鐘)的日誌翻成 'failed'
- *   2. 清理過期的 login_attempts / daily_log_revisions / audit_logs(見 lib/retention)
+ *   2. 清理過期的 login_attempts / daily_log_revisions / audit_logs / app_messages
+ *      (見 lib/retention;app_messages 需 migration-2.33,沒跑只會 log 一行錯誤)
  *   3. 重試沒送成的 LINE 通知 + 清 30 天前的 notification_queue(見 lib/notifications)
  *   4. 重算老闆 Rich Menu 的「還有未核定」狀態(見 lib/line/pending-menu)—
  *      平常由簽核事件即時同步,這裡只是兜底,防某次事件同步失敗後一直錯下去
@@ -73,7 +74,8 @@ export async function GET(request: Request) {
     );
   }
 
-  // 第二件事:retention 清理(login_attempts / daily_log_revisions / audit_logs)
+  // 第二件事:retention 清理
+  // (login_attempts / daily_log_revisions / audit_logs / app_messages)
   const retention = await cleanupOldLogs(supabase);
   const retentionError = retention.find((r) => r.error !== null);
   if (retentionError) {

@@ -301,15 +301,31 @@ export async function approveStageAction(
     );
   }
 
+  // 站內消息:通過**但有留意見**才發(2026-08-04 業主拍板「有意見,再有消息就好」)。
+  // 這條跟 LINE 無關 — 底下的人沒綁 LINE,以前意見寫了他們永遠不會知道。
+  // 批簽也要發(suppressNotify 只擋 LINE 的額度問題,站內消息不吃額度)。
+  const actorId = user.id;
+  const stageComment = payload.comment?.trim();
+  if (stageComment) {
+    after(async () => {
+      const { messageLogComment } = await import("@/lib/notifications/events");
+      await messageLogComment(
+        payload.logId,
+        expectedStage,
+        stageComment,
+        actorId,
+      );
+    });
+  }
+
   // LINE 通知(不阻塞、失敗不影響簽核):
   //   audit 過關 → 通知老闆待核定
   //   核定第一簽 → 通知「另一位」老闆補簽;兩簽到齊 → 通知主任
-  const actorId = user.id;
   if (!internal?.suppressNotify) {
     after(async () => {
       const events = await import("@/lib/notifications/events");
       if (isApproveStage && finalized) {
-        await events.notifyLogApproved(payload.logId);
+        await events.notifyLogApproved(payload.logId, stageComment);
       } else if (isApproveStage) {
         const { data: me } = await supabase
           .from("profiles")
@@ -392,10 +408,15 @@ export async function rejectStageAction(payload: ActPayload) {
   // 退回 → 核定簽名計數歸零(重送後重新算兩簽)
   await resetApproveSignatures(supabase, payload.logId);
 
-  // LINE 通知主任:日誌被退回(附原因)
+  // 通知主任:日誌被退回(附原因)。站內消息 + LINE 兩條都送 —
+  // 沒綁 LINE 的人靠站內消息才看得到退回原因。
   const rejectComment = payload.comment.trim();
+  const rejectActorId = user.id;
   after(async () => {
-    const { notifyLogRejected } = await import("@/lib/notifications/events");
+    const { notifyLogRejected, messageLogRejected } = await import(
+      "@/lib/notifications/events"
+    );
+    await messageLogRejected(payload.logId, rejectComment, rejectActorId);
     await notifyLogRejected(payload.logId, rejectComment);
     const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
     await syncOwnerApprovalMenus();
@@ -584,9 +605,15 @@ export async function forceRejectStuckLogAction(payload: {
   // 強制退回 → 核定簽名計數歸零
   await resetApproveSignatures(supabase, payload.logId);
 
-  // LINE 通知主任:日誌被強制退回(附原因)
+  // 通知主任:日誌被強制退回(附原因)— 站內消息 + LINE
+  const forceActorId = user.id;
   after(async () => {
-    const { notifyLogRejected } = await import("@/lib/notifications/events");
+    const { notifyLogRejected, messageLogRejected } = await import(
+      "@/lib/notifications/events"
+    );
+    await messageLogRejected(payload.logId, reason, forceActorId, {
+      forced: true,
+    });
     await notifyLogRejected(payload.logId, reason, { forced: true });
     const { syncOwnerApprovalMenus } = await import("@/lib/line/pending-menu");
     await syncOwnerApprovalMenus();
@@ -679,6 +706,13 @@ export async function revokeApprovalAction(payload: {
       .update({ pdf_status: "pending" })
       .eq("id", payload.logId);
   }
+
+  // 站內消息:已核定的日誌被拉回來改,主任與經手過的人都該知道
+  const revokeActorId = user.id;
+  after(async () => {
+    const { messageLogRevoked } = await import("@/lib/notifications/events");
+    await messageLogRevoked(payload.logId, reason, revokeActorId);
+  });
 
   revalidatePath("/approvals");
   revalidatePath("/logs");

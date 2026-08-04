@@ -1,8 +1,12 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { noticeFlex } from "@/lib/line/flex";
 import { sendNotification } from "@/lib/notifications/notify";
+import {
+  createAppMessages,
+  truncateBody,
+} from "@/lib/notifications/messages";
 import { LEAVE_TYPE_LABEL } from "@/lib/leave";
-import type { LeaveType, UserRole } from "@/lib/types";
+import type { ApprovalStage, LeaveType, UserRole } from "@/lib/types";
 
 /**
  * 各業務事件 → LINE 通知。由 server actions 在狀態變更成功後,
@@ -212,19 +216,30 @@ export async function notifyLogsBatchAwaitingSecondApproval(
   });
 }
 
-/** 老闆核定通過 → 通知該份日誌的主任 */
-export async function notifyLogApproved(logId: string): Promise<void> {
+/**
+ * 老闆核定通過 → 通知該份日誌的主任。
+ * 核定人有留意見時把意見一起帶進卡片(2026-08:意見以前只留在系統裡沒人看到)。
+ */
+export async function notifyLogApproved(
+  logId: string,
+  comment?: string | null,
+): Promise<void> {
   const ctx = await loadLogContext(logId);
   if (!ctx) return;
+  const note = comment?.trim();
   await sendNotification({
     eventType: "log_approved",
     relatedId: logId,
     recipients: { profileIds: [ctx.supervisorId] },
-    altText: "日誌已核定",
+    altText: note ? "日誌已核定(有意見)" : "日誌已核定",
     message: noticeFlex({
-      title: "日誌已核定",
-      lines: [`案件:${ctx.caseName}`, `日期:${fmtDate(ctx.logDate)}`],
-      tone: "green",
+      title: note ? "日誌已核定,核定人有意見" : "日誌已核定",
+      lines: [
+        `案件:${ctx.caseName}`,
+        `日期:${fmtDate(ctx.logDate)}`,
+        ...(note ? [`意見:${truncate(note, 60)}`] : []),
+      ],
+      tone: note ? "amber" : "green",
       buttonLabel: "查看日誌",
       buttonPath: `/logs/${logId}`,
     }),
@@ -255,6 +270,183 @@ export async function notifyLogRejected(
       buttonLabel: "去修改重送",
       buttonPath: `/logs/${logId}`,
     }),
+  });
+}
+
+// ============================================================
+// 站內消息(app_messages)— 不走 LINE,不需綁定,登入就看得到
+// ============================================================
+//
+// 2026-08-04 業主回報:「日誌我核過的,但是我有在下面給意見,可是底下的人
+// 他們那裡不會跳通知出來。」上面那些 notify* 全部只送給綁了 LINE 的人,
+// 而底下的人沒綁也不打算綁 — 所以簽核意見另外走站內消息這條路。
+//
+// 業主拍板的投遞規則:「有意見,再有消息就好」— 通過但沒留意見不發消息。
+
+const STAGE_ACTION_LABEL: Record<ApprovalStage, string> = {
+  fill: "填表",
+  review: "複核",
+  audit: "審核",
+  approve: "核定",
+};
+
+/** 日誌消息連到簽核歷程那一段(意見的正本在那裡) */
+function logTrailLink(logId: string): string {
+  return `/logs/${logId}#approval-trail`;
+}
+
+/**
+ * 一份日誌的「相關人」— 主任 + 這份日誌前面關卡經手過的簽核人。
+ *
+ * 為什麼不是只有主任:老闆在核定關留的意見,前面審過的助理也該知道
+ * (業主說的「底下的人」不只主任)。經手人從 log_approvals 撈,
+ * 不分輪次 — 一份日誌經手的人最多三四個,不值得為此加條件。
+ */
+async function loadLogStakeholders(
+  logId: string,
+  supervisorId: string,
+): Promise<string[]> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("log_approvals")
+    .select("approver_id")
+    .eq("log_id", logId);
+  const ids = new Set<string>([supervisorId]);
+  for (const row of (data ?? []) as { approver_id: string | null }[]) {
+    if (row.approver_id) ids.add(row.approver_id);
+  }
+  return Array.from(ids);
+}
+
+async function loadActorName(actorId: string | null): Promise<string> {
+  if (!actorId) return "簽核人";
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", actorId)
+    .maybeSingle();
+  return (data?.full_name as string | null) ?? "簽核人";
+}
+
+/**
+ * 簽核通過**但有留意見** → 發站內消息給主任與前面關卡的經手人。
+ * 沒留意見不呼叫這支(呼叫了也會因為 body 空而直接 return)。
+ */
+export async function messageLogComment(
+  logId: string,
+  stage: ApprovalStage,
+  comment: string,
+  actorId: string,
+): Promise<void> {
+  const body = truncateBody(comment);
+  if (!body) return;
+  const ctx = await loadLogContext(logId);
+  if (!ctx) return;
+  const [stakeholders, actorName] = await Promise.all([
+    loadLogStakeholders(logId, ctx.supervisorId),
+    loadActorName(actorId),
+  ]);
+  await createAppMessages({
+    eventType: "log_comment",
+    profileIds: stakeholders,
+    actorId,
+    relatedId: logId,
+    title: `${ctx.caseName} ${fmtDate(ctx.logDate)}｜${STAGE_ACTION_LABEL[stage]}通過，有意見`,
+    body: `${actorName}：${body}`,
+    link: logTrailLink(logId),
+  });
+}
+
+/** 退回(含強制退回)→ 站內消息(退回一定有原因,所以一律發) */
+export async function messageLogRejected(
+  logId: string,
+  comment: string,
+  actorId: string,
+  opts?: { forced?: boolean },
+): Promise<void> {
+  const ctx = await loadLogContext(logId);
+  if (!ctx) return;
+  const [stakeholders, actorName] = await Promise.all([
+    loadLogStakeholders(logId, ctx.supervisorId),
+    loadActorName(actorId),
+  ]);
+  await createAppMessages({
+    eventType: "log_rejected",
+    profileIds: stakeholders,
+    actorId,
+    relatedId: logId,
+    title: `${ctx.caseName} ${fmtDate(ctx.logDate)}｜日誌被${opts?.forced ? "強制" : ""}退回`,
+    body: `${actorName}：${truncateBody(comment) ?? "（沒有填寫原因）"}`,
+    link: logTrailLink(logId),
+  });
+}
+
+/**
+ * 送出後被修改 → 站內消息(2026-08-04 業主追加:「改了日誌也做通知」)。
+ *
+ * 誰該知道:
+ *   - 日誌的主任 — 他填的東西被改了,不能只在畫面上掛個「經助理修改」標籤等他自己發現
+ *   - 前面關卡經手過的人 — 他們簽的是舊版本
+ *   - 重送(退回改完)時再加上**全部辦公室助理** — 這份會回到他們的待審核清單,
+ *     跟 notifyLogResubmitted 的 LINE 收件人一致(但這條不需要綁 LINE)
+ *
+ * 內容只講「改了哪些欄位」,前後對照在日誌頁的編輯軌跡(連結帶 #edit-trail)。
+ */
+export async function messageLogEdited(
+  logId: string,
+  editorId: string,
+  /** 改了哪些欄位;`null` = 這條路徑算不出差異(主任的 classic 重送) */
+  changedLabels: string[] | null,
+  opts?: { resubmitted?: boolean },
+): Promise<void> {
+  const ctx = await loadLogContext(logId);
+  if (!ctx) return;
+  const [stakeholders, editorName] = await Promise.all([
+    loadLogStakeholders(logId, ctx.supervisorId),
+    loadActorName(editorId),
+  ]);
+  const changedText =
+    changedLabels === null
+      ? "已修正並重新送出"
+      : changedLabels.length > 0
+        ? `改了：${changedLabels.join("、")}`
+        : "內容沒有變動，直接重送";
+  await createAppMessages({
+    eventType: "log_edited",
+    profileIds: stakeholders,
+    // 重送 → 全部助理都要知道(這份會回到他們的待審核清單)
+    roles: opts?.resubmitted ? ["office_staff"] : undefined,
+    actorId: editorId,
+    relatedId: logId,
+    title: opts?.resubmitted
+      ? `${ctx.caseName} ${fmtDate(ctx.logDate)}｜退回的日誌已修正並重新送出`
+      : `${ctx.caseName} ${fmtDate(ctx.logDate)}｜日誌被修改`,
+    body: `${editorName}：${changedText}`,
+    link: `/logs/${logId}#edit-trail`,
+  });
+}
+
+/** 撤回核定 → 站內消息(已核定的日誌被拉回來改,經手的人都該知道) */
+export async function messageLogRevoked(
+  logId: string,
+  reason: string,
+  actorId: string,
+): Promise<void> {
+  const ctx = await loadLogContext(logId);
+  if (!ctx) return;
+  const [stakeholders, actorName] = await Promise.all([
+    loadLogStakeholders(logId, ctx.supervisorId),
+    loadActorName(actorId),
+  ]);
+  await createAppMessages({
+    eventType: "log_revoked",
+    profileIds: stakeholders,
+    actorId,
+    relatedId: logId,
+    title: `${ctx.caseName} ${fmtDate(ctx.logDate)}｜核定被撤回，回到審核關`,
+    body: `${actorName}：${truncateBody(reason) ?? "（沒有填寫原因）"}`,
+    link: logTrailLink(logId),
   });
 }
 

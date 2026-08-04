@@ -311,9 +311,26 @@ export default async function ApprovalDetailPage({
             </span>
           )}
         </div>
-        <h1 className="mt-1.5 text-2xl font-semibold text-primary md:text-3xl">
-          {l.cases?.name}
-        </h1>
+        <div className="mt-1.5 flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
+            {l.cases?.name}
+          </h1>
+          {/* 直接修改(2026-08-04 業主回饋:「辦公室助理要編輯日誌,都只能等我退回
+              才能編輯,沒有辦法主任呈上來就編輯」)。
+              權限本來就有(saveLogAction 的 post_edit + logs_office_write RLS),
+              缺的是這個入口 — 助理整天待在這頁,這裡沒有按鈕等於沒有這個功能。
+              改完會寫 daily_log_revisions,審核 / 核定的人看得到前後對照。 */}
+          {(role === "office_staff" ||
+            role === "owner" ||
+            (role === "site_supervisor" && l.supervisor_id === user!.id)) && (
+            <Link
+              href={`/logs/${id}/edit`}
+              className="inline-flex min-h-11 items-center rounded-md border border-[#E0DCD6] bg-white px-4 text-sm text-foreground transition-colors hover:border-accent hover:text-accent"
+            >
+              直接修改這份
+            </Link>
+          )}
+        </div>
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-base text-muted-foreground">
           <span>日期：{formatDateTW(l.log_date)}</span>
           <span>{getWeekdayLabel(l.log_date)}</span>
@@ -620,7 +637,7 @@ export default async function ApprovalDetailPage({
                 ? approveSignedCount > 0
                   ? "另一位核定人已經簽過了，你這一簽完成後就會核定通過並自動產生 PDF。"
                   : "核定要兩位核定人都簽名。你先簽完後，系統會通知另一位核定人補簽。"
-                : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。要退回切到「退回」分頁，主任會在「我的日誌」看到並可修正後重送。`}
+                : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。小地方不用退回 —— 點右上「直接修改這份」就能改，改了誰改的、改了哪裡都會留紀錄；要主任自己重做才切到「退回」分頁。`}
             </NextStepHint>
           </div>
           <ApprovalActions logId={id} stage={allowedStage} stampUrl={stampUrl} />

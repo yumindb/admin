@@ -302,6 +302,18 @@ export function BatchApprovalsList({
                   })()}
                 </div>
               </Link>
+              {/* 不用退回也能改(2026-08-04 業主回饋:助理以前只能等老闆退回才編得動)。
+                  放在卡片下緣的細長條,不跟「去簽核」搶主要動線。 */}
+              {canForceAction && (
+                <div className="border-t border-[#E0DCD6] bg-[#FAF7F2] px-5 py-2 md:px-6">
+                  <Link
+                    href={`/logs/${l.id}/edit`}
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-accent hover:underline"
+                  >
+                    ✎ 直接修改這份（不用退回，改動會留紀錄）
+                  </Link>
+                </div>
+              )}
               {(() => {
                 const d = daysSinceSubmit(l);
                 if (!canForceAction || d === null || d < STUCK_WARN_DAYS) return null;
@@ -569,13 +581,17 @@ function BatchApprovalModal({
               </>
             )}
 
-            <Textarea
-              rows={2}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="備註（選填，所有勾選日誌共用）"
-              className="mt-3"
-            />
+            {/* 批簽的意見會逐份發消息給各自的主任(站內消息不吃 LINE 額度) */}
+            <label className="mt-3 block text-sm text-muted-foreground">
+              意見（選填，所有勾選日誌共用）— 填了會發消息通知各自的主任
+              <Textarea
+                rows={2}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="例如：這批照片再補拍清楚一點"
+                className="mt-1.5"
+              />
+            </label>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <Button

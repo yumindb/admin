@@ -374,3 +374,26 @@ export type TenderImport = {
   imported_by: string | null;
   created_at: string;
 };
+
+/**
+ * 站內消息(migration-2.33)。與 LINE 通知不同:不需綁定、不吃官方帳號額度,
+ * 登入就看得到 — 業主 2026-08 回報「簽核意見底下的人不會跳通知」的解法。
+ */
+export type AppMessageEvent =
+  | "log_comment" // 簽核通過但有留意見
+  | "log_rejected" // 退回(含強制退回)
+  | "log_revoked" // 撤回核定
+  | "log_edited"; // 送出後被修改(含退回改完重送)
+
+export type AppMessage = {
+  id: string;
+  profile_id: string;
+  event_type: AppMessageEvent | string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  related_id: string | null;
+  actor_id: string | null;
+  read_at: string | null;
+  created_at: string;
+};

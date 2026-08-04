@@ -130,6 +130,8 @@ export default async function ApprovalsPage() {
         <NextStepHint tone="muted">
           四關流程：填表 → 複核（工地主任） → 審核（辦公室助理） → 核定（老闆）。
           每關退回都會回到「我的日誌」讓主任修正後重送。
+          {(role === "office_staff" || role === "owner") &&
+            "小地方不用退回 —— 每張卡片下方的「直接修改這份」可以當場改，改動會留前後對照紀錄。"}
           {stage === "approve" && "核定要兩位核定人都簽名才算完成。"}
         </NextStepHint>
       </div>
