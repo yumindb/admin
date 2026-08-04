@@ -6,7 +6,14 @@ import { normalizeLogPhotos } from "@/lib/daily-log";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { Button } from "@/components/ui/button";
 import { CasesOverviewList } from "@/components/cases-overview-list";
-import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
+import {
+  computeCaseProgress,
+  daysSince,
+  isCaseBehind,
+  plannedDaysBetween,
+  primaryProgressPct,
+  type CaseStats,
+} from "@/lib/case-progress";
 import { tryGetActor } from "@/lib/auth/require-role";
 import {
   CasesKpiBar,
@@ -18,7 +25,6 @@ import type {
   DailyLog,
   DailyLogExtraItem,
   DailyLogUnsignedItem,
-  DailyLogWorkItem,
   LogPhoto,
 } from "@/lib/types";
 
@@ -79,7 +85,8 @@ export default async function CasesOverviewPage({
         fetchAllRows((from, to) =>
           supabase
             .from("case_work_items")
-            .select("id, case_id, item_type, quantity")
+            // total_price / skipped:進度改成產值加權 + 排除略過項後需要
+            .select("id, case_id, item_type, quantity, total_price, skipped")
             .in("case_id", caseIds)
             .order("id", { ascending: true })
             .range(from, to),
@@ -91,7 +98,9 @@ export default async function CasesOverviewPage({
               "id, case_id, status, work_items, extra_items, unsigned_items, photos, log_date",
             )
             .in("case_id", caseIds)
-            .in("status", ["submitted", "approved"])
+            // 除了草稿都撈:退回中的日誌照樣算進度(見 lib/case-progress.ts),
+            // 卡片上的「日誌」筆數也因此包含退回中的那幾份
+            .in("status", ["submitted", "approved", "rejected"])
             .order("log_date", { ascending: false })
             .order("id", { ascending: true })
             .range(from, to),
@@ -102,7 +111,7 @@ export default async function CasesOverviewPage({
   const allCases = (cases ?? []) as Case[];
   const allItems = (workItems ?? []) as Pick<
     CaseWorkItem,
-    "id" | "case_id" | "item_type" | "quantity"
+    "id" | "case_id" | "item_type" | "quantity" | "total_price" | "skipped"
   >[];
   const allLogs = (logs ?? []) as Pick<
     DailyLog,
@@ -115,30 +124,21 @@ export default async function CasesOverviewPage({
     | "log_date"
   >[];
 
-  const itemMetaById = new Map<string, (typeof allItems)[number]>();
-  for (const it of allItems) itemMetaById.set(it.id, it);
-
   // 預先彙整每個案件的 stats
   const statsByCase = new Map<string, CaseStats>();
   const today = new Date();
   for (const c of allCases) {
-    let startedDaysAgo: number | null = null;
-    if (c.started_at) {
-      const dt = new Date(c.started_at);
-      if (!Number.isNaN(dt.getTime())) {
-        const diff = (today.getTime() - dt.getTime()) / (1000 * 60 * 60 * 24);
-        startedDaysAgo = Math.floor(diff);
-      }
-    }
     statsByCase.set(c.id, {
       itemCount: 0,
       logCount: 0,
       progressPct: null,
+      itemProgressPct: null,
       extraCount: 0,
       unsignedCount: 0,
       photos: [],
       photoTotal: 0,
-      startedDaysAgo,
+      startedDaysAgo: daysSince(c.started_at, today),
+      plannedDays: plannedDaysBetween(c.started_at, c.expected_end),
     });
   }
 
@@ -155,8 +155,7 @@ export default async function CasesOverviewPage({
     }
   }
 
-  // 日誌數 / 已登記合約外 / 未簽約 / 累計完成數量(per work item)
-  const doneQtyByItem = new Map<string, number>();
+  // 日誌數 / 已登記合約外 / 未簽約
   // 額外:本週日誌數、本月超工筆數
   const now = new Date();
   const weekAgo = new Date(now);
@@ -200,43 +199,14 @@ export default async function CasesOverviewPage({
       }
     }
 
-    for (const w of (log.work_items ?? []) as DailyLogWorkItem[]) {
-      const meta = itemMetaById.get(w.work_item_id);
-      if (!meta) continue;
-      const total = meta.quantity ?? 0;
-      const inc = w.qty_mode === "percent" ? total * w.qty : w.qty;
-      doneQtyByItem.set(
-        w.work_item_id,
-        (doneQtyByItem.get(w.work_item_id) ?? 0) + inc,
-      );
-    }
   }
 
-  // 進度
-  const pctSumByCase = new Map<string, number>();
-  const pctCountByCase = new Map<string, number>();
-  for (const it of allItems) {
-    // manual 也算進度 — 無標單小案只有 manual 工項,漏掉它進度永遠是「—」
-    if (it.item_type !== "item" && it.item_type !== "spec" && it.item_type !== "manual") continue;
-    const total = it.quantity ?? 0;
-    const done = doneQtyByItem.get(it.id) ?? 0;
-    const pct =
-      total > 0 ? Math.min(1, done / total) : done > 0 ? 1 : 0;
-    pctSumByCase.set(it.case_id, (pctSumByCase.get(it.case_id) ?? 0) + pct);
-    pctCountByCase.set(
-      it.case_id,
-      (pctCountByCase.get(it.case_id) ?? 0) + 1,
-    );
-  }
-
+  // 進度 — 產值加權為主、工項完成率為輔(算法在 lib/case-progress.ts,三個頁面共用)
+  const progressByCase = computeCaseProgress(allItems, allLogs);
   for (const [caseId, s] of statsByCase) {
-    const sum = pctSumByCase.get(caseId) ?? 0;
-    const count = pctCountByCase.get(caseId) ?? 0;
-    if (count > 0) {
-      s.progressPct = Math.round((sum / count) * 1000) / 10;
-    } else {
-      s.progressPct = null;
-    }
+    const p = progressByCase.get(caseId);
+    s.progressPct = primaryProgressPct(p);
+    s.itemProgressPct = p?.itemPct ?? null;
   }
 
   // 取 signed URL

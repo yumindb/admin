@@ -19,7 +19,10 @@ export type CaseOverviewRow = {
   company: string;
   status: CaseStatus;
   startedAt: string | null;
+  /** 主進度:產值加權(沒單價時退回工項完成率) */
   progressPct: number | null;
+  /** 次要進度:工項完成率算術平均 */
+  itemProgressPct: number | null;
   logCount: number;
   behind: boolean;
 };
@@ -112,7 +115,7 @@ export function CasesOverviewReportClient({
                 onClick={setSort}
               />
               <SortHeader
-                label="進度"
+                label="進度（產值）"
                 k="progress"
                 cur={sortKey}
                 dir={sortDir}
@@ -165,6 +168,12 @@ export function CasesOverviewReportClient({
                   <Td>{r.startedAt ? formatDateTW(r.startedAt) : "—"}</Td>
                   <Td align="right">
                     {r.progressPct === null ? "—" : `${r.progressPct}%`}
+                    {r.itemProgressPct !== null &&
+                      r.itemProgressPct !== r.progressPct && (
+                        <div className="text-[11px] text-muted-foreground">
+                          工項 {r.itemProgressPct}%
+                        </div>
+                      )}
                   </Td>
                   <Td align="right">{r.logCount}</Td>
                   <Td>

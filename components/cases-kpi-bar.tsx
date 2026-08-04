@@ -5,7 +5,7 @@
  *
  * 卡片:
  *   1. 進行中案件數(active)
- *   2. 進度落後(< 30% 且開工 > 60 天):紅色;點擊 → 套用 ?filter=behind
+ *   2. 進度落後(比工期該有的進度落後 20 個百分點以上):紅色;點擊 → 套用 ?filter=behind
  *   3. 本週新日誌數(log_date >= 7 天前):點擊 → /logs?period=week
  *   4. 本月超工筆數(unsigned_items 內 category 在本月內):點擊 → /reports/unsigned
  *
@@ -46,7 +46,7 @@ export function CasesKpiBar({ kpis }: { kpis: CasesKpis }) {
         tone="danger"
         icon={<AlertTriangle className="size-4" />}
         href={`${pathname}?${behindParams.toString()}`}
-        hint="< 30% 且開工 > 60 天"
+        hint="比工期該有的進度落後 20 個百分點以上"
       />
       <KpiCardLink
         label="本週新日誌"

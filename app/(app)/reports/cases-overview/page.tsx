@@ -3,12 +3,15 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { tryGetActor } from "@/lib/auth/require-role";
-import type {
-  Case,
-  CaseWorkItem,
-  DailyLog,
-  DailyLogWorkItem,
-} from "@/lib/types";
+import type { Case, CaseWorkItem, DailyLog } from "@/lib/types";
+import {
+  computeCaseProgress,
+  daysSince,
+  isCaseBehind,
+  plannedDaysBetween,
+  primaryProgressPct,
+  type CaseStats,
+} from "@/lib/case-progress";
 import { CasesOverviewReportClient, type CaseOverviewRow } from "./client";
 
 /**
@@ -81,7 +84,7 @@ export default async function CasesOverviewReportPage({
     fetchAllRows((from, to) =>
       supabase
         .from("case_work_items")
-        .select("id, case_id, item_type, quantity")
+        .select("id, case_id, item_type, quantity, total_price, skipped")
         .in("case_id", caseIds)
         .order("id", { ascending: true })
         .range(from, to),
@@ -91,7 +94,7 @@ export default async function CasesOverviewReportPage({
         .from("daily_logs")
         .select("id, case_id, work_items, log_date, status")
         .in("case_id", caseIds)
-        .in("status", ["submitted", "approved"])
+        .in("status", ["submitted", "approved", "rejected"])
         .order("id", { ascending: true })
         .range(from, to),
     ),
@@ -99,69 +102,38 @@ export default async function CasesOverviewReportPage({
 
   const items = (workItems ?? []) as Pick<
     CaseWorkItem,
-    "id" | "case_id" | "item_type" | "quantity"
+    "id" | "case_id" | "item_type" | "quantity" | "total_price" | "skipped"
   >[];
   const allLogs = (logs ?? []) as Pick<
     DailyLog,
     "case_id" | "work_items" | "log_date" | "status"
   >[];
 
-  // 累計每個工項的完成量
-  const itemMeta = new Map<string, (typeof items)[number]>();
-  for (const it of items) itemMeta.set(it.id, it);
-  const doneByItem = new Map<string, number>();
   const logCountByCase = new Map<string, number>();
   for (const log of allLogs) {
-    if (log.case_id) {
-      logCountByCase.set(
-        log.case_id,
-        (logCountByCase.get(log.case_id) ?? 0) + 1,
-      );
-    }
-    for (const w of (log.work_items ?? []) as DailyLogWorkItem[]) {
-      const meta = itemMeta.get(w.work_item_id);
-      const total = meta?.quantity ?? null;
-      const inc =
-        w.qty_mode === "percent" ? (total ?? 0) * w.qty : w.qty;
-      doneByItem.set(
-        w.work_item_id,
-        (doneByItem.get(w.work_item_id) ?? 0) + inc,
-      );
-    }
+    if (!log.case_id) continue;
+    logCountByCase.set(log.case_id, (logCountByCase.get(log.case_id) ?? 0) + 1);
   }
 
-  // 算每案進度 %
-  const pctSum = new Map<string, number>();
-  const pctCount = new Map<string, number>();
-  for (const it of items) {
-    // manual 也算進度(無標單小案只有 manual 工項)
-    if (it.item_type !== "item" && it.item_type !== "spec" && it.item_type !== "manual") continue;
-    const total = it.quantity ?? 0;
-    const done = doneByItem.get(it.id) ?? 0;
-    const pct = total > 0 ? Math.min(1, done / total) : done > 0 ? 1 : 0;
-    pctSum.set(it.case_id, (pctSum.get(it.case_id) ?? 0) + pct);
-    pctCount.set(it.case_id, (pctCount.get(it.case_id) ?? 0) + 1);
-  }
+  // 進度 — 與案件列表 / 儀表板同一套算法(lib/case-progress.ts)
+  const progressByCase = computeCaseProgress(items, allLogs);
 
   const today = new Date();
   const rows: CaseOverviewRow[] = cases.map((c) => {
-    const sum = pctSum.get(c.id) ?? 0;
-    const cnt = pctCount.get(c.id) ?? 0;
-    const progressPct = cnt > 0 ? Math.round((sum / cnt) * 1000) / 10 : null;
-    let startedDaysAgo: number | null = null;
-    if (c.started_at) {
-      const dt = new Date(c.started_at);
-      if (!Number.isNaN(dt.getTime())) {
-        startedDaysAgo = Math.floor(
-          (today.getTime() - dt.getTime()) / (1000 * 60 * 60 * 24),
-        );
-      }
-    }
-    const behind =
-      progressPct !== null &&
-      startedDaysAgo !== null &&
-      progressPct < 30 &&
-      startedDaysAgo > 60;
+    const p = progressByCase.get(c.id);
+    const progressPct = primaryProgressPct(p);
+    const stats: CaseStats = {
+      itemCount: 0,
+      logCount: 0,
+      progressPct,
+      itemProgressPct: p?.itemPct ?? null,
+      extraCount: 0,
+      unsignedCount: 0,
+      photos: [],
+      photoTotal: 0,
+      startedDaysAgo: daysSince(c.started_at, today),
+      plannedDays: plannedDaysBetween(c.started_at, c.expected_end),
+    };
     return {
       caseId: c.id,
       caseName: c.name,
@@ -170,8 +142,9 @@ export default async function CasesOverviewReportPage({
       status: c.status,
       startedAt: c.started_at,
       progressPct,
+      itemProgressPct: p?.itemPct ?? null,
       logCount: logCountByCase.get(c.id) ?? 0,
-      behind,
+      behind: isCaseBehind(stats),
     };
   });
 

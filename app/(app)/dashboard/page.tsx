@@ -4,7 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { formatDateTW } from "@/lib/datetime";
-import { isCaseBehind, type CaseStats } from "@/lib/case-progress";
+import {
+  BEHIND_GAP_PP,
+  computeCaseProgress,
+  daysSince,
+  isCaseBehind,
+  plannedDaysBetween,
+  primaryProgressPct,
+  type CaseStats,
+} from "@/lib/case-progress";
 import { normalizeLogPhotos } from "@/lib/daily-log";
 import { AlertsSection, type AlertItem } from "./alerts-section";
 import type {
@@ -105,22 +113,25 @@ export default async function DashboardPage() {
   const dueSoonCases = cases.filter(
     (c) => c.expected_end && c.expected_end >= todayKey && c.expected_end <= in7Key,
   );
-  const sixtyDaysAgo = new Date();
-  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-  const oldCases = cases.filter((c) => {
-    if (!c.started_at) return false;
-    return new Date(c.started_at) < sixtyDaysAgo;
+  // 落後判斷要比對「照工期該有的進度」,所以開工日 + 預定完工日都要有。
+  // 工期還沒走過 BEHIND_GAP_PP% 的案件不可能落後那麼多,先用日期篩掉,
+  // 免得為了算進度去撈一堆案件的工項與日誌。
+  const candidateCases = cases.filter((c) => {
+    const planned = plannedDaysBetween(c.started_at, c.expected_end);
+    const elapsed = daysSince(c.started_at);
+    if (planned === null || elapsed === null) return false;
+    return elapsed / planned > BEHIND_GAP_PP / 100;
   });
 
   const behindCases: { id: string; code: string | null; name: string; pct: number }[] = [];
-  if (oldCases.length > 0) {
-    const oldCaseIds = oldCases.map((c) => c.id);
+  if (candidateCases.length > 0) {
+    const oldCaseIds = candidateCases.map((c) => c.id);
     // fetchAllRows:真實標單案 1200+ 工項會超 PostgREST 1000 筆上限
     const [{ data: workItems }, { data: logs }] = await Promise.all([
       fetchAllRows((from, to) =>
         supabase
           .from("case_work_items")
-          .select("id, case_id, item_type, quantity")
+          .select("id, case_id, item_type, quantity, total_price, skipped")
           .in("case_id", oldCaseIds)
           .order("id", { ascending: true })
           .range(from, to),
@@ -130,57 +141,35 @@ export default async function DashboardPage() {
           .from("daily_logs")
           .select("id, case_id, status, work_items, log_date")
           .in("case_id", oldCaseIds)
-          .in("status", ["submitted", "approved"])
+          .in("status", ["submitted", "approved", "rejected"])
           .order("id", { ascending: true })
           .range(from, to),
       ),
     ]);
     const items = (workItems ?? []) as Pick<
       CaseWorkItem,
-      "id" | "case_id" | "item_type" | "quantity"
+      "id" | "case_id" | "item_type" | "quantity" | "total_price" | "skipped"
     >[];
-    const itemMeta = new Map<string, (typeof items)[number]>();
-    for (const it of items) itemMeta.set(it.id, it);
+    const allLogs = (logs ?? []) as Pick<
+      DailyLog,
+      "case_id" | "status" | "work_items" | "log_date"
+    >[];
+    const progressByCase = computeCaseProgress(items, allLogs);
 
-    const doneByItem = new Map<string, number>();
-    for (const log of (logs ?? []) as Pick<DailyLog, "case_id" | "status" | "work_items" | "log_date">[]) {
-      for (const w of (log.work_items ?? []) as DailyLogWorkItem[]) {
-        const meta = itemMeta.get(w.work_item_id);
-        if (!meta) continue;
-        const total = meta.quantity ?? 0;
-        const inc = w.qty_mode === "percent" ? total * w.qty : w.qty;
-        doneByItem.set(w.work_item_id, (doneByItem.get(w.work_item_id) ?? 0) + inc);
-      }
-    }
-
-    const pctSumByCase = new Map<string, number>();
-    const pctCountByCase = new Map<string, number>();
-    for (const it of items) {
-      // manual 也算進度(與案件列表一致;無標單小案只有 manual 工項)
-      if (it.item_type !== "item" && it.item_type !== "spec" && it.item_type !== "manual") continue;
-      const total = it.quantity ?? 0;
-      const done = doneByItem.get(it.id) ?? 0;
-      const pct = total > 0 ? Math.min(1, done / total) : done > 0 ? 1 : 0;
-      pctSumByCase.set(it.case_id, (pctSumByCase.get(it.case_id) ?? 0) + pct);
-      pctCountByCase.set(it.case_id, (pctCountByCase.get(it.case_id) ?? 0) + 1);
-    }
-
-    for (const c of oldCases) {
-      const startedDaysAgo = c.started_at
-        ? Math.floor((now - new Date(c.started_at).getTime()) / (24 * 60 * 60 * 1000))
-        : null;
-      const sum = pctSumByCase.get(c.id) ?? 0;
-      const count = pctCountByCase.get(c.id) ?? 0;
-      const progressPct = count > 0 ? Math.round((sum / count) * 1000) / 10 : null;
+    for (const c of candidateCases) {
+      const p = progressByCase.get(c.id);
+      const progressPct = primaryProgressPct(p);
       const stats: CaseStats = {
-        itemCount: count,
+        itemCount: 0,
         logCount: 0,
         progressPct,
+        itemProgressPct: p?.itemPct ?? null,
         extraCount: 0,
         unsignedCount: 0,
         photos: [],
         photoTotal: 0,
-        startedDaysAgo,
+        startedDaysAgo: daysSince(c.started_at),
+        plannedDays: plannedDaysBetween(c.started_at, c.expected_end),
       };
       if (isCaseBehind(stats) && progressPct !== null) {
         behindCases.push({
@@ -407,7 +396,7 @@ export default async function DashboardPage() {
           hint={
             behindCases.length === 0
               ? "沒有進度落後的案場"
-              : `< 30% 且開工 > 60 天：${behindCases
+              : `比工期該有的進度落後 ${BEHIND_GAP_PP} 個百分點以上：${behindCases
                   .slice(0, 3)
                   .map((c) => `${c.code ?? ""}${c.code ? "｜" : ""}${c.name} (${c.pct}%)`)
                   .join("、")}${behindCases.length > 3 ? "…" : ""}`

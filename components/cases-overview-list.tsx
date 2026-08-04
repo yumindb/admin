@@ -4,7 +4,7 @@
  * 案件總覽列表 client wrapper —
  *   - 公司 tab(動態從 cases 撈 distinct company,空時隱藏)
  *   - status tab + sort 改用 URL searchParams,但 company 是純 client-side filter
- *   - 「進度落後」filter(由 KPI 卡點擊觸發);< 30% 且開工 > 60 天前
+ *   - 「進度落後」filter(由 KPI 卡點擊觸發);比工期該有的進度落後 20 個百分點以上
  *
  * cases 已由 server 端撈完(含 stats),這裡只做篩選與排序顯示。
  */
@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { formatDateTW } from "@/lib/datetime";
 import {
+  BEHIND_GAP_PP,
   isCaseBehind,
   caseHealth,
   CASE_HEALTH_LABEL,
@@ -309,7 +310,10 @@ export function CasesOverviewList({
 
       {extraFilter === "behind" && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-2.5 text-sm text-[#B91C1C]">
-          <span>已套用「進度落後」篩選 — 只顯示開工 {">"}60 天且進度 {"<"}30% 的案件</span>
+          <span>
+            已套用「進度落後」篩選 — 只顯示進度比工期該有的進度落後 {BEHIND_GAP_PP}{" "}
+            個百分點以上的案件
+          </span>
           <button
             type="button"
             onClick={clearExtraFilter}
@@ -352,11 +356,13 @@ export function CasesOverviewList({
                   itemCount: 0,
                   logCount: 0,
                   progressPct: null,
+                  itemProgressPct: null,
                   extraCount: 0,
                   unsignedCount: 0,
                   photos: [],
                   photoTotal: 0,
                   startedDaysAgo: null,
+                  plannedDays: null,
                 }
               }
             />
@@ -457,8 +463,20 @@ function CaseCard({ c, stats }: { c: Case; stats: CaseStats }) {
       <div className="mt-4">
         <div className="mb-1 flex items-baseline justify-between text-sm">
           <span className="text-muted-foreground">施工總進度</span>
-          <span className="tabular-nums text-foreground">
-            {stats.progressPct === null ? "—" : `${stats.progressPct}%`}
+          <span className="flex items-baseline gap-1.5">
+            {/* 主數字是產值加權;工項完成率放旁邊當對照(兩者相同時不重複顯示) */}
+            {stats.itemProgressPct !== null &&
+              stats.itemProgressPct !== stats.progressPct && (
+                <span
+                  className="text-[11px] tabular-nums text-muted-foreground"
+                  title="已動過的工項比例(不看金額)"
+                >
+                  工項 {stats.itemProgressPct}%
+                </span>
+              )}
+            <span className="tabular-nums text-foreground">
+              {stats.progressPct === null ? "—" : `${stats.progressPct}%`}
+            </span>
           </span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-[#F0EBE4]">
