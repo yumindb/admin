@@ -114,9 +114,19 @@ draft →[主任填表+簽名 fill]→ submitted+review
   加欄位不用 migration。
 - **attendance_events 是 immutable event log**：故意不開 UPDATE/DELETE，修正只能補新事件。
 - **Migration 流程**：新增 `docs/migration-2.X.sql`（必須冪等）→ 登記到 `docs/MIGRATIONS.md`
-  → 由 Evelyn 貼到裕民 Supabase SQL editor 手動執行。**Claude 這邊的 Supabase MCP 連的是
-  Evelyn 個人帳號，不是裕民 production — 絕不能對 MCP 的專案跑 yumin migration。**
-  production DB 狀態無法從本機直接查，以 MIGRATIONS.md 記錄 + Evelyn 確認為準。
+  → 由 Evelyn 貼到裕民 Supabase SQL editor 手動執行。
+- ⚠ **用 Supabase MCP 前，先確認這條 MCP 現在連到哪個專案**。這件事會變：
+  2026-08 以前這份文件寫「MCP 連的是 Evelyn 個人帳號、不是 production」，當時成立，
+  後來已改指到裕民 production；之後也可能再換。**不要憑這份文件的記憶假設，每次自己查。**
+  - 查法：`list_projects` / `get_project_url` 取得 project ref，跟 App 實際用的
+    `NEXT_PUBLIC_SUPABASE_URL`（`.env.local`，或 Vercel 環境變數）裡的 ref 比對。
+  - **ref 相同 = 正式站**：唯讀查詢可直接跑（production 狀態要查就查，不用猜）；
+    **任何寫入（migration、資料修補）動手前先跟 Evelyn 確認**，執行時包在同一個
+    transaction、附自我檢查（不符預期就 `raise exception` 整筆 rollback），
+    並在改動前把原值留一份（例：寫進 `audit_logs`，retention 1 年）。
+  - **ref 不同 = 開發／個人環境**：可以自由試，但**它的結果不能拿來推論 production 狀態**，
+    也絕不能把 yumin migration 跑在上面；production 狀態以 MIGRATIONS.md + Evelyn 確認為準。
+  - **查不出來就當正式站處理**（保守優先），並在回報時說明無法確認。
 
 ## 部署與排程
 
