@@ -786,7 +786,9 @@ function BrowseRow({
           }
         }}
         className={cn(
-          "flex min-h-[52px] cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors active:bg-[#F5F1EC]",
+          // 單行 row:標單動輒上千項,每項佔三行的話光滑到底就要好幾十秒。
+          // 項次／名稱／數量橫排,名稱過長才 wrap,其餘一律一行 36px。
+          "flex min-h-9 cursor-pointer items-center gap-2 px-3 py-1.5 transition-colors active:bg-[#F5F1EC]",
           isSection && "bg-[#FAF7F2]",
           checked && !isSection && "bg-[#FAF7F2]"
         )}
@@ -799,13 +801,13 @@ function BrowseRow({
               e.stopPropagation();
               onToggleExpand(node.id);
             }}
-            className="inline-flex size-8 shrink-0 items-center justify-center text-muted-foreground hover:text-accent"
+            className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-accent"
             aria-label={isOpen ? "收起" : "展開"}
           >
             {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </button>
         ) : (
-          <span className="inline-block size-8 shrink-0" />
+          <span className="inline-block size-6 shrink-0" />
         )}
 
         {!isSection ? (
@@ -814,41 +816,41 @@ function BrowseRow({
             checked={checked}
             readOnly
             tabIndex={-1}
-            className="size-5 shrink-0 cursor-pointer accent-[#A07850] pointer-events-none"
+            className="size-4 shrink-0 cursor-pointer accent-[#A07850] pointer-events-none"
           />
         ) : (
-          <span className="inline-block size-5 shrink-0" />
+          <span className="inline-block size-4 shrink-0" />
         )}
 
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           {node.tenderCode && (
-            <div className="font-mono text-xs text-muted-foreground">
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">
               {node.tenderCode}
-            </div>
+            </span>
           )}
-          <div
+          <span
             className={cn(
-              "text-base leading-snug",
+              "min-w-0 break-words text-[15px] leading-snug",
               isSection ? "font-semibold text-primary" : "font-medium text-foreground"
             )}
           >
             {node.name}
-          </div>
+          </span>
           {node.totalQuantity !== null && !isSection && (
-            <div className="text-xs text-muted-foreground">
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {node.totalQuantity}
               {node.unit ? ` ${node.unit}` : ""}
-            </div>
+            </span>
           )}
         </div>
 
         {checked && !isSection && (
-          <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-xs font-medium text-[#4A7C59]">
+          <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 text-xs font-medium leading-5 text-[#4A7C59]">
             ✓ 已選
           </span>
         )}
         {isSection && selectedDescendantCount > 0 && (
-          <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-xs font-medium text-[#4A7C59]">
+          <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 text-xs font-medium leading-5 text-[#4A7C59]">
             已選 {selectedDescendantCount}
           </span>
         )}
@@ -1004,25 +1006,25 @@ function MobileSectionRow({
       <button
         type="button"
         onClick={onTap}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-[#F5F1EC]"
+        className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left transition-colors active:bg-[#F5F1EC]"
       >
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           {section.tenderCode && (
-            <div className="font-mono text-xs text-muted-foreground">
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">
               {section.tenderCode}
-            </div>
+            </span>
           )}
-          <div className="break-words text-base font-semibold leading-snug text-primary">
+          <span className="min-w-0 break-words text-[15px] font-semibold leading-snug text-primary">
             {section.name}
-          </div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {count > 0 ? `${count} 個工項` : "無工項"}
-            {selectedCount > 0 && (
-              <span className="ml-2 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-1.5 py-0.5 text-[#4A7C59]">
-                已選 {selectedCount}
-              </span>
-            )}
-          </div>
+          </span>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {count > 0 ? `${count} 項` : "無工項"}
+          </span>
+          {selectedCount > 0 && (
+            <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-1.5 text-xs leading-5 text-[#4A7C59]">
+              已選 {selectedCount}
+            </span>
+          )}
         </div>
         <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
       </button>
@@ -1045,7 +1047,8 @@ function MobileItemRow({
         type="button"
         onClick={onToggle}
         className={cn(
-          "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors active:bg-[#F5F1EC]",
+          // 一行一項(min-h-11 保住 44px 觸控目標),名稱太長才 wrap
+          "flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left transition-colors active:bg-[#F5F1EC]",
           checked && "bg-[#FAF7F2]"
         )}
       >
@@ -1054,26 +1057,26 @@ function MobileItemRow({
           checked={checked}
           readOnly
           tabIndex={-1}
-          className="mt-1 size-5 shrink-0 cursor-pointer accent-[#A07850] pointer-events-none"
+          className="size-5 shrink-0 cursor-pointer accent-[#A07850] pointer-events-none"
         />
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           {item.tenderCode && (
-            <div className="font-mono text-xs text-muted-foreground">
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">
               {item.tenderCode}
-            </div>
+            </span>
           )}
-          <div className="break-words text-base font-medium leading-snug text-foreground">
+          <span className="min-w-0 break-words text-[15px] font-medium leading-snug text-foreground">
             {item.name}
-          </div>
+          </span>
           {item.totalQuantity !== null && (
-            <div className="mt-0.5 text-xs text-muted-foreground">
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {item.totalQuantity}
               {item.unit ? ` ${item.unit}` : ""}
-            </div>
+            </span>
           )}
         </div>
         {checked && (
-          <span className="mt-0.5 shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-xs font-medium text-[#4A7C59]">
+          <span className="shrink-0 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2 text-xs font-medium leading-5 text-[#4A7C59]">
             ✓
           </span>
         )}
