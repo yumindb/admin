@@ -1,5 +1,12 @@
 # Supabase 搬遷:雪梨 → 東京
 
+> ✅ **切換已於 2026-08-16 深夜完成。** production 現在 = 東京專案
+> `sgeuznnfasrgxlsqzxpc` + Vercel hnd1(commit `4b4af90`,deploy
+> `dpl_96pXCTKHrQi2CLYirYyEqScTvCyj`)。切換時空窗期雪梨零寫入,
+> 無資料遺失;登入 / 案件 / 日誌 / 照片(東京 signed URL)實機驗證通過。
+> 雪梨專案 `giclppjyuguylbqvjozx` 保留原狀當回退保險,
+> 觀察 3–7 天後 pause。**尚未完成的收尾見「切換後」節。**
+
 把 production Supabase 從 `giclppjyuguylbqvjozx`(ap-southeast-2 雪梨)搬到
 `sgeuznnfasrgxlsqzxpc`(ap-northeast-1 東京),縮短台灣使用者到資料庫的距離。
 使用者網址 `yumin-admin.vercel.app` 不變,沒人會察覺換了資料庫。
@@ -68,16 +75,15 @@ Supabase 區域無法原地更改,只能建新專案搬資料 — 官方也是�
 
 ## 切換後(當天~一週內)
 
-- [ ] 本機 `.env.local` 三個值換成東京
-- [ ] **備份 workflow 改指東京**(不改的話每天備份的還是舊資料庫!):
-  - 東京 Dashboard → Storage → S3 access keys 建一組,更新 GitHub secrets
-    `SUPABASE_S3_ACCESS_KEY` / `SUPABASE_S3_SECRET_KEY`,
-    `SUPABASE_S3_ENDPOINT` → `https://sgeuznnfasrgxlsqzxpc.supabase.co/storage/v1/s3`,
-    `SUPABASE_S3_REGION` → `ap-northeast-1`
-  - `SUPABASE_DB_URL` → 換成東京的(跟 `TOKYO_DB_URL` 同值)
-  - 手動跑一次 Daily Backup 確認綠燈
-- [ ] `docs/PROJECT.md` 資料庫節、`_secrets` 檔案更新 ref 說明
-- [ ] MCP 操作對象換成東京專案(每次 `list_projects` 比對 ref 的習慣不變)
+- [x] 本機 `.env.local` 三個值換成東京(2026-08-16)
+- [x] `SUPABASE_DB_URL` secret → 東京(2026-08-16;DB 備份已指新庫。
+      副作用:migrate workflow 的 guard 會因 source ref 不符而拒跑 — 正確,它已完成任務)
+- [ ] **Evelyn:東京 Dashboard → Storage → S3 access keys 建一組**,更新 GitHub secrets:
+  - `SUPABASE_S3_ACCESS_KEY` / `SUPABASE_S3_SECRET_KEY` → 新 key
+  - `SUPABASE_S3_ENDPOINT` → `https://sgeuznnfasrgxlsqzxpc.storage.supabase.co/storage/v1/s3`
+  - `SUPABASE_S3_REGION` → `ap-northeast-1`
+  - 在此之前每晚備份:DB 是東京(對),Storage 鏡像仍拉雪梨(凍結狀態,不算錯但要盡快換)
+- [ ] 換完 S3 keys 手動跑一次 Daily Backup 確認綠燈
 - [ ] 觀察 3–7 天沒問題後,把雪梨專案 **pause**(先別刪);再過一個月確認
       R2 備份都來自東京後,才考慮刪除雪梨專案
 - [ ] 回頭把 `migrate-to-tokyo.yml` 從 repo 移除或留檔註記已完成
