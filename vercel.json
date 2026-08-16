@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["syd1"],
+  "regions": ["hnd1"],
   "crons": [
     {
       "path": "/api/cron/cleanup-orphan-photos",
