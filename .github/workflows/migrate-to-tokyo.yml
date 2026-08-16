@@ -107,6 +107,10 @@ jobs:
           # 拿掉 schema 層級語句(public schema 在目標端已存在且非 postgres 所有,
           # DROP/CREATE/COMMENT ON SCHEMA 會直接報錯中斷)
           sed -i -E '/^(DROP|CREATE|COMMENT ON) SCHEMA /d' out/public.sql
+          # 拿掉 DROP TRIGGER/POLICY 行:IF EXISTS 只管 trigger/policy 本身,
+          # 表不存在(空專案第一次跑)會報 relation does not exist。
+          # 重跑時 DROP TABLE 會連帶清掉表上的 trigger/policy,所以這些行不需要。
+          sed -i -E '/^DROP (TRIGGER|POLICY) IF EXISTS /d' out/public.sql
           ls -lh out/
 
       - name: DB 2/5 — 清空目標端(只動東京,production 不受影響)
