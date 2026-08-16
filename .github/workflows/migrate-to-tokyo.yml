@@ -1,0 +1,353 @@
+name: Migrate to Tokyo (one-off)
+
+# 一次性搬遷:雪梨 giclppjyuguylbqvjozx → 東京 sgeuznnfasrgxlsqzxpc
+# 只能手動觸發。可重複跑(演練用):目標端會先清空再灌。
+# 來源(production)只做「讀取」,整個 workflow 沒有任何寫向來源的語句。
+# 事前準備與切換步驟見 docs/TOKYO-MIGRATION.md。
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: '輸入 MIGRATE 確認執行(防誤按)'
+        required: true
+      do_db:
+        description: '搬資料庫(public schema + auth 帳號)'
+        type: boolean
+        default: true
+      do_storage:
+        description: '搬 Storage 檔案(4 個 buckets)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: migrate-tokyo
+  cancel-in-progress: false
+
+env:
+  SOURCE_REF: giclppjyuguylbqvjozx   # 雪梨 production(只讀)
+  TARGET_REF: sgeuznnfasrgxlsqzxpc   # 東京(寫入目標)
+  TOKYO_URL: https://sgeuznnfasrgxlsqzxpc.supabase.co
+
+jobs:
+  migrate:
+    name: Dump → Restore → Storage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    if: ${{ inputs.confirm == 'MIGRATE' }}
+    steps:
+      - name: Guard — 確認連線字串指向正確專案
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          [ -n "$SUPABASE_DB_URL" ] || { echo "::error::缺 SUPABASE_DB_URL secret"; exit 1; }
+          [ -n "$TOKYO_DB_URL" ]    || { echo "::error::缺 TOKYO_DB_URL secret(見 docs/TOKYO-MIGRATION.md)"; exit 1; }
+          case "$SUPABASE_DB_URL" in
+            *"$SOURCE_REF"*) : ;;
+            *) echo "::error::SUPABASE_DB_URL 不含來源 ref $SOURCE_REF,拒絕執行"; exit 1 ;;
+          esac
+          case "$TOKYO_DB_URL" in
+            *"$SOURCE_REF"*) echo "::error::TOKYO_DB_URL 竟然含 production ref,拒絕執行"; exit 1 ;;
+          esac
+          case "$TOKYO_DB_URL" in
+            *"$TARGET_REF"*) : ;;
+            *) echo "::error::TOKYO_DB_URL 不含目標 ref $TARGET_REF,拒絕執行"; exit 1 ;;
+          esac
+          echo "Guard OK: source=$SOURCE_REF target=$TARGET_REF"
+
+      - name: Install postgresql-client-17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Sanity — 兩端都連得上
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          echo "--- source (Sydney, read-only) ---"
+          psql "$SUPABASE_DB_URL" -Atc "select version();"
+          echo "--- target (Tokyo) ---"
+          psql "$TOKYO_DB_URL" -Atc "select version();"
+
+      # ====================================================================
+      # DB 階段
+      # ====================================================================
+      - name: DB 1/5 — Dump source(public + auth 帳號)
+        if: ${{ inputs.do_db }}
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # public:schema + data。--no-acl:grants 由目標專案的 default privileges
+          # + post-restore 的 supabase_auth_admin grants 補齊(見 docs/TOKYO-MIGRATION.md)
+          pg_dump "$SUPABASE_DB_URL" \
+            --schema=public \
+            --clean --if-exists \
+            --no-owner --no-acl \
+            > out/public.sql
+          # auth:只搬 users / identities(data-only;sessions / refresh_tokens 不搬,
+          # 反正切換後全員重新登入)。順序:users 先(identities FK 指向 users)。
+          pg_dump "$SUPABASE_DB_URL" --data-only --table=auth.users      > out/auth_users.sql
+          pg_dump "$SUPABASE_DB_URL" --data-only --table=auth.identities > out/auth_identities.sql
+          # 拿掉 schema 層級語句(public schema 在目標端已存在且非 postgres 所有,
+          # DROP/CREATE/COMMENT ON SCHEMA 會直接報錯中斷)
+          sed -i -E '/^(DROP|CREATE|COMMENT ON) SCHEMA /d' out/public.sql
+          ls -lh out/
+
+      - name: DB 2/5 — 清空目標端(只動東京,production 不受影響)
+        if: ${{ inputs.do_db }}
+        shell: bash
+        env:
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$TOKYO_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          -- 再驗一次自己在哪個專案(從 hostname 拿不到 ref,改查 anon JWT 的 iss 不可行,
+          -- 用 storage bucket 佈局當指紋:東京 bootstrap 剛建了 4 個空 bucket)
+          do $$
+          begin
+            if (select count(*) from storage.buckets) <> 4 then
+              raise exception 'target does not look like the Tokyo project (bucket count <> 4)';
+            end if;
+          end $$;
+          -- 拆掉 auth.users 上的 trigger(post-restore 會重建;不拆的話
+          -- public restore 的 --clean 會因相依而 drop 不掉 handle_new_user)
+          drop trigger if exists on_auth_user_created on auth.users;
+          -- 清 auth 帳號(cascade 到 public.profiles;public 端反正整包重灌)
+          delete from auth.identities;
+          delete from auth.users;
+          SQL
+
+      - name: DB 3/5 — Restore auth 帳號 → 東京
+        if: ${{ inputs.do_db }}
+        shell: bash
+        env:
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$TOKYO_DB_URL" -v ON_ERROR_STOP=1 -f out/auth_users.sql
+          psql "$TOKYO_DB_URL" -v ON_ERROR_STOP=1 -f out/auth_identities.sql
+
+      - name: DB 4/5 — Restore public schema → 東京
+        if: ${{ inputs.do_db }}
+        shell: bash
+        env:
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$TOKYO_DB_URL" -v ON_ERROR_STOP=1 -f out/public.sql
+
+      - name: DB 5/5 — Post-restore(trigger + grants + auth 欄位修補)
+        if: ${{ inputs.do_db }}
+        shell: bash
+        env:
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$TOKYO_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          -- pgcrypto(schema.sql 需要;新專案預設沒裝)
+          create extension if not exists pgcrypto with schema extensions;
+
+          -- auth.users token 欄位 NULL → ''(fix-auth-3 的教訓,這裡涵蓋全部帳號)
+          update auth.users set
+            confirmation_token         = coalesce(confirmation_token, ''),
+            recovery_token             = coalesce(recovery_token, ''),
+            email_change_token_new     = coalesce(email_change_token_new, ''),
+            email_change               = coalesce(email_change, ''),
+            email_change_token_current = coalesce(email_change_token_current, ''),
+            phone_change               = coalesce(phone_change, ''),
+            phone_change_token         = coalesce(phone_change_token, ''),
+            reauthentication_token     = coalesce(reauthentication_token, '');
+
+          -- auth.users → profiles trigger(掛在 auth schema 的表上,dump 帶不走)
+          drop trigger if exists on_auth_user_created on auth.users;
+          create trigger on_auth_user_created
+            after insert on auth.users
+            for each row execute function public.handle_new_user();
+
+          -- supabase_auth_admin 要能 introspect public schema,否則登入報
+          -- "Database error querying schema"(schema.sql 的教訓;dump 用 --no-acl
+          -- 所以這裡重建。enum 用迴圈抓全部,涵蓋 2.5 之後新增的)
+          grant usage on schema public to supabase_auth_admin;
+          grant select on all tables in schema public to supabase_auth_admin;
+          grant select on all sequences in schema public to supabase_auth_admin;
+          grant execute on all functions in schema public to supabase_auth_admin;
+          do $$
+          declare r record;
+          begin
+            for r in
+              select t.typname from pg_type t
+              join pg_namespace n on n.oid = t.typnamespace
+              where n.nspname = 'public' and t.typtype = 'e'
+            loop
+              execute format('grant usage on type public.%I to supabase_auth_admin', r.typname);
+            end loop;
+          end $$;
+          SQL
+
+      - name: DB 驗證 — 兩端逐表列數必須一致
+        if: ${{ inputs.do_db }}
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/rowcounts.sql <<'SQL'
+          select 'auth.users' as t, count(*) from auth.users
+          union all select 'auth.identities', count(*) from auth.identities
+          union all
+          select 'public.' || c.relname, (xpath('/row/cnt/text()',
+            query_to_xml(format('select count(*) as cnt from public.%I', c.relname), false, true, ''))
+          )[1]::text::bigint
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = 'public' and c.relkind = 'r'
+          order by 1;
+          SQL
+          psql "$SUPABASE_DB_URL" -At -F' = ' -f /tmp/rowcounts.sql > /tmp/counts_source.txt
+          psql "$TOKYO_DB_URL"    -At -F' = ' -f /tmp/rowcounts.sql > /tmp/counts_target.txt
+          echo "--- source ---"; cat /tmp/counts_source.txt
+          echo "--- target ---"; cat /tmp/counts_target.txt
+          diff /tmp/counts_source.txt /tmp/counts_target.txt \
+            && echo "✅ 兩端列數完全一致" \
+            || { echo "::error::兩端列數不一致(見上方 diff)"; exit 1; }
+
+      # ====================================================================
+      # Storage 階段
+      # ====================================================================
+      - name: Storage 1/3 — Install rclone + 設定來源
+        if: ${{ inputs.do_storage }}
+        env:
+          SUPABASE_S3_ACCESS_KEY: ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
+          SUPABASE_S3_SECRET_KEY: ${{ secrets.SUPABASE_S3_SECRET_KEY }}
+          SUPABASE_S3_REGION: ${{ secrets.SUPABASE_S3_REGION }}
+          SUPABASE_S3_ENDPOINT: ${{ secrets.SUPABASE_S3_ENDPOINT }}
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf <<EOF
+          [supabase]
+          type = s3
+          provider = Other
+          access_key_id = ${SUPABASE_S3_ACCESS_KEY}
+          secret_access_key = ${SUPABASE_S3_SECRET_KEY}
+          region = ${SUPABASE_S3_REGION}
+          endpoint = ${SUPABASE_S3_ENDPOINT}
+          force_path_style = true
+          no_check_bucket = true
+          chunk_size = 32M
+          EOF
+
+      - name: Storage 2/3 — 下載來源 4 個 buckets
+        if: ${{ inputs.do_storage }}
+        run: |
+          set -euo pipefail
+          for bucket in daily-photos signatures daily-log-pdfs fonts; do
+            mkdir -p "out/storage/$bucket"
+            echo "::group::Download $bucket"
+            rclone copy "supabase:$bucket" "out/storage/$bucket" \
+              --transfers=8 --checkers=16 --stats=30s
+            echo "::endgroup::"
+          done
+          du -sh out/storage/* || true
+
+      - name: Storage 3/3 — 上傳到東京(storage API + service role)
+        if: ${{ inputs.do_storage }}
+        shell: bash
+        env:
+          TOKYO_SERVICE_ROLE_KEY: ${{ secrets.TOKYO_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$TOKYO_SERVICE_ROLE_KEY" ] || { echo "::error::缺 TOKYO_SERVICE_ROLE_KEY secret"; exit 1; }
+          python3 - <<'PY'
+          import mimetypes, os, sys, urllib.parse, urllib.request
+          from concurrent.futures import ThreadPoolExecutor
+
+          BASE = os.environ.get("TOKYO_URL", "https://sgeuznnfasrgxlsqzxpc.supabase.co")
+          KEY = os.environ["TOKYO_SERVICE_ROLE_KEY"]
+          ROOT = "out/storage"
+          mimetypes.add_type("font/woff2", ".woff2")
+          mimetypes.add_type("font/ttf", ".ttf")
+          mimetypes.add_type("font/otf", ".otf")
+
+          def upload(bucket, rel, path):
+              mime = mimetypes.guess_type(rel)[0] or "application/octet-stream"
+              url = f"{BASE}/storage/v1/object/{bucket}/" + urllib.parse.quote(rel)
+              with open(path, "rb") as f:
+                  data = f.read()
+              req = urllib.request.Request(url, data=data, method="POST", headers={
+                  "Authorization": f"Bearer {KEY}",
+                  "Content-Type": mime,
+                  "x-upsert": "true",
+              })
+              for attempt in range(3):
+                  try:
+                      with urllib.request.urlopen(req, timeout=120) as resp:
+                          resp.read()
+                      return None
+                  except Exception as e:
+                      if attempt == 2:
+                          return f"{bucket}/{rel}: {e}"
+              return None
+
+          jobs = []
+          for bucket in os.listdir(ROOT):
+              broot = os.path.join(ROOT, bucket)
+              for dirpath, _, files in os.walk(broot):
+                  for fn in files:
+                      full = os.path.join(dirpath, fn)
+                      rel = os.path.relpath(full, broot).replace(os.sep, "/")
+                      jobs.append((bucket, rel, full))
+
+          print(f"uploading {len(jobs)} files...")
+          with ThreadPoolExecutor(max_workers=8) as ex:
+              errors = [e for e in ex.map(lambda j: upload(*j), jobs) if e]
+          if errors:
+              print("\n".join(errors))
+              sys.exit(f"{len(errors)} uploads failed")
+          print("all uploads ok")
+          PY
+
+      - name: Storage 驗證 — 兩端各 bucket 物件數必須一致
+        if: ${{ inputs.do_storage }}
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          TOKYO_DB_URL: ${{ secrets.TOKYO_DB_URL }}
+        run: |
+          set -euo pipefail
+          Q="select bucket_id, count(*) from storage.objects where name not like '%/.emptyFolderPlaceholder' group by bucket_id order by 1;"
+          psql "$SUPABASE_DB_URL" -At -F' = ' -c "$Q" > /tmp/st_source.txt
+          psql "$TOKYO_DB_URL"    -At -F' = ' -c "$Q" > /tmp/st_target.txt
+          echo "--- source ---"; cat /tmp/st_source.txt
+          echo "--- target ---"; cat /tmp/st_target.txt
+          diff /tmp/st_source.txt /tmp/st_target.txt \
+            && echo "✅ Storage 物件數一致" \
+            || { echo "::error::Storage 物件數不一致"; exit 1; }
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Migrate to Tokyo — ${{ job.status }}"
+            echo "- do_db: ${{ inputs.do_db }} / do_storage: ${{ inputs.do_storage }}"
+            echo "- source: \`$SOURCE_REF\` (Sydney, 未被寫入)"
+            echo "- target: \`$TARGET_REF\` (Tokyo)"
+            echo ""
+            echo "下一步見 \`docs/TOKYO-MIGRATION.md\`(演練驗證 → 正式切換)。"
+          } >> "$GITHUB_STEP_SUMMARY"
