@@ -95,9 +95,11 @@ jobs:
           mkdir -p out
           # public:schema + data。--no-acl:grants 由目標專案的 default privileges
           # + post-restore 的 supabase_auth_admin grants 補齊(見 docs/TOKYO-MIGRATION.md)
+          # 不用 --clean:它的 DROP 順序處理不了跨表 policy 相依
+          # (audit_logs 的 policy 引用 profiles → DROP TABLE profiles 被擋)。
+          # 改由「清空目標端」那步把 public schema 整個清乾淨,restore 面對空 schema。
           pg_dump "$SUPABASE_DB_URL" \
             --schema=public \
-            --clean --if-exists \
             --no-owner --no-acl \
             > out/public.sql
           # auth:只搬 users / identities(data-only;sessions / refresh_tokens 不搬,
@@ -107,10 +109,6 @@ jobs:
           # 拿掉 schema 層級語句(public schema 在目標端已存在且非 postgres 所有,
           # DROP/CREATE/COMMENT ON SCHEMA 會直接報錯中斷)
           sed -i -E '/^(DROP|CREATE|COMMENT ON) SCHEMA /d' out/public.sql
-          # 拿掉 DROP TRIGGER/POLICY 行:IF EXISTS 只管 trigger/policy 本身,
-          # 表不存在(空專案第一次跑)會報 relation does not exist。
-          # 重跑時 DROP TABLE 會連帶清掉表上的 trigger/policy,所以這些行不需要。
-          sed -i -E '/^DROP (TRIGGER|POLICY) IF EXISTS /d' out/public.sql
           ls -lh out/
 
       - name: DB 2/5 — 清空目標端(只動東京,production 不受影響)
@@ -130,11 +128,42 @@ jobs:
             end if;
           end $$;
           -- 拆掉 auth.users 上的 trigger(post-restore 會重建;不拆的話
-          -- public restore 的 --clean 會因相依而 drop 不掉 handle_new_user)
+          -- 下面清 public 函式時 handle_new_user 會被它拉住)
           drop trigger if exists on_auth_user_created on auth.users;
-          -- 清 auth 帳號(cascade 到 public.profiles;public 端反正整包重灌)
+          -- 清 auth 帳號(cascade 到 public.profiles 的資料列)
           delete from auth.identities;
           delete from auth.users;
+          -- 把 public schema 清成全空(dump 不带 --clean,restore 需要乾淨目標;
+          -- cascade 順手帶走 FK / policy / trigger,包含跨表 policy 相依)
+          do $$
+          declare r record;
+          begin
+            for r in select tablename from pg_tables where schemaname = 'public' loop
+              execute format('drop table if exists public.%I cascade', r.tablename);
+            end loop;
+            for r in select viewname from pg_views where schemaname = 'public' loop
+              execute format('drop view if exists public.%I cascade', r.viewname);
+            end loop;
+            for r in
+              select p.oid::regprocedure as sig
+              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public'
+                and not exists (select 1 from pg_depend d
+                                 where d.objid = p.oid and d.deptype = 'e')
+            loop
+              execute format('drop function %s cascade', r.sig);
+            end loop;
+            for r in
+              select t.typname from pg_type t
+              join pg_namespace n on n.oid = t.typnamespace
+              where n.nspname = 'public' and t.typtype = 'e'
+            loop
+              execute format('drop type if exists public.%I cascade', r.typname);
+            end loop;
+            for r in select sequencename from pg_sequences where schemaname = 'public' loop
+              execute format('drop sequence if exists public.%I cascade', r.sequencename);
+            end loop;
+          end $$;
           SQL
 
       - name: DB 3/5 — Restore auth 帳號 → 東京
