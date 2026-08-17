@@ -78,12 +78,9 @@ Supabase 區域無法原地更改,只能建新專案搬資料 — 官方也是�
 - [x] 本機 `.env.local` 三個值換成東京(2026-08-16)
 - [x] `SUPABASE_DB_URL` secret → 東京(2026-08-16;DB 備份已指新庫。
       副作用:migrate workflow 的 guard 會因 source ref 不符而拒跑 — 正確,它已完成任務)
-- [ ] **Evelyn:東京 Dashboard → Storage → S3 access keys 建一組**,更新 GitHub secrets:
-  - `SUPABASE_S3_ACCESS_KEY` / `SUPABASE_S3_SECRET_KEY` → 新 key
-  - `SUPABASE_S3_ENDPOINT` → `https://sgeuznnfasrgxlsqzxpc.storage.supabase.co/storage/v1/s3`
-  - `SUPABASE_S3_REGION` → `ap-northeast-1`
-  - 在此之前每晚備份:DB 是東京(對),Storage 鏡像仍拉雪梨(凍結狀態,不算錯但要盡快換)
-- [ ] 換完 S3 keys 手動跑一次 Daily Backup 確認綠燈
+- [x] 東京 S3 access keys 已建,`SUPABASE_S3_*` 4 個 secrets 已換東京(2026-08-17)
+- [x] 手動跑 Daily Backup 綠燈(2026-08-17,run 32032688562:DB dump 702KB +
+      Storage 三 buckets 全從東京拉,R2 總量 812 MiB)— 備份整條路已是東京
 - [ ] 觀察 3–7 天沒問題後,把雪梨專案 **pause**(先別刪);再過一個月確認
       R2 備份都來自東京後,才考慮刪除雪梨專案
 - [ ] 回頭把 `migrate-to-tokyo.yml` 從 repo 移除或留檔註記已完成
