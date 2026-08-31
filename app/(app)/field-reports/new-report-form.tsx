@@ -13,6 +13,7 @@ import { NextStepHint } from "@/components/next-step-hint";
 import { useSilentLocationOnce } from "@/lib/use-geolocation";
 import { evaluateGeofence } from "@/lib/geo";
 import { isOfflineErrorMessage } from "@/lib/offline-clock-queue";
+import { preparePhotoForUpload } from "@/lib/compress-photo";
 import {
   flushPendingReports,
   enqueueReport,
@@ -209,20 +210,28 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
 
   async function onPickPhotos(files: FileList | null) {
     if (!files?.length) return;
-    const validFiles = Array.from(files).filter((f) => {
-      if (!f.type.startsWith("image/")) return false;
-      if (f.size > 8 * 1024 * 1024) {
-        toast.error(`照片 ${f.name} 超過 8MB`, { description: "已跳過此張" });
-        return false;
-      }
-      return true;
-    });
-    if (!validFiles.length) return;
+    const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (!imageFiles.length) return;
 
     setUploading(true);
-    setProgress({ done: 0, total: validFiles.length });
+    setProgress({ done: 0, total: imageFiles.length });
 
-    const prepared = await Promise.all(validFiles.map((f) => compressPhoto(f)));
+    // 先壓縮、壓完仍超過上限才跳過 — 以前反過來(超過 8MB 直接跳過,
+    // 根本沒進壓縮),2026-08 業主截圖回報後改正
+    const prepared: File[] = [];
+    for (const r of await Promise.all(imageFiles.map(preparePhotoForUpload))) {
+      if (r.ok) {
+        prepared.push(r.file);
+      } else {
+        toast.error(r.error, { description: "已跳過此張" });
+        setProgress((p) => ({ ...p, done: p.done + 1 }));
+      }
+    }
+    if (!prepared.length) {
+      setUploading(false);
+      setProgress({ done: 0, total: 0 });
+      return;
+    }
 
     const results = await Promise.all(
       prepared.map(async (f) => {
@@ -593,40 +602,4 @@ function PendingReportsCard({
       )}
     </section>
   );
-}
-
-async function compressPhoto(file: File): Promise<File> {
-  if (!file.type.startsWith("image/")) return file;
-  if (file.size <= 1.2 * 1024 * 1024) return file;
-
-  try {
-    const bitmap = await createImageBitmap(file);
-    const maxSide = 1600;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
-
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, "image/jpeg", 0.82);
-    });
-    if (!blob || blob.size >= file.size) return file;
-
-    const nextName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-    return new File([blob], nextName, {
-      type: "image/jpeg",
-      lastModified: file.lastModified,
-    });
-  } catch {
-    return file;
-  }
 }
