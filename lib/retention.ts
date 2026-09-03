@@ -15,8 +15,12 @@ import type { createServiceClient } from "@/lib/supabase/server";
  *   audit_logs / login_attempts 沒開 DELETE policy(一般使用者不可竄改)。
  *   cron 走 service-role 是唯一能清的路徑。
  *
- * ⚠ login_attempts 的時間欄位是 attempted_at(不是 created_at)—
- *   2026-07 前的版本用錯欄位,清理其實一直沒生效,已修正。
+ * ⚠ 時間欄位每張表不一樣,不要憑直覺寫 created_at:
+ *   - login_attempts 是 attempted_at(2026-07 前用錯,清理一直沒生效)
+ *   - daily_log_revisions 是 edited_at(2026-07-04 ~ 2026-09-03 用錯,cron 每天報
+ *     column does not exist,編輯軌跡兩個月沒清;其他表因為 Promise.all 各自獨立不受影響)
+ *   - audit_logs 是 changed_at
+ *   對應關係由 lib/__tests__/retention.test.ts 釘住,改欄位先改 schema 再改測試。
  */
 
 export const RETENTION_DAYS = {
@@ -46,7 +50,7 @@ export async function cleanupOldLogs(
     deleteOlderThan(supabase, "login_attempts", "attempted_at", RETENTION_DAYS.login_attempts_success, {
       success: true,
     }),
-    deleteOlderThan(supabase, "daily_log_revisions", "created_at", RETENTION_DAYS.daily_log_revisions),
+    deleteOlderThan(supabase, "daily_log_revisions", "edited_at", RETENTION_DAYS.daily_log_revisions),
     deleteOlderThan(supabase, "audit_logs", "changed_at", RETENTION_DAYS.audit_logs),
     deleteOlderThan(supabase, "app_messages", "created_at", RETENTION_DAYS.app_messages),
   ]);
