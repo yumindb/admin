@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { formatDateTW } from "@/lib/datetime";
 import { ApprovalActions } from "./approval-actions";
@@ -68,24 +69,21 @@ export default async function ApprovalDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  // 跟 layout 共用同一次 auth 驗證 + profile 查詢(require-role 的 cache(),鐵則 9)。
+  // 以前這裡自己 getUser() 再 `user!.id`:layout 與 page 是平行 render 的,
+  // layout 的 redirect 擋不住 page 先炸,session 一失效就是一整頁 500。
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: roleProfile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user!.id)
-    .maybeSingle();
-  const role = (roleProfile?.role ?? null) as UserRole | null;
-  const allowedStage = role ? STAGE_FOR_ROLE[role] : null;
+  const role: UserRole = actor.role;
+  const allowedStage = STAGE_FOR_ROLE[role];
   if (!allowedStage) redirect("/logs");
 
   // 簽名圖章(owner 先試用):有上傳過 → 簽核卡預設出「蓋章」選項。
   // 6h TTL — Phil 會開著待辦連續簽,5 分鐘效期會破圖
   const stampUrl =
     role === "owner"
-      ? await getSignedUrl("signatures", `${user!.id}/stamp.png`, 6 * 60 * 60)
+      ? await getSignedUrl("signatures", `${actor.id}/stamp.png`, 6 * 60 * 60)
       : null;
 
   // 核定要幾位簽 — 2026-08 起可在人員管理頁關掉雙簽(第二位核定人未到職)
@@ -106,7 +104,7 @@ export default async function ApprovalDetailPage({
       (logRound?.submitted_at as string | null) ?? null,
     );
     approveSignedCount = signers.length;
-    alreadySignedApprove = signers.some((s) => s.approverId === user!.id);
+    alreadySignedApprove = signers.some((s) => s.approverId === actor.id);
   }
 
   const { data: log } = await supabase
@@ -133,7 +131,7 @@ export default async function ApprovalDetailPage({
   if (l.status !== "submitted") redirect(`/logs/${id}`);
   if (l.current_stage !== allowedStage) redirect(`/logs/${id}`);
   // supervisor 只能複核自己的日誌
-  if (role === "site_supervisor" && l.supervisor_id !== user!.id) {
+  if (role === "site_supervisor" && l.supervisor_id !== actor.id) {
     redirect("/approvals");
   }
   const stageCopy = STAGE_COPY[allowedStage];
@@ -326,7 +324,7 @@ export default async function ApprovalDetailPage({
               改完會寫 daily_log_revisions,審核 / 核定的人看得到前後對照。 */}
           {(role === "office_staff" ||
             role === "owner" ||
-            (role === "site_supervisor" && l.supervisor_id === user!.id)) && (
+            (role === "site_supervisor" && l.supervisor_id === actor.id)) && (
             <Link
               href={`/logs/${id}/edit`}
               className="inline-flex min-h-11 items-center rounded-md border border-[#E0DCD6] bg-white px-4 text-sm text-foreground transition-colors hover:border-accent hover:text-accent"

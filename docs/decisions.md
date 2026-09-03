@@ -1268,3 +1268,46 @@ YM-2026-001 就是這樣:標單解析出 339 列,DB 只有 315 列。
   「當時只有一個人簽」,而回填的理由、時間、原值都在 audit_logs 查得到。
 - 之後把雙簽打開,已回填的不受影響(它們已經是 approved);但若那時把某份撤回核定,
   重走核定就會需要兩簽。
+
+## 2026-09-03 — 登入失效在 production 變成「發生錯誤 2301085382」
+
+業主從 LINE 通知點進 `/approvals/[id]`，看到整頁「發生錯誤」+ 一段英文 + 錯誤代碼
+2301085382，三秒後按「回首頁」又正常。Vercel log 對照 digest：其實是 `Error: 請先登入`
+從 `lib/auth/require-role.ts` 丟出來（7 天內 11 次、7 個人，`/`、`/staff`、
+`/field-reports`、`/approvals/[id]` 都有）。兩層問題疊在一起：
+
+### 一、production 把 message 遮掉，error.tsx 只能靠 digest
+
+React 在 production 會把 Server Component 丟出的錯誤訊息換成
+「An error occurred in the Server Components render…」，只留 `digest`。
+`app/error.tsx` 原本用 `error.message.includes("請先登入")` 分類 —— 本機 dev 看起來對，
+上線後永遠落到 generic，使用者看到的是嚇人的英文樣板文。
+
+- 新增 `lib/auth/error-codes.ts`（client 可 import）：`AUTH_REQUIRED` / `FORBIDDEN` /
+  `PROFILE_LOAD_FAILED` 三個代碼 + `classifyError()`。**digest 優先，沒有才看 message**。
+- `require-role.ts` 丟的 Error 一律 `Object.assign(new Error(msg), { digest })`。
+  Next.js 16 看到已有 digest 會原樣保留（`create-error-handler.js`），不會另外算 hash。
+- error.tsx 的登入失效改成**「重新登入」＝ 先 `logoutAction` 再導向**，不是連到 `/login`：
+  cookie 可能還在（例如有 auth user 但沒 profile），middleware 會把「已登入」的人從
+  `/login` 彈回首頁，變成迴圈。
+
+### 二、profiles 查詢「失敗」被當成「查不到」
+
+`loadActor` 原本 `const { data: profile } = …maybeSingle()`，error 直接丟掉；連線或 DB
+暫時性錯誤 → `profile` 是 null → 走進「有 auth user 但沒 profile」那條 → 丟「請先登入」。
+使用者明明登入著。這也解釋了為什麼三秒後首頁正常。
+
+- 拆出 `loadProfile()`：有 `error` 先原地重試一次，再失敗丟 `PROFILE_LOAD_FAILED`
+  （error.tsx 顯示「連線暫時出了問題」+ 重試鈕），並把 user id / error code 寫進 log ——
+  以前這條路完全沒 log，只能猜。
+- 真的沒 profile 也補一行 `console.error`，下次能直接看到是哪個帳號要人工處理。
+
+### 三、`/approvals/[id]` 自己 `getUser()` + `user!.id`
+
+違反鐵則 9，而且 layout 與 page 平行 render，layout 的 `redirect("/login")` 擋不住 page
+先在 `user!.id` 炸掉。改用 `tryGetActor()`（同 request 內與 layout 共用快取），
+順便少一次 `profiles` 查詢。
+
+沒有 migration。順帶看到 cron `recheck-stuck-pdfs` 每天報
+`daily_log_revisions.created_at does not exist`（retention 用錯欄位，應為 `edited_at`），
+另開任務處理。
