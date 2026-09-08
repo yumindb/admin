@@ -107,10 +107,19 @@ export async function saveLogAction(payload: SaveLogPayload) {
     payload.workItems.length > 0 ||
     payload.extraItems.length > 0 ||
     payload.unsignedItems.length > 0;
-  if (payload.intent === "submit" && !hasContent) {
+  // 「本日無施工」(2026-09 業主要求):沒施工的日子也要送日誌走簽核,
+  // 所以放行零工項;但反過來「標了無施工卻還帶工項」是矛盾資料,擋掉。
+  const noWork = payload.manpower?.no_work === true;
+  if (noWork && hasContent) {
     return {
       ok: false,
-      error: "送出前至少要填 1 個工項（主工項 / 合約外 / 未簽約 任一）",
+      error: "已標記「本日無施工」，就不能同時填工項；請取消無施工或清掉工項",
+    };
+  }
+  if (payload.intent === "submit" && !hasContent && !noWork) {
+    return {
+      ok: false,
+      error: "送出前至少要填 1 個工項（主工項 / 合約外 / 未簽約 任一），沒施工請按「本日無施工」",
     };
   }
   if (payload.intent === "submit" && !payload.fillSignatureUrl) {

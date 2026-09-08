@@ -117,6 +117,21 @@ function diffManpower(
   const a = after ?? {};
   const rows: FieldChange["rows"] = [];
 
+  // 本日無施工旗標(2026-09):助理把「無施工」改成有工項、或反過來,都要看得到
+  if ((b.no_work === true) !== (a.no_work === true)) {
+    rows.push({
+      label: "本日無施工",
+      before: b.no_work ? "是" : "否",
+      after: a.no_work ? "是" : "否",
+    });
+  }
+  if ((b.no_work_reason ?? "").trim() !== (a.no_work_reason ?? "").trim()) {
+    rows.push({
+      label: "無施工原因",
+      before: text(b.no_work_reason),
+      after: text(a.no_work_reason),
+    });
+  }
   if (b.today_total !== a.today_total) {
     rows.push({
       label: "本日出工人數",

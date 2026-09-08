@@ -69,6 +69,14 @@ export type DailyLogManpower = {
   day_labor_note?: string;
   subcontractors?: DailyLogSubcontractor[];
   machines?: DailyLogMachine[];
+  /**
+   * 本日無施工(2026-09 業主要求):下雨 / 放假 / 等材料的日子主任也要送日誌,
+   * 一樣走完整簽核。true 時 work_items / today_total 都是空的,
+   * 送出不受「至少 1 個工項」限制。放 manpower jsonb 是為了不用 migration。
+   */
+  no_work?: boolean;
+  /** 無施工原因(選填,自由文字;表單提供天候 / 假日等常用選項) */
+  no_work_reason?: string;
 };
 
 export type DailyLogExtraItem = {

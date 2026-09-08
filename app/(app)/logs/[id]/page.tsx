@@ -13,10 +13,12 @@ import { getSignedUrls } from "@/lib/supabase/storage";
 import { deleteLogAction } from "../new/actions";
 import {
   buildReportNumber,
+  formatNoWorkLabel,
   formatWeatherSummary,
   getRemainingDays,
   getWeekdayLabel,
   isBackfilledLog,
+  isNoWorkLog,
   normalizeLogPhotos,
 } from "@/lib/daily-log";
 import type {
@@ -349,6 +351,14 @@ export default async function LogDetailPage({
                 補件
               </span>
             )}
+            {isNoWorkLog(l.manpower) && (
+              <span
+                className="inline-block rounded-full border border-[#B8C4D0] bg-[#EEF2F6] px-2.5 py-0.5 text-xs text-[#3A5670]"
+                title="工地主任標記這天沒有施工，日誌不含工項"
+              >
+                {formatNoWorkLabel(l.manpower)}
+              </span>
+            )}
             {editedByOffice && (
               <a
                 href="#edit-trail"
@@ -572,7 +582,11 @@ export default async function LogDetailPage({
 
       <Section title={`一、依施工計畫書執行按圖施工概況 (${contractWorkItems.length})`}>
         {!contractWorkItems.length ? (
-          <p className="text-sm text-muted-foreground">未填合約內工項</p>
+          <p className="text-sm text-muted-foreground">
+            {isNoWorkLog(l.manpower)
+              ? `${formatNoWorkLabel(l.manpower)}，沒有施作工項`
+              : "未填合約內工項"}
+          </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
             <table className="min-w-full text-base">

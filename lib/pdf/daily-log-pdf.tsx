@@ -30,6 +30,7 @@ import {
   formatWeatherSummary,
   getWeekdayLabel,
   isBackfilledLog,
+  isNoWorkLog,
 } from "@/lib/daily-log";
 import { formatTW } from "@/lib/datetime";
 import { REQUIRED_APPROVE_SIGNATURES } from "@/lib/approvals/dual-sign";
@@ -358,6 +359,20 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
             } 人次`}
           />
         </View>
+
+        {/* 本日無施工(2026-09):零工項是刻意的,PDF 上要寫明,看的人才不會以為漏印 */}
+        {isNoWorkLog(log.manpower) && (
+          <>
+            <Text style={styles.sectionTitle}>本日無施工</Text>
+            <View style={styles.notesBox}>
+              <Text>
+                {log.manpower?.no_work_reason?.trim()
+                  ? `工地主任標記本日無施工作業。原因：${log.manpower.no_work_reason.trim()}`
+                  : "工地主任標記本日無施工作業。"}
+              </Text>
+            </View>
+          </>
+        )}
 
         {/* 點工 — 臨時人力,只請款不簽約,故與出工人數分開列一區 */}
         {(!!log.manpower?.day_labor || !!log.manpower?.day_labor_note) && (

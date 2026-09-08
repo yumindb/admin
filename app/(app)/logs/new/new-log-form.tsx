@@ -49,6 +49,7 @@ import {
   todayLocalDate,
   serializeWeather,
   WEATHER_OPTIONS,
+  NO_WORK_REASONS,
   subcontractorKey,
 } from "@/lib/daily-log";
 import { formatTW } from "@/lib/datetime";
@@ -146,6 +147,9 @@ export function NewLogForm({
     logDate: string;
     weather: DailyWeather;
     manpowerTodayTotal: number;
+    /** 本日無施工(編輯既有日誌時從 manpower.no_work 帶入) */
+    noWork?: boolean;
+    noWorkReason?: string;
     /** 點工人數(臨時人力,只請款不簽約)*/
     manpowerDayLabor?: number;
     manpowerDayLaborNote?: string;
@@ -184,6 +188,12 @@ export function NewLogForm({
   // 留空字串等 mount 後在 useEffect 補今天
   const [logDate, setLogDate] = useState(initial?.logDate ?? "");
   const [weather, setWeather] = useState<DailyWeather>(initial?.weather ?? {});
+  // 本日無施工(2026-09 業主要求):開啟後工項 / 出工 / 外包區塊收起來,直接簽名送出。
+  // 已勾的工項留在 state(取消無施工就回來),但送出時不會帶。
+  const [noWork, setNoWork] = useState<boolean>(initial?.noWork ?? false);
+  const [noWorkReason, setNoWorkReason] = useState<string>(
+    initial?.noWorkReason ?? "",
+  );
   const [todayTotal, setTodayTotal] = useState<string>(
     String(initial?.manpowerTodayTotal ?? "")
   );
@@ -316,6 +326,8 @@ export function NewLogForm({
       if (draft.caseId !== undefined) setCaseId(draft.caseId);
       if (draft.logDate !== undefined) setLogDate(draft.logDate);
       if (draft.weather !== undefined) setWeather(draft.weather);
+      if (draft.noWork !== undefined) setNoWork(draft.noWork);
+      if (draft.noWorkReason !== undefined) setNoWorkReason(draft.noWorkReason);
       if (draft.todayTotal !== undefined) setTodayTotal(draft.todayTotal);
       if (draft.dayLabor !== undefined) setDayLabor(draft.dayLabor);
       if (draft.dayLaborNote !== undefined) setDayLaborNote(draft.dayLaborNote);
@@ -409,7 +421,8 @@ export function NewLogForm({
         localStorage.setItem(
           draftKey,
           JSON.stringify({
-            caseId, logDate, weather, todayTotal, dayLabor, dayLaborNote,
+            caseId, logDate, weather, noWork, noWorkReason,
+            todayTotal, dayLabor, dayLaborNote,
             subcontractors, machines, picked, pickedExtra, pickedUnsigned,
             extras, unsigned,
             photos, vendorNotices, notes,
@@ -424,7 +437,8 @@ export function NewLogForm({
     }, 600);
     return () => clearTimeout(t);
   }, [
-    draftKey, hydrated, caseId, logDate, weather, todayTotal, dayLabor, dayLaborNote,
+    draftKey, hydrated, caseId, logDate, weather, noWork, noWorkReason,
+    todayTotal, dayLabor, dayLaborNote,
     subcontractors, machines, picked, pickedExtra, pickedUnsigned,
     extras, unsigned, photos,
     vendorNotices, notes, mergedReportIds, mergedReportSnapshots,
@@ -1029,6 +1043,16 @@ export function NewLogForm({
     router.push(logId ? `/logs/${logId}` : "/logs");
   }
 
+  function markNoWork() {
+    setNoWork(true);
+    const pickedCount = picked.length + pickedExtra.length + pickedUnsigned.length;
+    if (pickedCount > 0 || todayTotalNum > 0) {
+      toast.info(
+        "已切成「本日無施工」：勾好的工項與出工人數不會送出（取消無施工會還原）",
+      );
+    }
+  }
+
   function submit(intent: "draft" | "submit" | "post_edit") {
     if (!caseId) {
       toast.error("請選擇案件");
@@ -1036,8 +1060,10 @@ export function NewLogForm({
     }
     const totalPicked =
       picked.length + pickedExtra.length + pickedUnsigned.length;
-    if (intent === "submit" && totalPicked === 0) {
-      toast.error("送出前請至少勾選 1 個工項（合約內 / 合約外 / 未簽約 任一）");
+    if (intent === "submit" && totalPicked === 0 && !noWork) {
+      toast.error(
+        "送出前請至少勾選 1 個工項（合約內 / 合約外 / 未簽約 任一）；今天沒施工請按「本日無施工」",
+      );
       return;
     }
 
@@ -1105,23 +1131,34 @@ export function NewLogForm({
         intent === "submit" && silentLoc
           ? { lat: silentLoc.lat, lng: silentLoc.lng, accuracy_m: silentLoc.accuracy_m }
           : null;
+      // 本日無施工:工項 / 人數 / 外包一律送空,旗標與原因放 manpower jsonb
+      //(不用 migration;server 端會擋「標了無施工卻還帶工項」的矛盾資料)。
       const res = await saveLogAction({
         logId,
         caseId,
         logDate,
         weather: serializeWeather(weather) ?? "",
-        manpower: {
-          today_total: todayTotal ? Number(todayTotal) : undefined,
-          accumulated_total: todayTotal ? accumulatedTotalNum : undefined,
-          day_labor: dayLabor ? Number(dayLabor) : undefined,
-          day_labor_accumulated: dayLabor ? accumulatedDayLaborNum : undefined,
-          day_labor_note: dayLaborNote.trim() || undefined,
-          subcontractors: subcontractorsToSave,
-          machines: machinesToSave,
-        },
-        workItems: allWorkItems,
-        extraItems: extras,
-        unsignedItems: unsigned,
+        manpower: noWork
+          ? {
+              today_total: 0,
+              accumulated_total: priorManpower,
+              subcontractors: [],
+              machines: [],
+              no_work: true,
+              no_work_reason: noWorkReason.trim() || undefined,
+            }
+          : {
+              today_total: todayTotal ? Number(todayTotal) : undefined,
+              accumulated_total: todayTotal ? accumulatedTotalNum : undefined,
+              day_labor: dayLabor ? Number(dayLabor) : undefined,
+              day_labor_accumulated: dayLabor ? accumulatedDayLaborNum : undefined,
+              day_labor_note: dayLaborNote.trim() || undefined,
+              subcontractors: subcontractorsToSave,
+              machines: machinesToSave,
+            },
+        workItems: noWork ? [] : allWorkItems,
+        extraItems: noWork ? [] : extras,
+        unsignedItems: noWork ? [] : unsigned,
         photos,
         vendorNotices,
         notes,
@@ -1424,6 +1461,80 @@ export function NewLogForm({
         </div>
       </Section>
 
+      {/* 本日無施工(2026-09 業主要求):下雨 / 放假 / 等材料的日子主任也要送日誌,
+          一樣走完整簽核。放在日期天氣之後 — 主任選完「大雨」順手就按得到。
+          開啟後 出工 / 一 / 二 / 三 / 四 / 舊資料 這幾區整段收起,只剩照片、重要事項、簽名。 */}
+      {noWork ? (
+        <section className="rounded-lg border-2 border-primary bg-[#EEF2F6] p-4 md:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-primary md:text-lg">
+                本日無施工
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                工項、出工人數、外包與機具都會以「無」送出，簽核流程跟平常一樣。照片與重要事項還是可以填。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNoWork(false)}
+              className="min-h-11 shrink-0 rounded-md border border-[#E0DCD6] bg-white px-3 text-sm text-foreground transition-colors hover:border-accent hover:text-accent"
+            >
+              取消，今天有施工
+            </button>
+          </div>
+          <div className="mt-4 space-y-2">
+            <Label htmlFor="no_work_reason">原因（選填）</Label>
+            <div className="flex flex-wrap gap-2">
+              {NO_WORK_REASONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setNoWorkReason(noWorkReason === r ? "" : r)}
+                  className={`min-h-[44px] rounded-md border px-4 text-sm transition-colors ${
+                    noWorkReason === r
+                      ? "border-accent bg-accent text-white"
+                      : "border-[#E0DCD6] bg-white text-foreground hover:bg-[#FAF7F2]"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <Input
+              id="no_work_reason"
+              value={noWorkReason}
+              onChange={(e) => setNoWorkReason(e.target.value)}
+              placeholder="也可以自己打，例：颱風假、業主場地還沒交"
+              className="h-11 bg-white"
+            />
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-lg border border-[#E0DCD6] bg-card p-4 md:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-primary md:text-lg">
+                今天沒有施工？
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                下雨、放假、等材料都算。按一下就不用勾工項，直接簽名送出，一樣走正常簽核。
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={markNoWork}
+              className="min-h-11 w-full border-primary text-primary hover:bg-primary/5 hover:text-primary md:w-auto"
+            >
+              本日無施工
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {!noWork && (
+      <>
       <Section title="出工人數" done={todayTotalNum > 0 || dayLaborNum > 0}>
         <div className="space-y-5">
           <div className="space-y-2">
@@ -1664,6 +1775,8 @@ export function NewLogForm({
             </div>
           )}
         </Section>
+      )}
+      </>
       )}
 
       <Section title="照片區" count={photos.length}>
@@ -2256,6 +2369,8 @@ type StoredDraft = {
   caseId?: string;
   logDate?: string;
   weather?: DailyWeather;
+  noWork?: boolean;
+  noWorkReason?: string;
   todayTotal?: string;
   dayLabor?: string;
   dayLaborNote?: string;

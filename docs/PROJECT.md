@@ -102,7 +102,7 @@ draft →[主任填表+簽名 fill]→ submitted+review
 | Route | 功能 |
 |---|---|
 | `/cases` `/cases/new` `/cases/[id]` | 案件 CRUD、標單 .xlsx 匯入 preview、工項樹 + 累計進度、合約外/未簽約區塊、出勤時間軸、座標 picker |
-| `/logs` `/logs/new` `/logs/[id]` | 施工日誌（工項勾選、percent/absolute 數量、出工＋點工人數、照片+說明、天氣 chips、localStorage 草稿） |
+| `/logs` `/logs/new` `/logs/[id]` | 施工日誌（工項勾選、percent/absolute 數量、出工＋點工人數、照片+說明、天氣 chips、localStorage 草稿、**「本日無施工」一鍵送單**：旗標在 `manpower.no_work`，零工項照走完整簽核） |
 | `/approvals` | role-aware 待辦（同 URL 三種角色看到自己那關） |
 | `/field-reports` | 現場回報（field_assistant 為主；離線 IndexedDB 佇列） |
 | `/attendance` | GPS 上下班打卡（軟性 geofence、離線前景排隊） |

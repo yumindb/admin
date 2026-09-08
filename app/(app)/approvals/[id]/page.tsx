@@ -11,10 +11,12 @@ import { PhotoGallery } from "@/components/photo-gallery";
 import { NextStepHint } from "@/components/next-step-hint";
 import {
   buildReportNumber,
+  formatNoWorkLabel,
   formatWeatherSummary,
   getRemainingDays,
   getWeekdayLabel,
   isBackfilledLog,
+  isNoWorkLog,
   normalizeLogPhotos,
 } from "@/lib/daily-log";
 import {
@@ -231,9 +233,12 @@ export default async function ApprovalDetailPage({
     .filter((e) => e.changes.length > 0);
   const editedByOffice = revRows.some((r) => r.editor_role === "office_staff");
 
+  // 本日無施工(2026-09):零工項是刻意的,摘要卡與「漏填工項」對照都不該當成缺失
+  const noWork = isNoWorkLog(l.manpower);
+
   // 辦公室助理視角：審核時想知道「主任本日漏掉哪些合約內工項」。
   // 撈此案件所有「葉節點 + 合約內」工項，與本份日誌已填的對照，列出未填的。
-  // 不算 section 層級（那只是分類，不是工項）。
+  // 不算 section 層級（那只是分類，不是工項）。無施工的日誌跳過(會把整案列成漏填)。
   type CaseLeafItem = {
     id: string;
     name: string;
@@ -241,7 +246,7 @@ export default async function ApprovalDetailPage({
     tender_code: string | null;
   };
   let missingContractItems: CaseLeafItem[] = [];
-  if (l.case_id) {
+  if (l.case_id && !noWork) {
     // fetchAllRows:配電盤案 1100+ 可填工項,超 PostgREST 1000 筆上限
     const { data: allCaseItems } = await fetchAllRows((from, to) =>
       supabase
@@ -355,7 +360,7 @@ export default async function ApprovalDetailPage({
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
           <SummaryCard
             label="合約內工項"
-            value={contractWorkItems.length.toString()}
+            value={noWork ? "無施工" : contractWorkItems.length.toString()}
           />
           <SummaryCard
             label="照片"
@@ -389,6 +394,12 @@ export default async function ApprovalDetailPage({
             />
           )}
         </div>
+        {noWork && (
+          <p className="mt-3 rounded-md border border-[#B8C4D0] bg-[#EEF2F6] px-4 py-2.5 text-sm text-[#3A5670]">
+            <span className="font-medium">{formatNoWorkLabel(l.manpower)}</span>
+            ：工地主任標記這天沒有施工，日誌沒有工項與出工人數，照常簽核即可。
+          </p>
+        )}
         {!!l.manpower?.day_labor_note && (
           <p className="mt-3 rounded-md border border-[#E0DCD6] bg-[#FAF7F2] px-4 py-2.5 text-sm text-muted-foreground">
             <span className="font-medium text-primary">點工工作內容：</span>
@@ -435,7 +446,9 @@ export default async function ApprovalDetailPage({
         count={contractWorkItems.length}
       >
         {!contractWorkItems.length ? (
-          <p className="text-sm text-muted-foreground">無合約內工項</p>
+          <p className="text-sm text-muted-foreground">
+            {noWork ? `${formatNoWorkLabel(l.manpower)}，沒有施作工項` : "無合約內工項"}
+          </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-[#E0DCD6] bg-card">
             <table className="min-w-full text-base">

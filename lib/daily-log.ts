@@ -1,4 +1,27 @@
-import type { DailyWeather, LogPhoto } from "./types";
+import type { DailyLogManpower, DailyWeather, LogPhoto } from "./types";
+
+/** 「本日無施工」原因的常用選項(表單 chips);也可自由輸入 */
+export const NO_WORK_REASONS = [
+  "天候不佳",
+  "例假日",
+  "等材料",
+  "業主要求暫停",
+] as const;
+
+/** 這份日誌是不是「本日無施工」(旗標放 manpower jsonb,見 types.ts) */
+export function isNoWorkLog(
+  manpower: DailyLogManpower | null | undefined,
+): boolean {
+  return manpower?.no_work === true;
+}
+
+/** 列表 / 詳情 / PDF 共用的無施工文案:「本日無施工」或「本日無施工（天候不佳）」 */
+export function formatNoWorkLabel(
+  manpower: DailyLogManpower | null | undefined,
+): string {
+  const reason = (manpower?.no_work_reason ?? "").trim();
+  return reason ? `本日無施工（${reason}）` : "本日無施工";
+}
 
 /**
  * 補件:log_date(實際施工日)跟 created_at(系統建立時間)不在同一個自然日(台灣時區)。

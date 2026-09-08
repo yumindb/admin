@@ -17,7 +17,11 @@ import {
   stampSignatureAction,
   uploadSignatureAction,
 } from "../logs/[id]/photo-actions";
-import { formatWeatherSummary } from "@/lib/daily-log";
+import {
+  formatNoWorkLabel,
+  formatWeatherSummary,
+  isNoWorkLog,
+} from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
 import {
   clearRememberedSig,
@@ -257,7 +261,16 @@ export function BatchApprovalsList({
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
-                  <span>{l.work_items?.length ?? 0} 個工項</span>
+                  {isNoWorkLog(l.manpower) ? (
+                    <span
+                      className="inline-flex items-center rounded-full border border-[#B8C4D0] bg-[#EEF2F6] px-2 py-0.5 text-xs text-[#3A5670]"
+                      title="工地主任標記這天沒有施工，日誌不含工項"
+                    >
+                      {formatNoWorkLabel(l.manpower)}
+                    </span>
+                  ) : (
+                    <span>{l.work_items?.length ?? 0} 個工項</span>
+                  )}
                   <span
                     className={
                       (l.photos?.length ?? 0) === 0

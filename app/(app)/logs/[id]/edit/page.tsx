@@ -215,6 +215,8 @@ export default async function EditLogPage({
           logDate: l.log_date,
           weather: parseWeather(l.weather),
           manpowerTodayTotal: l.manpower?.today_total ?? 0,
+          noWork: l.manpower?.no_work === true,
+          noWorkReason: l.manpower?.no_work_reason ?? "",
           manpowerDayLabor: l.manpower?.day_labor ?? 0,
           manpowerDayLaborNote: l.manpower?.day_labor_note ?? "",
           subcontractors: l.manpower?.subcontractors ?? [],

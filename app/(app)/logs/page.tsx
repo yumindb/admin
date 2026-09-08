@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { Button } from "@/components/ui/button";
 import { BulkPdfDownloadButton } from "@/components/bulk-pdf-download-button";
-import { formatWeatherSummary, isBackfilledLog } from "@/lib/daily-log";
+import {
+  formatNoWorkLabel,
+  formatWeatherSummary,
+  isBackfilledLog,
+  isNoWorkLog,
+} from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
 import type { DailyLog, LogStatus } from "@/lib/types";
 
@@ -336,6 +341,14 @@ export default async function LogsPage({
                                     補件
                                   </span>
                                 )}
+                                {isNoWorkLog(l.manpower) && (
+                                  <span
+                                    className="rounded-full border border-[#B8C4D0] bg-[#EEF2F6] px-1.5 py-0 text-[10px] text-[#3A5670]"
+                                    title={formatNoWorkLabel(l.manpower)}
+                                  >
+                                    無施工
+                                  </span>
+                                )}
                                 {editedByOffice.has(l.id) && (
                                   <span
                                     className="rounded-full border border-[#C9B79C] bg-[#FAF3E8] px-1.5 py-0 text-[10px] text-[#8A6D3B]"
@@ -351,7 +364,11 @@ export default async function LogsPage({
                                 )}
                               </div>
                               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground md:mt-1 md:gap-x-4 md:text-xs">
-                                <span>{l.work_items?.length ?? 0} 工項</span>
+                                <span>
+                                  {isNoWorkLog(l.manpower)
+                                    ? formatNoWorkLabel(l.manpower)
+                                    : `${l.work_items?.length ?? 0} 工項`}
+                                </span>
                                 <span>{l.photos?.length ?? 0} 照片</span>
                                 {l.notes && (
                                   <span className="line-clamp-1 max-w-[14rem] md:max-w-[20rem]">
