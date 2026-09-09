@@ -286,9 +286,9 @@ const SignatureDataUrlSchema = z
     "簽名格式錯誤"
   );
 
-/** 老闆簽名圖上傳(dataURL → png) */
+/** 簽核人簽名圖上傳(dataURL → png):填表 / 審核 / 審閱 / 核定各關都走這裡 */
 export async function uploadSignatureAction(formData: FormData) {
-  await requireRole(["site_supervisor", "office_staff", "owner"]);
+  await requireRole(["site_supervisor", "office_staff", "reviewer", "owner"]);
 
   const dataUrl = String(formData.get("dataUrl") ?? "");
   const parsed = SignatureDataUrlSchema.safeParse(dataUrl);

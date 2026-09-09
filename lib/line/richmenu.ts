@@ -16,6 +16,8 @@ import type { UserRole } from "@/lib/types";
 const ALIAS_BY_ROLE: Record<UserRole, string> = {
   owner: "yumin-role-owner",
   office_staff: "yumin-role-office-staff",
+  // 審閱人沒有自己的選單圖,借用助理版(入口都是待簽核 / 日誌 / 案件)
+  reviewer: "yumin-role-office-staff",
   site_supervisor: "yumin-role-site-supervisor",
   field_assistant: "yumin-role-field-assistant",
 };

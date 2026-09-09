@@ -256,9 +256,8 @@ export async function saveLogAction(payload: SaveLogPayload) {
     const expectedStatus = existing.status as string;
     const updatePayload: Record<string, unknown> = { ...next };
     if (stageChanged) updatePayload.current_stage = nextStage;
-    // 重送:submitted_at 要更新 — 雙簽的「本輪已簽人數」是用
-    // log_approvals.created_at >= daily_logs.submitted_at 判定的,不更新會把
-    // 退回前那一輪的核定簽名算進這一輪。
+    // 重送:submitted_at 要更新 — 「本輪」的簽核紀錄以
+    // log_approvals.created_at >= daily_logs.submitted_at 判定(簽核延遲報表也用它)。
     const resubmittedAt = resubmitFromRejected ? new Date().toISOString() : null;
     if (resubmitFromRejected) {
       updatePayload.status = "submitted";
@@ -281,13 +280,6 @@ export async function saveLogAction(payload: SaveLogPayload) {
     }
 
     if (resubmitFromRejected) {
-      // 重送 → 核定簽名計數歸零(上一輪的簽名不算數)。
-      // 獨立語句 + 忽略錯誤:migration-2.29 未跑時不影響重送本身。
-      await supabase
-        .from("daily_logs")
-        .update({ approve_signatures: 0 })
-        .eq("id", logId);
-
       // 通知辦公室助理有退件修正完、重新進 audit 關。
       // 放在 after():不阻塞 response,通知失敗也不影響日誌本身。
       const notifyLogId = logId;
@@ -328,7 +320,8 @@ export async function saveLogAction(payload: SaveLogPayload) {
   // 三關流程:submit 時 status='submitted' + current_stage='audit'(辦公室審核)。
   // draft 時兩個欄位都 null。
   // 重送被退回的日誌(rejected → submit)同樣直接進 audit。
-  // 若未來需要加回主任複核關,改這裡為 'review' 並恢復 NEXT_STAGE fill→review 即可。
+  // 'review' 關 2026-09 起是審閱人的(audit 之後才會進,由 approveStageAction 決定),
+  // 送出時一律先進 audit。
 
   // 編輯既有日誌前先讀當前狀態:classic 編輯只准動 draft / rejected,而且
   // 「暫存」不可以把已退回的日誌打回 draft — 那會讓它從助理與核定人的清單整份
@@ -435,14 +428,6 @@ export async function saveLogAction(payload: SaveLogPayload) {
       };
     }
 
-    // 重送 → 核定簽名計數歸零(雙簽制:上一輪的簽名不算數)。
-    // 獨立語句 + 忽略錯誤:migration-2.29 未跑時不影響送出。
-    if (submittedAt) {
-      await supabase
-        .from("daily_logs")
-        .update({ approve_signatures: 0 })
-        .eq("id", logId);
-    }
   } else {
     const insertPayload: Record<string, unknown> = {
       case_id: payload.caseId,

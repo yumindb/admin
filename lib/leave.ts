@@ -8,6 +8,9 @@ import type {
 /**
  * 角色階層(由低到高)。簽核鏈 = 申請人之上所有角色,依序往上送。
  * field_assistant 是基層;owner 是最高,owner 本人不能送請假(沒人能簽)。
+ *
+ * 審閱人(reviewer,2026-09)**不在**這條階層裡:他只簽日誌的審閱關,不簽任何人的假;
+ * 自己請假直接給 owner 簽(見 getApprovalChain)。
  */
 const ROLE_HIERARCHY: UserRole[] = [
   "field_assistant",
@@ -45,6 +48,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   field_assistant: "現場人員",
   site_supervisor: "工地主任",
   office_staff: "辦公室助理",
+  reviewer: "審閱人",
   owner: "老闆",
 };
 
@@ -53,6 +57,8 @@ export const ROLE_LABEL: Record<UserRole, string> = {
  * owner 沒有上層,回空陣列;不能送。
  */
 export function getApprovalChain(applicantRole: UserRole): UserRole[] {
+  // 審閱人不在階層裡,請假直接由 owner 簽;也不會出現在別人的簽核鏈
+  if (applicantRole === "reviewer") return ["owner"];
   const idx = ROLE_HIERARCHY.indexOf(applicantRole);
   if (idx < 0) return [];
   return ROLE_HIERARCHY.slice(idx + 1);

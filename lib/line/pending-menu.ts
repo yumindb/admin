@@ -1,5 +1,4 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import { findApproveSignedLogIds } from "@/lib/approvals/dual-sign";
 import { isLineConfigured } from "./client";
 import {
   OWNER_ALIAS,
@@ -17,9 +16,8 @@ import {
  * 只做「有 / 沒有」兩態,不顯示份數(業主 2026-08 決定):份數要 11 張圖、
  * 漏一個觸發點數字就不準,而不準的數字比沒數字更糟。
  *
- * 每位核定人的狀態不一樣 — 雙簽制下,這輪已經簽過的人不該再被算成待辦,
- * 判斷沿用待辦清單同一套 `findApproveSignedLogIds`。owner 通常只有兩位,
- * 所以每次事件都全體重算,不做增量 — 沒有漂移,也不用管誰受影響。
+ * 單簽制(2026-09 起):有任何一份停在核定關就是「有待核定」,所有核定人同一個狀態。
+ * owner 只有幾位,所以每次事件都全體重算,不做增量 — 沒有漂移,也不用管誰受影響。
  *
  * 刻意**不看 `notifications_enabled`**:那是「暫停推播」的開關,而選單是
  * 使用者自己點開才看到的被動狀態,不會吵人。
@@ -45,28 +43,15 @@ export async function syncOwnerApprovalMenus(): Promise<void> {
       .not("line_user_id", "is", null);
     if (!bindings || bindings.length === 0) return;
 
-    const { data: pendingRows } = await supabase
+    const { count } = await supabase
       .from("daily_logs")
-      .select("id, submitted_at")
+      .select("id", { count: "exact", head: true })
       .eq("status", "submitted")
       .eq("current_stage", "approve");
-    const pending = (pendingRows ?? []).map((l) => ({
-      id: l.id as string,
-      submitted_at: (l.submitted_at as string | null) ?? null,
-    }));
+    const hasPending = (count ?? 0) > 0;
 
     for (const b of bindings) {
-      const profileId = b.profile_id as string;
       const lineUserId = b.line_user_id as string;
-      let hasPending = false;
-      if (pending.length > 0) {
-        const signed = await findApproveSignedLogIds(
-          supabase,
-          profileId,
-          pending,
-        );
-        hasPending = pending.some((l) => !signed.has(l.id));
-      }
       await linkRichMenuByAlias(
         lineUserId,
         hasPending ? OWNER_PENDING_ALIAS : OWNER_ALIAS,

@@ -21,13 +21,9 @@ import {
   clearRememberedSig,
 } from "@/lib/remembered-signature";
 import type { ApprovalStage } from "@/lib/types";
+import { STAGE_VERB } from "@/lib/approvals/stages";
 
-const VERB: Record<ApprovalStage, string> = {
-  fill: "送出",
-  review: "複核通過",
-  audit: "審核通過",
-  approve: "核定通過",
-};
+const VERB = STAGE_VERB;
 
 export function ApprovalActions({
   logId,
@@ -144,12 +140,7 @@ export function ApprovalActions({
       const remaining = await getPendingCount(logId);
       const tail =
         remaining > 0 ? `還剩 ${remaining} 份，跳下一份…` : "待簽的都處理完了";
-      // 核定雙簽:第一位簽完還沒完成核定,講清楚免得以為簽完就結案
-      toast.success(res.awaitingSecond ? "已簽名" : `已${VERB[stage]}`, {
-        description: res.awaitingSecond
-          ? `已通知另一位核定人補簽，兩位都簽完才算完成核定。${tail}`
-          : tail,
-      });
+      toast.success(`已${VERB[stage]}`, { description: tail });
       await nextPendingRedirect(logId);
     });
   }

@@ -325,7 +325,7 @@ export default async function CaseDetailPage({
 
   const STAGE_ACT: Record<string, string> = {
     fill: "送出日誌",
-    review: "複核通過",
+    review: "審閱通過",
     audit: "審核通過",
     approve: "核定完成",
   };

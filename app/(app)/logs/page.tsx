@@ -23,7 +23,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 
 const STAGE_LABEL_SHORT: Record<string, string> = {
   fill: "填表",
-  review: "複核",
+  review: "審閱",
   audit: "審核",
   approve: "核定",
 };

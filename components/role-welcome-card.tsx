@@ -14,7 +14,12 @@ import { useBodyScrollLock } from "@/lib/use-modal-behavior";
  * 內容與 /manual.html 的「角色速查卡」同一套,改版時兩邊一起更新。
  */
 
-type Role = "field_assistant" | "site_supervisor" | "office_staff" | "owner";
+type Role =
+  | "field_assistant"
+  | "site_supervisor"
+  | "office_staff"
+  | "reviewer"
+  | "owner";
 
 type CardDef = {
   title: string;
@@ -71,6 +76,18 @@ const CARDS: Record<Role, CardDef> = {
     videos: [
       { href: "/videos/office-overview.mp4", label: "系統全覽（3 分鐘，建議電腦看）" },
     ],
+  },
+  reviewer: {
+    title: "審閱人",
+    color: "#3A5670",
+    line: "日誌到你這關就簽一下，簽名只留在系統，不會印在 PDF 上。",
+    items: [
+      ["審閱日誌", "上方「待審閱」有紅字 → 點開看內容 → 簽名通過或退回。"],
+      ["看歷史", "「日誌」和「案件總覽」都看得到，只是不能改。"],
+      ["要請假", "「請假」→ 新請假，直接送給核定人。"],
+    ],
+    manualHash: "reviewer",
+    videos: [],
   },
   owner: {
     title: "老闆",

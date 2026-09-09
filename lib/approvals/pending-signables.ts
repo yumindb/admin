@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { findApproveSignedLogIds } from "@/lib/approvals/dual-sign";
+import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
 import type { ApprovalStage, LeaveType, UserRole } from "@/lib/types";
 
 /**
@@ -11,16 +11,8 @@ import type { ApprovalStage, LeaveType, UserRole } from "@/lib/types";
  * 而是每次進頁面即時查:日誌停在我這關 + 請假輪到我簽。
  * 簽掉之後 status / current_stage 一變,下次 render 自然就不在了。
  *
- * 查詢條件刻意跟 /approvals 頁與 layout 的 badge 完全同一套
- * (含核定關雙簽「我簽過的先不顯示」的過濾),三個地方數字才會對得起來。
+ * 查詢條件刻意跟 /approvals 頁與 layout 的 badge 完全同一套,三個地方數字才會對得起來。
  */
-
-const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
-  site_supervisor: "review",
-  office_staff: "audit",
-  owner: "approve",
-  field_assistant: null,
-};
 
 /** 消息頁一次最多列這麼多份 — 再多就該去 /approvals 用批簽清 */
 const LIST_LIMIT = 50;
@@ -77,8 +69,8 @@ export async function listPendingSignables(
   const stage = STAGE_FOR_ROLE[actor.role] ?? null;
 
   const logsPromise = stage
-    ? (() => {
-        let q = supabase
+    ? (() =>
+        supabase
           .from("daily_logs")
           .select(
             "id, log_date, submitted_at, cases(name, code), profiles!daily_logs_supervisor_id_fkey(full_name)",
@@ -86,13 +78,8 @@ export async function listPendingSignables(
           .eq("status", "submitted")
           .eq("current_stage", stage)
           .order("submitted_at", { ascending: true })
-          .limit(LIST_LIMIT);
-        // supervisor 只複核自己的日誌(同 /approvals)
-        if (actor.role === "site_supervisor") {
-          q = q.eq("supervisor_id", actor.id);
-        }
-        return q;
-      })()
+          .limit(LIST_LIMIT)
+      )()
     : null;
 
   const leavesPromise = stage
@@ -117,17 +104,7 @@ export async function listPendingSignables(
     console.error("[messages] 待簽請假查詢失敗:", leavesRes.error.message);
   }
 
-  let logRows = (logsRes?.data ?? []) as unknown as LogRow[];
-
-  // 核定關雙簽:這一輪我已簽過的不算「等我簽」(在等的是另一位核定人)
-  if (stage === "approve" && logRows.length > 0) {
-    const signed = await findApproveSignedLogIds(
-      supabase,
-      actor.id,
-      logRows.map((l) => ({ id: l.id, submitted_at: l.submitted_at })),
-    );
-    logRows = logRows.filter((l) => !signed.has(l.id));
-  }
+  const logRows = (logsRes?.data ?? []) as unknown as LogRow[];
 
   return {
     stage,

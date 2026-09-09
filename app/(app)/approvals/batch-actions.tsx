@@ -41,7 +41,7 @@ type LogRow = DailyLog & {
 
 const VERB: Record<ApprovalStage, string> = {
   fill: "送出",
-  review: "複核通過",
+  review: "審閱通過",
   audit: "審核通過",
   approve: "核定通過",
 };
@@ -400,7 +400,6 @@ function BatchApprovalModal({
   onDone: (result: {
     ok: string[];
     failed: { logId: string; reason: string }[];
-    awaitingSecond?: string[];
   }) => void;
 }) {
   const sigRef = useRef<SignatureCanvas>(null);
@@ -413,7 +412,6 @@ function BatchApprovalModal({
   const [result, setResult] = useState<{
     ok: string[];
     failed: { logId: string; reason: string }[];
-    awaitingSecond?: string[];
   } | null>(null);
   const [isPending, startTransition] = useTransition();
   // 鎖背景捲動 + ESC 關閉(pending 中不關)
@@ -646,29 +644,21 @@ function BatchResultView({
   result: {
     ok: string[];
     failed: { logId: string; reason: string }[];
-    awaitingSecond?: string[];
   };
   stage: ApprovalStage;
   onClose: () => void;
 }) {
   const verb = VERB[stage];
-  const waiting = result.awaitingSecond?.length ?? 0;
   return (
     <div>
       <div className="mb-3 rounded-md border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-2.5 text-sm text-[#4A7C59]">
-        成功簽名 {result.ok.length} 份
-        {waiting === 0 && verb}。
+        成功簽名 {result.ok.length} 份{verb}。
         {result.failed.length > 0 && (
           <span className="ml-2 text-[#B91C1C]">
             失敗 {result.failed.length} 份。
           </span>
         )}
       </div>
-      {waiting > 0 && (
-        <div className="mb-3 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-sm text-[#92400E]">
-          其中 {waiting} 份還在等另一位核定人補簽，簽完才會完成核定並產生 PDF（已發通知）。
-        </div>
-      )}
       {result.failed.length > 0 && (
         <div className="mb-3 rounded-md border border-[#FCA5A5] bg-[#FEF2F2] p-3 text-sm">
           <div className="mb-1.5 font-medium text-[#B91C1C]">失敗清單</div>

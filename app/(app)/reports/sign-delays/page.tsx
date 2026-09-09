@@ -21,12 +21,13 @@ export const dynamic = "force-dynamic";
 
 const STAGE_LABEL: Record<ApprovalStage, string> = {
   fill: "填寫",
-  review: "工地主任複核",
+  review: "審閱人審閱",
   audit: "辦公室助理審核",
-  approve: "老闆核定",
+  approve: "核定人核定",
 };
 
-const VISIBLE_STAGES: ApprovalStage[] = ["audit", "approve"]; // review 目前未啟用
+// 審閱關是可選的(人員管理頁開關);沒開時這關沒資料,列出來也是 0
+const VISIBLE_STAGES: ApprovalStage[] = ["audit", "review", "approve"];
 
 function daysBetween(from: string, to: string): number {
   const ms = new Date(to).getTime() - new Date(from).getTime();

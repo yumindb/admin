@@ -21,6 +21,7 @@ import {
   isNoWorkLog,
   normalizeLogPhotos,
 } from "@/lib/daily-log";
+import { STAGE_ACTOR_LABEL, STAGE_FOR_ROLE } from "@/lib/approvals/stages";
 import type {
   DailyLog,
   DailyLogEditableField,
@@ -40,7 +41,7 @@ import {
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: "草稿", cls: "bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]" },
-  // submitted 用「簽核中」當基底,實際顯示時依 current_stage 接「:複核 / :審核 / :核定」
+  // submitted 用「簽核中」當基底,實際顯示時依 current_stage 接「:審核 / :審閱 / :核定」
   submitted: { label: "簽核中", cls: "bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]" },
   approved: { label: "已核定", cls: "bg-[#ECFDF5] text-[#4A7C59] border-[#A7F3D0]" },
   rejected: { label: "已退回", cls: "bg-[#FEF2F2] text-[#B91C1C] border-[#FCA5A5]" },
@@ -49,7 +50,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 // 完整版 — 顯示在 NextStepHint / 簽核紀錄 etc.
 const STAGE_LABEL: Record<string, string> = {
   fill: "填表（工地主任）",
-  review: "複核（工地主任）",
+  review: "審閱（審閱人）",
   audit: "審核（辦公室助理）",
   approve: "核定（老闆）",
 };
@@ -57,7 +58,7 @@ const STAGE_LABEL: Record<string, string> = {
 // 簡短版 — 接在 status badge 後綴用,如「簽核中:審核」
 const STAGE_LABEL_SHORT: Record<string, string> = {
   fill: "填表",
-  review: "複核",
+  review: "審閱",
   audit: "審核",
   approve: "核定",
 };
@@ -66,6 +67,7 @@ const ROLE_LABEL: Record<string, string> = {
   site_supervisor: "工地主任",
   office_staff: "辦公室助理",
   owner: "老闆",
+  reviewer: "審閱人",
   field_assistant: "現場人員",
 };
 
@@ -416,22 +418,15 @@ export default async function LogDetailPage({
               </button>
             </form>
           )}
-          {l.status === "submitted" && (
-            (profile?.role === "site_supervisor" && l.current_stage === "review" && l.supervisor_id === user!.id) ||
-            (profile?.role === "office_staff" && l.current_stage === "audit") ||
-            (profile?.role === "owner" && l.current_stage === "approve")
-          ) && (
+          {l.status === "submitted" &&
+            !!l.current_stage &&
+            STAGE_FOR_ROLE[role] === l.current_stage && (
             <Button
               asChild
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Link href={`/approvals/${id}`}>
-                前往
-                {l.current_stage === "review"
-                  ? "複核"
-                  : l.current_stage === "audit"
-                  ? "審核"
-                  : "核定"}
+                前往{STAGE_LABEL_SHORT[l.current_stage] ?? "簽核"}
               </Link>
             </Button>
           )}
@@ -511,41 +506,33 @@ export default async function LogDetailPage({
           </NextStepHint>
         </div>
       )}
-      {/* 四關正式流程的 status hint：依 current_stage × 角色 細分 */}
+      {/* 簽核中的 status hint:依 current_stage × 角色 細分 */}
       {l.status === "submitted" && (() => {
         const stage = l.current_stage;
-        const stageLabel: Record<string, string> = {
-          review: "複核（工地主任）",
-          audit: "審核（辦公室助理）",
-          approve: "核定（老闆）",
-        };
-        const myStage =
-          profile?.role === "site_supervisor"
-            ? "review"
-            : profile?.role === "office_staff"
-            ? "audit"
-            : profile?.role === "owner"
-            ? "approve"
-            : null;
+        const myStage = STAGE_FOR_ROLE[role] ?? null;
         const isMyTurn = stage && myStage === stage;
+        const short = stage ? STAGE_LABEL_SHORT[stage] ?? "簽核" : "簽核";
         if (isMyTurn) {
           return (
             <div className="mb-6">
-              <NextStepHint tone="info" title={`待您${stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}`}>
-                這份等你處理，點右上「前往{stage === "review" ? "複核" : stage === "audit" ? "審核" : "核定"}」進入。
+              <NextStepHint tone="info" title={`待您${short}`}>
+                這份等你處理，點右上「前往{short}」進入。
               </NextStepHint>
             </div>
           );
         }
         return (
           <div className="mb-6">
-            <NextStepHint tone="info" title={`已送出，目前在「${stage ? stageLabel[stage] : "?"}」階段`}>
+            <NextStepHint
+              tone="info"
+              title={`已送出，目前在「${stage ? STAGE_ACTOR_LABEL[stage] : "?"}」階段`}
+            >
               {stage === "review"
-                ? "工地主任複核中。"
+                ? "審閱人審閱中（審閱簽名只留在系統，不進 PDF）。"
                 : stage === "audit"
                 ? "辦公室助理審核中。"
                 : stage === "approve"
-                ? "老闆核定中，簽名後即完成。"
+                ? "核定人核定中，簽名後即完成並產生 PDF。"
                 : "等待中。"}
             </NextStepHint>
           </div>

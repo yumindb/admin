@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { isDualSignEnabled } from "@/lib/settings";
+import { isReviewStageEnabled } from "@/lib/settings";
 import { emailToUsername } from "@/lib/auth/username";
 import type { NotificationPrefs } from "@/lib/notifications/prefs";
 import type { Profile, UserRole } from "@/lib/types";
@@ -19,6 +19,7 @@ export type StaffRow = Profile & {
 const ROLE_ORDER: UserRole[] = [
   "owner",
   "office_staff",
+  "reviewer",
   "site_supervisor",
   "field_assistant",
 ];
@@ -41,8 +42,8 @@ export default async function StaffPage() {
 
   // 抓所有 profile + 用 service role 拿對應 email
   const admin = createServiceClient();
-  // 核定雙簽開關(migration-2.34)— 跟人員清單無關,一起發不排隊
-  const dualSignPromise = isDualSignEnabled(supabase);
+  // 審閱關開關(app_settings,migration-2.36)— 跟人員清單無關,一起發不排隊
+  const reviewStagePromise = isReviewStageEnabled(supabase);
   const [{ data: profiles }, { data: usersList }, { data: bindings }] =
     await Promise.all([
       admin
@@ -99,9 +100,9 @@ export default async function StaffPage() {
     else byRole.set(s.role as UserRole, [s]);
   }
 
-  const dualSignEnabled = await dualSignPromise;
-  const activeOwnerCount = staff.filter(
-    (s) => s.role === "owner" && s.is_active,
+  const reviewStageEnabled = await reviewStagePromise;
+  const activeReviewerCount = staff.filter(
+    (s) => s.role === "reviewer" && s.is_active,
   ).length;
 
   return (
@@ -109,8 +110,8 @@ export default async function StaffPage() {
       currentUserId={user.id}
       currentUserRole={me.role as UserRole}
       staffByRole={Object.fromEntries(byRole) as Record<UserRole, StaffRow[]>}
-      dualSignEnabled={dualSignEnabled}
-      activeOwnerCount={activeOwnerCount}
+      reviewStageEnabled={reviewStageEnabled}
+      activeReviewerCount={activeReviewerCount}
     />
   );
 }

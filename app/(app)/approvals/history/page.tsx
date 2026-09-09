@@ -7,7 +7,7 @@ import { HistoryFilters } from "./history-filters";
 
 const STAGE_LABEL: Record<ApprovalStage, string> = {
   fill: "填表",
-  review: "複核",
+  review: "審閱",
   audit: "審核",
   approve: "核定",
 };
@@ -33,7 +33,12 @@ export default async function ApprovalsHistoryPage() {
   // field_assistant 不簽核 → 拒入。
   let actor;
   try {
-    actor = await requireRole(["site_supervisor", "office_staff", "owner"]);
+    actor = await requireRole([
+      "site_supervisor",
+      "office_staff",
+      "reviewer",
+      "owner",
+    ]);
   } catch {
     redirect("/logs");
   }

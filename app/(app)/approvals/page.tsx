@@ -3,8 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { getSignedUrl } from "@/lib/supabase/storage";
-import { findApproveSignedLogIds } from "@/lib/approvals/dual-sign";
-import { isDualSignEnabled } from "@/lib/settings";
+import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
 import { NextStepHint } from "@/components/next-step-hint";
 import { BatchApprovalsList } from "./batch-actions";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
@@ -12,13 +11,6 @@ import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 type LogRow = DailyLog & {
   cases: { name: string; code: string | null } | null;
   profiles: { full_name: string } | null;
-};
-
-const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
-  site_supervisor: "review",
-  office_staff: "audit",
-  owner: "approve",
-  field_assistant: null,
 };
 
 const PAGE_COPY: Record<
@@ -31,19 +23,19 @@ const PAGE_COPY: Record<
     emptyHint: "目前沒有草稿",
   },
   review: {
-    title: "待複核",
-    subtitle: "您送出的日誌等您自己複核確認",
-    emptyHint: "送出新日誌後會出現在這裡。可在「我的日誌」找草稿",
+    title: "待審閱",
+    subtitle: "辦公室助理審核通過的日誌等您審閱（簽名只留在系統，不進 PDF）",
+    emptyHint: "辦公室助理審核後會出現在這裡",
   },
   audit: {
     title: "待審核",
-    subtitle: "工地主任複核完的日誌等您審核文件完整性",
-    emptyHint: "工地主任複核後會出現在這裡",
+    subtitle: "工地主任送出的日誌等您審核文件完整性",
+    emptyHint: "工地主任送出日誌後會出現在這裡",
   },
   approve: {
     title: "待核定",
-    subtitle: "辦公室助理審核通過的日誌等您最後核定",
-    emptyHint: "辦公室助理審核後會出現在這裡",
+    subtitle: "前面關卡通過的日誌等您最後核定",
+    emptyHint: "辦公室助理審核（或審閱人審閱）後會出現在這裡",
   },
 };
 
@@ -57,41 +49,22 @@ export default async function ApprovalsPage() {
   const stage = STAGE_FOR_ROLE[role];
   if (!stage) redirect("/logs");
 
-  let query = supabase
+  const query = supabase
     .from("daily_logs")
     .select("*, cases(name, code), profiles!daily_logs_supervisor_id_fkey(full_name)")
     .eq("status", "submitted")
     .eq("current_stage", stage)
     .order("submitted_at", { ascending: true });
 
-  // supervisor 只看自己的日誌(複核 = 自核 / 其他主任的我們暫不分)
-  if (role === "site_supervisor") {
-    query = query.eq("supervisor_id", actor.id);
-  }
-
   // 待簽清單與簽名圖章互不相干 — 一起發,不要讓 owner 多等一趟 storage 簽章。
   // 簽名圖章(owner 先試用):批簽 modal 用。6h TTL 蓋掉整段簽核時間
-  const [pendingRes, stampUrl, dualSign] = await Promise.all([
+  const [pendingRes, stampUrl] = await Promise.all([
     query,
     role === "owner"
       ? getSignedUrl("signatures", `${actor.id}/stamp.png`, 6 * 60 * 60)
       : Promise.resolve(null),
-    // 核定要幾位簽 — 文案要跟著設定走(2026-08 第二位核定人未到職,暫行單簽)
-    isDualSignEnabled(supabase),
   ]);
-  let list = (pendingRes.data ?? []) as LogRow[];
-
-  // 核定關雙簽:我已經簽過的先不顯示(等另一位核定人簽),另外算一個提示數字
-  let awaitingOtherCount = 0;
-  if (stage === "approve" && list.length > 0) {
-    const signed = await findApproveSignedLogIds(
-      supabase,
-      actor.id,
-      list.map((l) => ({ id: l.id, submitted_at: l.submitted_at ?? null })),
-    );
-    awaitingOtherCount = signed.size;
-    list = list.filter((l) => !signed.has(l.id));
-  }
+  const list = (pendingRes.data ?? []) as LogRow[];
   // 「經助理修改」— 核定前值得知道這份被辦公室動過(業主 2026-08 要求)
   const officeEditedIds: string[] = [];
   if (list.length > 0) {
@@ -131,22 +104,15 @@ export default async function ApprovalsPage() {
 
       <div className="mb-6">
         <NextStepHint tone="muted">
-          四關流程：填表 → 複核（工地主任） → 審核（辦公室助理） → 核定（老闆）。
+          流程：填表（工地主任） → 審核（辦公室助理） → 審閱（審閱人，有開才會經過） → 核定（核定人）。
           每關退回都會回到「我的日誌」讓主任修正後重送。
           {(role === "office_staff" || role === "owner") &&
             "小地方不用退回 —— 每張卡片下方的「直接修改這份」可以當場改，改動會留前後對照紀錄。"}
-          {stage === "approve" &&
-            (dualSign
-              ? "核定要兩位核定人都簽名才算完成。"
-              : "目前是單簽：你簽完這份就完成核定並自動產生 PDF。")}
+          {stage === "approve" && "你簽完這份就完成核定並自動產生 PDF。"}
+          {stage === "review" &&
+            "你的簽名與意見只記錄在系統裡（簽核歷程、我簽過的），不會出現在 PDF 上。"}
         </NextStepHint>
       </div>
-
-      {awaitingOtherCount > 0 && (
-        <div className="mb-6 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
-          另有 {awaitingOtherCount} 份你已經簽過，正在等另一位核定人補簽，簽完就會自動完成核定。
-        </div>
-      )}
 
       {!list.length ? (
         <div className="space-y-4">

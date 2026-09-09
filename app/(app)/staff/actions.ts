@@ -29,7 +29,13 @@ const CreateSchema = z.object({
   username: usernameSchema,
   password: z.string().min(6, "密碼至少 6 碼").max(72),
   full_name: z.string().trim().min(1, "姓名必填").max(60),
-  role: z.enum(["owner", "office_staff", "site_supervisor", "field_assistant"]),
+  role: z.enum([
+    "owner",
+    "office_staff",
+    "reviewer",
+    "site_supervisor",
+    "field_assistant",
+  ]),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
 });
 
@@ -91,7 +97,13 @@ export async function createStaffAction(
 const UpdateSchema = z.object({
   user_id: z.string().uuid(),
   full_name: z.string().trim().min(1, "姓名必填").max(60),
-  role: z.enum(["owner", "office_staff", "site_supervisor", "field_assistant"]),
+  role: z.enum([
+    "owner",
+    "office_staff",
+    "reviewer",
+    "site_supervisor",
+    "field_assistant",
+  ]),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
 });
 
@@ -248,16 +260,16 @@ export async function toggleActiveAction(formData: FormData): Promise<StaffActio
 }
 
 /**
- * 核定雙簽開關(2026-08-04 業主:第二位核定人還沒到職,先關掉)。
+ * 審閱關開關(2026-09-09 業主拍板,取代原本的核定雙簽)。
  *
- * 為什麼放在人員管理頁:這條規則講的是「要幾個人簽」,跟帳號是同一件事;
- * 而且能改帳號角色的人本來就能左右核定權,不需要另立一個更嚴的權限。
+ * 為什麼放在人員管理頁:這條規則講的是「誰要簽」,跟帳號是同一件事;
+ * 而且能改帳號角色的人本來就能左右簽核權,不需要另立一個更嚴的權限。
  *
  * 寫入走 service-role — app_settings 沒有 INSERT/UPDATE policy(見 migration-2.34),
  * 角色由上面的 requireManager() 擋。誰改的記在 updated_by,並由 audit trigger
  * 留一筆 audit_logs。
  */
-export async function setDualSignAction(
+export async function setReviewStageAction(
   enabled: boolean,
 ): Promise<StaffActionResult> {
   const auth = await requireManager();
@@ -266,10 +278,10 @@ export async function setDualSignAction(
   const admin = createServiceClient();
   const { error } = await admin.from("app_settings").upsert(
     {
-      key: "approval.dual_sign_enabled",
+      key: "approval.review_stage_enabled",
       value: enabled,
       description:
-        "核定關是否需要兩位不同的核定人都簽名才完成。false = 一位簽完即核定完成。",
+        "辦公室審核通過後是否先經過審閱人(在系統上簽核、不進 PDF)再交核定人。false = 審核後直接核定。沒有啟用中的審閱人帳號時會自動跳過。",
       updated_by: auth.currentUserId,
       updated_at: new Date().toISOString(),
     },

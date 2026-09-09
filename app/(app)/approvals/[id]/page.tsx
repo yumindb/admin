@@ -24,8 +24,7 @@ import {
   groupWorkItemsByAncestor,
 } from "@/lib/work-item-grouping";
 import { getSignedUrl, getSignedUrls } from "@/lib/supabase/storage";
-import { loadApproveSignersThisRound } from "@/lib/approvals/dual-sign";
-import { isDualSignEnabled } from "@/lib/settings";
+import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
 import { buildRevisionDiffs } from "@/lib/log-diff";
 import { RevisionDiffRows } from "@/components/revision-diff";
 import { formatTW } from "@/lib/datetime";
@@ -41,19 +40,13 @@ const ROLE_LABEL: Record<string, string> = {
   site_supervisor: "工地主任",
   office_staff: "辦公室助理",
   owner: "老闆",
+  reviewer: "審閱人",
   field_assistant: "現場人員",
-};
-
-const STAGE_FOR_ROLE: Record<UserRole, ApprovalStage | null> = {
-  site_supervisor: "review",
-  office_staff: "audit",
-  owner: "approve",
-  field_assistant: null,
 };
 
 const STAGE_COPY: Record<ApprovalStage, { title: string; verb: string }> = {
   fill: { title: "填寫", verb: "送出" },
-  review: { title: "複核", verb: "複核通過" },
+  review: { title: "審閱", verb: "審閱通過" },
   audit: { title: "審核", verb: "審核通過" },
   approve: { title: "核定", verb: "核定通過" },
 };
@@ -88,27 +81,6 @@ export default async function ApprovalDetailPage({
       ? await getSignedUrl("signatures", `${actor.id}/stamp.png`, 6 * 60 * 60)
       : null;
 
-  // 核定要幾位簽 — 2026-08 起可在人員管理頁關掉雙簽(第二位核定人未到職)
-  const dualSign = await isDualSignEnabled(supabase);
-
-  // 核定關雙簽(2026-07):本輪已簽的人不再顯示簽名面板
-  let alreadySignedApprove = false;
-  let approveSignedCount = 0;
-  if (allowedStage === "approve") {
-    const { data: logRound } = await supabase
-      .from("daily_logs")
-      .select("submitted_at")
-      .eq("id", id)
-      .maybeSingle();
-    const signers = await loadApproveSignersThisRound(
-      supabase,
-      id,
-      (logRound?.submitted_at as string | null) ?? null,
-    );
-    approveSignedCount = signers.length;
-    alreadySignedApprove = signers.some((s) => s.approverId === actor.id);
-  }
-
   const { data: log } = await supabase
     .from("daily_logs")
     .select(
@@ -132,10 +104,6 @@ export default async function ApprovalDetailPage({
   // 已處理過或當前不在我的關卡 → 回 detail / 列表
   if (l.status !== "submitted") redirect(`/logs/${id}`);
   if (l.current_stage !== allowedStage) redirect(`/logs/${id}`);
-  // supervisor 只能複核自己的日誌
-  if (role === "site_supervisor" && l.supervisor_id !== actor.id) {
-    redirect("/approvals");
-  }
   const stageCopy = STAGE_COPY[allowedStage];
 
   // 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
@@ -639,27 +607,16 @@ export default async function ApprovalDetailPage({
         </SignSection>
       )}
 
-      {/* 簽核 — 核定關雙簽:自己簽過就不再顯示簽名面板 */}
-      {alreadySignedApprove ? (
-        <div className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-5 py-4 text-sm text-[#92400E]">
-          你已經簽過這份日誌了，正在等另一位核定人補簽。兩位都簽完就會自動完成核定並產生 PDF。
-        </div>
-      ) : (
-        <>
-          <div className="mb-4">
-            <NextStepHint tone="info">
-              {allowedStage === "approve"
-                ? !dualSign
-                  ? "目前是單簽（第二位核定人尚未到職）：你簽完這份就完成核定並自動產生 PDF。"
-                  : approveSignedCount > 0
-                    ? "另一位核定人已經簽過了，你這一簽完成後就會核定通過並自動產生 PDF。"
-                    : "核定要兩位核定人都簽名。你先簽完後，系統會通知另一位核定人補簽。"
-                : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。小地方不用退回 —— 點右上「直接修改這份」就能改，改了誰改的、改了哪裡都會留紀錄；要主任自己重做才切到「退回」分頁。`}
-            </NextStepHint>
-          </div>
-          <ApprovalActions logId={id} stage={allowedStage} stampUrl={stampUrl} />
-        </>
-      )}
+      <div className="mb-4">
+        <NextStepHint tone="info">
+          {allowedStage === "approve"
+            ? "你簽完這份就完成核定並自動產生 PDF。"
+            : allowedStage === "review"
+              ? `確認上方內容後在下方簽名按「${stageCopy.verb}」，日誌會交給核定人。你的簽名與意見只留在系統裡，不會印在 PDF 上；要主任修正就切到「退回」分頁。`
+              : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。小地方不用退回 —— 點右上「直接修改這份」就能改，改了誰改的、改了哪裡都會留紀錄；要主任自己重做才切到「退回」分頁。`}
+        </NextStepHint>
+      </div>
+      <ApprovalActions logId={id} stage={allowedStage} stampUrl={stampUrl} />
     </div>
   );
 }

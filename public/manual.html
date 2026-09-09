@@ -480,7 +480,7 @@
       <rect x="36" y="248" width="138" height="26" rx="6" fill="#fff" stroke="#E0DCD6"/>
       <text x="105" y="265" text-anchor="middle" font-size="11" fill="#5A5050" font-family="sans-serif">下班打卡</text>
       <line x1="18" y1="286" x2="192" y2="286" stroke="#E0DCD6"/>
-      <text x="105" y="302" text-anchor="middle" font-size="9.5" fill="#8A847C" font-family="sans-serif">打卡　日誌　待複核　回報</text>
+      <text x="105" y="302" text-anchor="middle" font-size="9.5" fill="#8A847C" font-family="sans-serif">打卡　日誌　回報　請假</text>
     </svg>
     <figcaption>畫面長這樣：一顆大大的「上班打卡」，上面顯示你離工地幾公尺。</figcaption>
   </figure>
@@ -582,7 +582,7 @@
       <text x="145" y="236" text-anchor="middle" font-size="9" fill="#8A847C" font-family="sans-serif">手寫簽名</text>
       <rect x="28" y="250" width="154" height="28" rx="6" fill="#003153"/>
       <text x="105" y="269" text-anchor="middle" font-size="12" fill="#fff" font-family="sans-serif">簽名並送出</text>
-      <text x="105" y="300" text-anchor="middle" font-size="9.5" fill="#8A847C" font-family="sans-serif">打卡　日誌　待複核　回報</text>
+      <text x="105" y="300" text-anchor="middle" font-size="9.5" fill="#8A847C" font-family="sans-serif">打卡　日誌　回報　請假</text>
     </svg>
     <figcaption>勾工項、按 ＋ − 填數量、簽名，就送出了。打勾的工項才會算進去。</figcaption>
   </figure>
@@ -607,7 +607,7 @@
   <div class="warn"><b>注意：</b><span>退回的日誌放著不管，老闆的儀表板會亮紅燈提醒「退回未重送」— 盡快處理。</span></div>
   <div class="tip"><b>小撇步：</b><span>日誌<b>通過</b>但老闆或辦公室有交代一句話時，右上角的<b>鈴鐺</b>會亮紅點（不是退回，日誌照常往前走）。點鈴鐺就看得到那句話，也能直接跳到那份日誌。<a href="#c-messages">看「消息」怎麼用 →</a></span></div>
 
-  <h3><span class="role-dot" style="background:#2C577E;"></span>幫別人簽核（待複核、假單）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <h3><span class="role-dot" style="background:#2C577E;"></span>幫別人簽核（假單）<button class="speak" type="button">🔈 朗讀</button></h3>
   <p>現場人員送的<b>假單</b>第一關是你：上方「請假」有紅色數字時，點進去看內容 → 核准或退回。你自己請假則送給辦公室和老闆簽。</p>
 </section>
 
@@ -693,7 +693,16 @@
 
   <h3 id="o-staff"><span class="role-dot"></span>人員管理<button class="speak" type="button">🔈 朗讀</button></h3>
   <p>上方「人員管理」：<b>新增帳號</b>（設帳號、姓名、角色、初始密碼）、<b>重設密碼</b>（有人忘記時）、<b>停用</b>（離職時 — 帳號停用後立刻不能登入，但他過去的紀錄都留著）。每個人的「最後登入」時間也在這頁。</p>
-  <p>這頁最上面還有一個「<b>核定簽名規則</b>」開關：決定日誌要<b>一位</b>核定人簽完就結案，還是<b>兩位</b>都簽完才結案。<b>目前設定是一位</b>（第二位核定人還沒到職）；等第二位到職，把開關打開就恢復兩位，不用找人改程式。誰在什麼時候改過都有紀錄。</p>
+  <p>這頁最上面還有一個「<b>審閱關</b>」開關：打開後，你審核通過的日誌會<b>先給「審閱人」簽</b>，再交核定人；關掉就是直接交核定人。沒有啟用中的審閱人帳號時這關會自動跳過，日誌不會卡住。誰在什麼時候改過都有紀錄。</p>
+
+  <h3 id="reviewer"><span class="role-dot" style="background:#3A5670;"></span>審閱人（可選的簽核關）<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p>「審閱人」是一種帳號角色：日誌在辦公室審核通過後、核定人簽名前，先到他這一關。<b>他的簽名和意見只留在系統裡</b>（簽核歷程、「我簽過的」看得到），<b>不會印在 PDF 上</b>。</p>
+  <ol class="bigsteps">
+    <li>上方「<b>待審閱</b>」有紅色數字 → 點開看內容。</li>
+    <li>OK → 手指<b>簽名</b> →「審閱通過」。<span class="then">日誌就交給核定人。</span></li>
+    <li>有問題 →「<b>退回</b>」填原因。<span class="then">主任修好會重新送審。</span></li>
+  </ol>
+  <p>審閱人也看得到「日誌」和「案件總覽」（只能看、不能改），自己請假直接送給核定人簽。要啟用這個角色：在「人員管理」新增帳號時角色選「審閱人」，再把上面的「審閱關」開關打開。</p>
 
   <h3 id="o-backfill"><span class="role-dot"></span>補登打卡（有人忘記打卡時）<button class="speak" type="button">🔈 朗讀</button></h3>
   <ol class="bigsteps">
@@ -766,10 +775,10 @@
   <ol class="bigsteps">
     <li>按「<b>待核定</b>」（紅色數字 = 幾份）。</li>
     <li>點開：先看摘要卡與照片，有疑問往下看工項明細。</li>
-    <li>OK → 手指<b>簽名</b> →「核定」。<span class="then">簽完自動跳下一份，全部簽完會回列表。<b>目前是「一位核定人簽完就完成核定」</b>並自動產生 PDF。</span></li>
+    <li>OK → 手指<b>簽名</b> →「核定」。<span class="then">簽完自動跳下一份，全部簽完會回列表。<b>一位核定人簽完就完成核定</b>並自動產生 PDF。</span></li>
     <li>有問題 →「<b>退回</b>」：可以點現成的原因（照片不夠清楚／工項數量怪…）或自己打字。<span class="then">主任會看到原因，修好重送。</span></li>
   </ol>
-  <div class="tip"><b>要幾個人簽？</b><span>核定關可以設成「<b>一位簽完就完成</b>」或「<b>要兩位核定人都簽才完成</b>」。<b>目前設定是一位</b>（第二位核定人還沒到職）。到職後，到「<b>人員管理</b>」頁最上面的「核定簽名規則」把開關打開就會恢復兩位；已經核定完的日誌不受影響。</span></div>
+  <div class="tip"><b>核定前還有人看過嗎？</b><span>如果「人員管理」頁的「<b>審閱關</b>」有打開，日誌到你這裡之前會先經過「審閱人」簽一次。他的簽名只留在系統，<b>PDF 上還是只有填表、審核、核定三格</b>。<a href="#reviewer">審閱人是什麼 →</a></span></div>
   <div class="tip"><b>小撇步：</b><span>核定通過、但想交代一句話 → 簽名下面的「<b>意見</b>」欄寫進去。填了系統會<b>發消息通知主任和先前審過的助理</b>（他們右上鈴鐺會亮紅點，一登入就看到），不必為了講一句話把整份日誌退回去。沒填意見就不會發消息，不會洗版。</span></div>
 
   <h3 id="b-batch"><span class="role-dot" style="background:#003153;"></span>批簽（一次簽很多份）<button class="speak" type="button">🔈 朗讀</button></h3>

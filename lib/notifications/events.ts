@@ -162,55 +162,44 @@ export async function notifyLogAwaitingApproval(logId: string): Promise<void> {
 }
 
 /**
- * 核定關第一位核定人簽完 → 通知「另一位」核定人補簽(雙簽制,2026-07)。
- * 排除剛簽完的人,免得自己收到自己的提醒。
+ * 辦公室審核通過、審閱關開著 → 通知審閱人(2026-09-09 新關卡,取代雙簽)。
+ * 審閱人簽完會再走 notifyLogAwaitingApproval 通知核定人。
  */
-export async function notifyLogAwaitingSecondApproval(
-  logId: string,
-  firstSignerId: string,
-  firstSignerName: string | null,
-): Promise<void> {
+export async function notifyLogAwaitingReview(logId: string): Promise<void> {
   const ctx = await loadLogContext(logId);
   if (!ctx) return;
   await sendNotification({
-    eventType: "log_to_approve",
+    eventType: "log_to_review",
     relatedId: logId,
-    recipients: { roles: ["owner"], excludeProfileIds: [firstSignerId] },
-    altText: "日誌待您第二核定",
+    recipients: { roles: ["reviewer"] },
+    altText: "日誌待您審閱",
     message: noticeFlex({
-      title: "日誌等你補簽核定",
+      title: "日誌待您審閱",
       lines: [
         `案件:${ctx.caseName}`,
         `日期:${fmtDate(ctx.logDate)}`,
         `主任:${ctx.supervisorName}`,
-        `${firstSignerName ?? "另一位核定人"}已簽,還差你這一簽`,
       ],
       tone: "amber",
-      buttonLabel: "去核定",
+      buttonLabel: "去審閱",
       buttonPath: `/approvals/${logId}`,
     }),
   });
 }
 
-/** 批簽的雙簽版:一位核定人批簽 N 份後,通知另一位補簽(只送一則,省額度) */
-export async function notifyLogsBatchAwaitingSecondApproval(
-  count: number,
-  firstSignerId: string,
-): Promise<void> {
+/** 辦公室批次審核通過 N 份、審閱關開著 → 通知審閱人一則彙總 */
+export async function notifyLogsBatchAwaitingReview(count: number): Promise<void> {
   if (count <= 0) return;
   await sendNotification({
-    eventType: "log_to_approve",
+    eventType: "log_batch_to_review",
     relatedId: null,
-    recipients: { roles: ["owner"], excludeProfileIds: [firstSignerId] },
-    altText: `${count} 份日誌等你補簽核定`,
+    recipients: { roles: ["reviewer"] },
+    altText: `有 ${count} 份日誌待您審閱`,
     message: noticeFlex({
-      title: `${count} 份日誌等你補簽`,
-      lines: [
-        "另一位核定人已經簽過了",
-        "兩位都簽完才會完成核定並產出 PDF",
-      ],
+      title: `有 ${count} 份日誌待您審閱`,
+      lines: ["辦公室已完成審核,等您審閱後再交給核定人。"],
       tone: "amber",
-      buttonLabel: "去核定",
+      buttonLabel: "去審閱",
       buttonPath: "/approvals",
     }),
   });
@@ -285,7 +274,7 @@ export async function notifyLogRejected(
 
 const STAGE_ACTION_LABEL: Record<ApprovalStage, string> = {
   fill: "填表",
-  review: "複核",
+  review: "審閱",
   audit: "審核",
   approve: "核定",
 };
@@ -454,7 +443,7 @@ export async function messageLogRevoked(
 // 批簽彙總(省額度:一批只送一則,不逐份推播)
 // ============================================================
 
-/** 辦公室批次審核通過 N 份 → 通知老闆一則彙總 */
+/** 辦公室(或審閱人)批次通過 N 份 → 通知核定人一則彙總 */
 export async function notifyLogsBatchAwaitingApproval(
   count: number,
 ): Promise<void> {
@@ -466,7 +455,7 @@ export async function notifyLogsBatchAwaitingApproval(
     altText: `有 ${count} 份日誌待您核定`,
     message: noticeFlex({
       title: `有 ${count} 份日誌待您核定`,
-      lines: ["辦公室已完成審核,等您簽名核定。"],
+      lines: ["前面關卡已通過,等您簽名核定。"],
       tone: "amber",
       buttonLabel: "去核定",
       buttonPath: "/approvals",

@@ -29,6 +29,13 @@ describe("getApprovalChain — 簽核鏈依申請人角色往上送", () => {
     expect(canApplyLeave("owner")).toBe(false);
     expect(canApplyLeave("field_assistant")).toBe(true);
   });
+
+  it("審閱人不在階層裡:自己請假直接給老闆,也不會出現在別人的鏈上", () => {
+    expect(getApprovalChain("reviewer")).toEqual(["owner"]);
+    expect(canApplyLeave("reviewer")).toBe(true);
+    expect(getApprovalChain("office_staff")).not.toContain("reviewer");
+    expect(getApprovalChain("field_assistant")).not.toContain("reviewer");
+  });
 });
 
 describe("nextStep — 推進簽核鏈", () => {

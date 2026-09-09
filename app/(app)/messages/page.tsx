@@ -30,7 +30,7 @@ import type { ApprovalStage, UserRole } from "@/lib/types";
 
 const STAGE_ACTION_LABEL: Record<ApprovalStage, string> = {
   fill: "填表",
-  review: "複核",
+  review: "審閱",
   audit: "審核",
   approve: "核定",
 };

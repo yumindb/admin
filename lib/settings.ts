@@ -12,12 +12,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 
 export const SETTING_KEYS = {
-  /** 核定關是否要兩位不同的核定人都簽名(2026-07-20 拍板的雙簽制) */
-  dualSign: "approval.dual_sign_enabled",
+  /** 審閱關要不要跑(2026-09-09 取代雙簽;審閱人在系統上簽核、不進 PDF) */
+  reviewStage: "approval.review_stage_enabled",
 } as const;
 
-/** 雙簽開關讀不到時的預設 — 維持 2026-07-20 拍板的雙簽 */
-const DUAL_SIGN_FALLBACK = true;
+/** 審閱關開關讀不到時的預設 — 關(= 這一關出現之前的三關流程) */
+const REVIEW_STAGE_FALLBACK = false;
 
 async function readSetting(
   supabase: SupabaseClient,
@@ -41,17 +41,19 @@ async function readSetting(
 }
 
 /**
- * 核定關是否採雙簽。
+ * 審閱關開關(2026-09-09 業主拍板,取代原本的核定雙簽)。
  *
- * 2026-08-04:業主要求暫時關掉(第二位核定人還沒到職),production 的設定值是
- * false。到職後在「人員管理」頁打開即可,不用改程式。
+ * true = 辦公室審核通過後先給審閱人簽,再給核定人;false = 審核後直接核定。
+ * 開關只是「要不要這關」;實際會不會跑還要看有沒有啟用中的審閱人 —
+ * 見 lib/approvals/review-stage.ts 的 isReviewStageActive()。
+ * 在「人員管理」頁切換,不用改程式。
  */
-export async function isDualSignEnabled(
+export async function isReviewStageEnabled(
   supabase: SupabaseClient,
 ): Promise<boolean> {
-  const value = await readSetting(supabase, SETTING_KEYS.dualSign);
-  if (value === undefined || value === null) return DUAL_SIGN_FALLBACK;
+  const value = await readSetting(supabase, SETTING_KEYS.reviewStage);
+  if (value === undefined || value === null) return REVIEW_STAGE_FALLBACK;
   if (typeof value === "boolean") return value;
   if (typeof value === "string") return value === "true";
-  return DUAL_SIGN_FALLBACK;
+  return REVIEW_STAGE_FALLBACK;
 }

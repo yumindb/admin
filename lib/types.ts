@@ -1,6 +1,8 @@
 export type UserRole =
   | "office_staff"
   | "site_supervisor"
+  /** 審閱人(2026-09):日誌在系統上多一關簽核,簽名不進 PDF — 見 lib/approvals/review-stage.ts */
+  | "reviewer"
   | "owner"
   | "field_assistant";
 

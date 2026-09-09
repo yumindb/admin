@@ -6,7 +6,12 @@ import { requireRole } from "@/lib/auth/require-role";
 import { generatePdfForLog } from "@/lib/pdf/generate";
 import { todayLocalDate } from "@/lib/daily-log";
 
-const PDF_VIEWERS = ["site_supervisor", "office_staff", "owner"] as const;
+const PDF_VIEWERS = [
+  "site_supervisor",
+  "office_staff",
+  "reviewer",
+  "owner",
+] as const;
 
 /**
  * 取得該日誌 PDF 的 signed URL(60 秒有效,給瀏覽器下載用)。

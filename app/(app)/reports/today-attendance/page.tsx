@@ -30,6 +30,7 @@ const ROLE_LABEL: Record<string, string> = {
   site_supervisor: "工地主任",
   field_assistant: "現場人員",
   owner: "老闆",
+  reviewer: "審閱人",
   office_staff: "辦公室助理",
 };
 

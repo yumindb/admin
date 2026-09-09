@@ -56,6 +56,8 @@ export const EVENT_CATEGORY: Record<string, NotificationCategory> = {
   log_resubmitted: "logs_to_review",
   log_to_approve: "logs_to_review",
   log_batch_to_approve: "logs_to_review",
+  log_to_review: "logs_to_review",
+  log_batch_to_review: "logs_to_review",
   log_approved: "log_results",
   log_batch_approved: "log_results",
   log_rejected: "log_results",
@@ -94,6 +96,14 @@ export const ROLE_DEFAULT_PREFS: Record<
     leave_results: true,
     field_reports: true,
   },
+  // 審閱人(2026-09):只管日誌待審閱 + 自己請假的結果;不簽別人的假、不看回報
+  reviewer: {
+    logs_to_review: true,
+    log_results: false,
+    leaves_to_review: false,
+    leave_results: true,
+    field_reports: false,
+  },
   site_supervisor: {
     logs_to_review: false,
     log_results: false,
@@ -122,6 +132,7 @@ export const ROLE_RECOMMENDED_PREFS: Record<
 > = {
   owner: ROLE_DEFAULT_PREFS.owner,
   office_staff: ROLE_DEFAULT_PREFS.office_staff,
+  reviewer: ROLE_DEFAULT_PREFS.reviewer,
   site_supervisor: {
     logs_to_review: false,
     log_results: true,

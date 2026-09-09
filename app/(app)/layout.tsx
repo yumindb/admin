@@ -11,11 +11,13 @@ import { logoutAction } from "../login/actions";
 import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
 import { countUnreadMessages } from "@/lib/notifications/messages";
+import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
   site_supervisor: "工地主任",
   owner: "老闆",
+  reviewer: "審閱人",
   field_assistant: "現場人員",
 };
 
@@ -39,26 +41,14 @@ export default async function AppLayout({
   const company = getCompanyShort(actor.company ?? "裕民");
 
   // 兩個 badge 彼此無關 — 平行跑,不要排隊等對方
-  const stageForRole: Record<string, "review" | "audit" | "approve" | null> = {
-    site_supervisor: "review",
-    office_staff: "audit",
-    owner: "approve",
-    field_assistant: null,
-  };
-  const stage = stageForRole[actor.role] ?? null;
+  const stage = STAGE_FOR_ROLE[actor.role] ?? null;
 
   const approvalsCountPromise = stage
-    ? (() => {
-        let q = supabase
-          .from("daily_logs")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "submitted")
-          .eq("current_stage", stage);
-        if (actor.role === "site_supervisor") {
-          q = q.eq("supervisor_id", actor.id);
-        }
-        return q;
-      })()
+    ? supabase
+        .from("daily_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "submitted")
+        .eq("current_stage", stage)
     : null;
 
   // 請假待簽 badge — 對應 role 在 current_step 的 pending 請假筆數(排除自己送的)
@@ -259,9 +249,10 @@ function navByRole(
   switch (role) {
     case "site_supervisor":
       return {
+        // 2026-09-09:「待複核」拿掉 — 主任複核關從沒啟用過,那一頁永遠是空的;
+        // 位置換成「請假」(主任要簽現場人員的假單,以前手機版沒有入口)。
         desktopNav: [
           { href: "/logs", label: "日誌" },
-          { href: "/approvals", label: "待複核", badge: approvalsBadge },
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/attendance", label: "打卡" },
           { href: "/field-reports", label: "現場回報" },
@@ -274,8 +265,25 @@ function navByRole(
         mobileTabs: [
           { href: "/attendance", label: "打卡", icon: "clock" },
           { href: "/logs", label: "日誌", icon: "file" },
-          { href: "/approvals", label: "待複核", icon: "check" },
           { href: "/field-reports", label: "回報", icon: "camera" },
+          { href: "/leaves", label: "請假", icon: "check" },
+        ],
+      };
+    case "reviewer":
+      // 審閱人(2026-09):只簽日誌的審閱關,其餘唯讀。不給儀表板 / 人員 / 報表。
+      return {
+        desktopNav: [
+          { href: "/approvals", label: "待審閱", badge: approvalsBadge },
+          { href: "/approvals/history", label: "我簽過的" },
+          { href: "/logs", label: "日誌" },
+          { href: "/cases", label: "案件總覽" },
+          leavesLink,
+        ],
+        mobileTabs: [
+          { href: "/approvals", label: "待審閱", icon: "check" },
+          { href: "/logs", label: "日誌", icon: "file" },
+          { href: "/cases", label: "案件", icon: "folder" },
+          { href: "/leaves", label: "請假", icon: "clock" },
         ],
       };
     case "owner":

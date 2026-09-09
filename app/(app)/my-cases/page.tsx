@@ -29,7 +29,11 @@ export default async function MyCasesPage() {
     .eq("id", user.id)
     .maybeSingle();
   // 這頁主要給 field_assistant + supervisor 看,owner / office_staff 用「案件總覽」更全
-  if (profile?.role === "owner" || profile?.role === "office_staff") {
+  if (
+    profile?.role === "owner" ||
+    profile?.role === "office_staff" ||
+    profile?.role === "reviewer"
+  ) {
     redirect("/cases");
   }
 

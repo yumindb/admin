@@ -33,7 +33,7 @@ import {
   isNoWorkLog,
 } from "@/lib/daily-log";
 import { formatTW } from "@/lib/datetime";
-import { REQUIRED_APPROVE_SIGNATURES } from "@/lib/approvals/dual-sign";
+import { omitReviewStage } from "@/lib/approvals/review-stage";
 import type {
   DailyLog,
   DailyLogExtraItem,
@@ -506,31 +506,28 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
         )}
 
         {/* 簽核紀錄 — 紙本表單式簽章欄:每關最後一次「通過」一格並排;
-            意見 / 退回歷程另起整行寬(核定備註是選填,有寫才出現,多長都放得下) */}
-        {data.approvals.length > 0 && (() => {
-          // 每關取「最後一次通過」;核定關是雙簽(2026-07),取最後兩位不同的簽核人。
-          // 退回重送會產生新一輪紀錄,取最後的自然就是本輪的。
+            意見 / 退回歷程另起整行寬(核定備註是選填,有寫才出現,多長都放得下)。
+            ⚠ 審閱關(review)整個不進 PDF — 簽名與意見都不列(2026-09 業主:
+            審閱人「在系統上簽核就好」)。 */}
+        {omitReviewStage(data.approvals).length > 0 && (() => {
+          const pdfApprovals = omitReviewStage(data.approvals);
+          // 每關取「最後一次通過」。退回重送會產生新一輪紀錄,取最後的自然就是本輪的。
           const latestByStage = new Map<string, PdfApproval>();
-          for (const ap of data.approvals) {
+          for (const ap of pdfApprovals) {
             if (ap.decision === "approved") latestByStage.set(ap.stage, ap);
           }
-          const approveSigners = data.approvals
-            .filter((ap) => ap.stage === "approve" && ap.decision === "approved")
-            .slice(-REQUIRED_APPROVE_SIGNATURES);
 
-          const groups = STAGE_ORDER.filter(
-            (s) => (s === "approve" ? approveSigners.length > 0 : latestByStage.has(s)),
-          ).map((s) => ({
-            stage: s,
-            signers:
-              s === "approve" ? approveSigners : [latestByStage.get(s)!],
-          }));
-          // 核定雙簽時該欄要放兩個簽名 → 給雙倍寬
+          const groups = STAGE_ORDER.filter((s) => latestByStage.has(s)).map(
+            (s) => ({
+              stage: s,
+              signers: [latestByStage.get(s)!],
+            }),
+          );
           const flexUnits = groups.reduce(
             (n, g) => n + (g.signers.length > 1 ? 2 : 1),
             0,
           );
-          const notes = data.approvals.filter(
+          const notes = pdfApprovals.filter(
             (ap) => ap.comment || ap.decision === "rejected",
           );
           return (
@@ -736,7 +733,7 @@ function SimpleTable({
 
 const STAGE_LABEL: Record<string, string> = {
   fill: "填表（工地主任）",
-  review: "複核（工地主任）",
+  review: "審閱（審閱人）", // 實際不會印:omitReviewStage 已濾掉,留著只為型別完整
   audit: "審核（辦公室助理）",
   approve: "核定（老闆）",
 };

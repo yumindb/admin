@@ -17,6 +17,7 @@ const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
   site_supervisor: "工地主任",
   owner: "老闆",
+  reviewer: "審閱人",
   field_assistant: "現場人員",
 };
 
