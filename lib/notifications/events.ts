@@ -161,49 +161,7 @@ export async function notifyLogAwaitingApproval(logId: string): Promise<void> {
   });
 }
 
-/**
- * 辦公室審核通過、審閱關開著 → 通知審閱人(2026-09-09 新關卡,取代雙簽)。
- * 審閱人簽完會再走 notifyLogAwaitingApproval 通知核定人。
- */
-export async function notifyLogAwaitingReview(logId: string): Promise<void> {
-  const ctx = await loadLogContext(logId);
-  if (!ctx) return;
-  await sendNotification({
-    eventType: "log_to_review",
-    relatedId: logId,
-    recipients: { roles: ["reviewer"] },
-    altText: "日誌待您審閱",
-    message: noticeFlex({
-      title: "日誌待您審閱",
-      lines: [
-        `案件:${ctx.caseName}`,
-        `日期:${fmtDate(ctx.logDate)}`,
-        `主任:${ctx.supervisorName}`,
-      ],
-      tone: "amber",
-      buttonLabel: "去審閱",
-      buttonPath: `/approvals/${logId}`,
-    }),
-  });
-}
-
-/** 辦公室批次審核通過 N 份、審閱關開著 → 通知審閱人一則彙總 */
-export async function notifyLogsBatchAwaitingReview(count: number): Promise<void> {
-  if (count <= 0) return;
-  await sendNotification({
-    eventType: "log_batch_to_review",
-    relatedId: null,
-    recipients: { roles: ["reviewer"] },
-    altText: `有 ${count} 份日誌待您審閱`,
-    message: noticeFlex({
-      title: `有 ${count} 份日誌待您審閱`,
-      lines: ["辦公室已完成審核,等您審閱後再交給核定人。"],
-      tone: "amber",
-      buttonLabel: "去審閱",
-      buttonPath: "/approvals",
-    }),
-  });
-}
+// 審閱人的加簽(2026-09-13)跟流程無關、簽不簽隨意 → 刻意**不發** LINE 通知。
 
 /**
  * 老闆核定通過 → 通知該份日誌的主任。
@@ -443,7 +401,7 @@ export async function messageLogRevoked(
 // 批簽彙總(省額度:一批只送一則,不逐份推播)
 // ============================================================
 
-/** 辦公室(或審閱人)批次通過 N 份 → 通知核定人一則彙總 */
+/** 辦公室批次審核通過 N 份 → 通知核定人一則彙總 */
 export async function notifyLogsBatchAwaitingApproval(
   count: number,
 ): Promise<void> {

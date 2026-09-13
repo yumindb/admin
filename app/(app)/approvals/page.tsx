@@ -4,8 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { getSignedUrl } from "@/lib/supabase/storage";
 import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
+import { findEndorsedLogIds } from "@/lib/approvals/review-stage";
 import { NextStepHint } from "@/components/next-step-hint";
 import { BatchApprovalsList } from "./batch-actions";
+import { EndorseList } from "./endorse-list";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
 
 type LogRow = DailyLog & {
@@ -23,8 +25,9 @@ const PAGE_COPY: Record<
     emptyHint: "目前沒有草稿",
   },
   review: {
-    title: "待審閱",
-    subtitle: "辦公室助理審核通過的日誌等您審閱（簽名只留在系統，不進 PDF）",
+    // 審閱人不走這張表(見下方 reviewer 分支),留著只為型別完整
+    title: "加簽",
+    subtitle: "辦公室審核通過的日誌，想簽就簽",
     emptyHint: "辦公室助理審核後會出現在這裡",
   },
   audit: {
@@ -46,6 +49,27 @@ export default async function ApprovalsPage() {
   if (!actor) redirect("/login");
 
   const role = actor.role as UserRole;
+
+  // 審閱人:加簽不是關卡(2026-09-13)。列「辦公室審核已通過、這一輪我還沒加簽」的日誌,
+  // 最近的在前;簽不簽隨意,所以沒有紅色待辦數字。
+  if (role === "reviewer") {
+    const { data } = await supabase
+      .from("daily_logs")
+      .select("*, cases(name, code), profiles!daily_logs_supervisor_id_fkey(full_name)")
+      .or("status.eq.approved,and(status.eq.submitted,current_stage.eq.approve)")
+      .order("log_date", { ascending: false })
+      .order("submitted_at", { ascending: false })
+      .limit(100);
+    const candidates = (data ?? []) as LogRow[];
+    const endorsed = await findEndorsedLogIds(
+      supabase,
+      actor.id,
+      candidates.map((l) => ({ id: l.id, submitted_at: l.submitted_at ?? null })),
+    );
+    const list = candidates.filter((l) => !endorsed.has(l.id));
+    return <EndorseList logs={list} />;
+  }
+
   const stage = STAGE_FOR_ROLE[role];
   if (!stage) redirect("/logs");
 
@@ -104,13 +128,11 @@ export default async function ApprovalsPage() {
 
       <div className="mb-6">
         <NextStepHint tone="muted">
-          流程：填表（工地主任） → 審核（辦公室助理） → 審閱（審閱人，有開才會經過） → 核定（核定人）。
+          流程：填表（工地主任） → 審核（辦公室助理） → 核定（核定人）。
           每關退回都會回到「我的日誌」讓主任修正後重送。
           {(role === "office_staff" || role === "owner") &&
             "小地方不用退回 —— 每張卡片下方的「直接修改這份」可以當場改，改動會留前後對照紀錄。"}
-          {stage === "approve" && "你簽完這份就完成核定並自動產生 PDF。"}
-          {stage === "review" &&
-            "你的簽名與意見只記錄在系統裡（簽核歷程、我簽過的），不會出現在 PDF 上。"}
+          {stage === "approve" && "你簽完這份就完成核定並自動產生 PDF。審閱人的加簽只在系統裡，不影響你這關。"}
         </NextStepHint>
       </div>
 

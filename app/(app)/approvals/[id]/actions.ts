@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generatePdfForLog } from "@/lib/pdf/generate";
 import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
-import { stageAfterAudit } from "@/lib/approvals/review-stage";
+import { REVIEW_STAGE, canEndorseLog } from "@/lib/approvals/review-stage";
 import { extractStoragePath } from "@/lib/supabase/storage";
 import type { ApprovalStage, UserRole } from "@/lib/types";
 
@@ -24,12 +24,13 @@ function signaturePath(url: string | null | undefined): string | null {
 }
 
 /**
- * 正式簽核流(Phase 2.5 起每關都收簽名;2026-09-09 加入可選的審閱關、拿掉雙簽):
+ * 正式簽核流(Phase 2.5 起每關都收簽名;2026-09-09 拿掉雙簽):
  *   stage='fill'    → site_supervisor 送出時即簽(寫在 saveLogAction)
  *   stage='audit'   → office_staff(辦公室助理審核)   ← fill 後直接進這關
- *   stage='review'  → reviewer(審閱人;**可選**,人員管理頁開關 + 要有啟用中的審閱人,
- *                     否則 audit 直接跳到 approve — 見 lib/approvals/review-stage.ts)
  *   stage='approve' → owner(核定人;一位簽完就 approved + 產 PDF)
+ *
+ *   stage='review' **不是關卡**:審閱人的加簽(endorseLogAction),辦公室審核通過後
+ *   隨時可簽、不動 daily_logs、不進 PDF — 見 lib/approvals/review-stage.ts。
  *
  * 規則:
  *   - 操作者的 role 必須對應當前 stage(對照表在 lib/approvals/stages.ts),否則拒絕
@@ -40,8 +41,8 @@ function signaturePath(url: string | null | undefined): string | null {
 
 const NEXT_STAGE: Record<ApprovalStage, ApprovalStage | null> = {
   fill: "audit",
-  audit: "approve",        // 審閱關開著時由 stageAfterAudit() 改成 'review'
-  review: "approve",
+  audit: "approve",
+  review: null,            // 不是關卡(加簽),不會出現在 current_stage
   approve: null,           // 核定完成
 };
 
@@ -113,11 +114,7 @@ export async function approveStageAction(
   //     第二個 0 rows,直接 return,不會留下孤兒 approval 紀錄。
   // (2) Retry 守護:網路失敗使用者重點,第二次 UPDATE 也 0 rows(stage 已推進),
   //     不會寫第二筆 approval。
-  // audit 之後去哪關是動態的:審閱關開著(且有啟用中的審閱人)→ review,否則直接 approve
-  const nextStage =
-    log.current_stage === "audit"
-      ? await stageAfterAudit(supabase)
-      : NEXT_STAGE[log.current_stage];
+  const nextStage = NEXT_STAGE[log.current_stage];
   const expectedStage = log.current_stage;
   // 核定關:一位核定人簽完就 approved + 產 PDF(2026-09-09 業主拍板,雙簽已拿掉)
   const isApproveStage = nextStage === null;
@@ -230,16 +227,13 @@ export async function approveStageAction(
   }
 
   // LINE 通知(不阻塞、失敗不影響簽核):
-  //   audit 過關 → 審閱關開著通知審閱人,否則通知核定人
-  //   review 過關 → 通知核定人
+  //   audit 過關 → 通知核定人
   //   核定完成 → 通知主任
   if (!internal?.suppressNotify) {
     after(async () => {
       const events = await import("@/lib/notifications/events");
       if (isApproveStage) {
         await events.notifyLogApproved(payload.logId, stageComment);
-      } else if (nextStage === "review") {
-        await events.notifyLogAwaitingReview(payload.logId);
       } else if (nextStage === "approve") {
         await events.notifyLogAwaitingApproval(payload.logId);
       }
@@ -251,8 +245,77 @@ export async function approveStageAction(
 
   revalidatePath("/approvals");
   revalidatePath(`/logs/${payload.logId}`);
-  // nextStage:批簽彙總通知要知道這批是進了審閱關還是核定關
-  return { ok: true as const, nextStage };
+  return { ok: true as const };
+}
+
+/**
+ * 審閱人加簽(2026-09-13 業主定案:「跟流程無關,辦公室簽完後隨時可隨意加簽,
+ * 只出現在系統上,不用出現在 PDF」)。
+ *
+ * - 條件:辦公室審核已通過(日誌停在核定關,或已核定)— canEndorseLog
+ * - 只寫一筆 log_approvals(stage='review'),daily_logs 完全不動;不擋核定、不發 LINE
+ * - 同一輪只能加簽一次(退回重送 / 撤回核定後可以再簽)
+ * - 有寫意見才發站內消息(跟其他關一致)
+ */
+export async function endorseLogAction(payload: ActPayload) {
+  const { supabase, user, role } = await getActor();
+  if (!user || !role) return { ok: false as const, error: "未登入" };
+  if (role !== "reviewer") {
+    return { ok: false as const, error: "只有審閱人可以加簽" };
+  }
+  if (!payload.signatureUrl) {
+    return { ok: false as const, error: "請先簽名" };
+  }
+
+  const log = await loadLogStage(supabase, payload.logId);
+  if (!log) return { ok: false as const, error: "找不到日誌" };
+  if (!canEndorseLog(log)) {
+    return {
+      ok: false as const,
+      error: "這份日誌還沒通過辦公室審核，通過後才能加簽",
+    };
+  }
+
+  const { data: prior } = await supabase
+    .from("log_approvals")
+    .select("created_at")
+    .eq("log_id", payload.logId)
+    .eq("stage", REVIEW_STAGE)
+    .eq("approver_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (
+    prior &&
+    (!log.submitted_at || (prior.created_at as string) >= log.submitted_at)
+  ) {
+    return { ok: false as const, error: "你已經加簽過這份日誌了" };
+  }
+
+  const { error: insErr } = await supabase.from("log_approvals").insert({
+    log_id: payload.logId,
+    stage: REVIEW_STAGE,
+    approver_id: user.id,
+    decision: "approved",
+    comment: payload.comment?.trim() || null,
+    signature_url: signaturePath(payload.signatureUrl),
+  });
+  if (insErr) {
+    return { ok: false as const, error: "加簽寫入失敗：" + insErr.message };
+  }
+
+  const actorId = user.id;
+  const stageComment = payload.comment?.trim();
+  if (stageComment) {
+    after(async () => {
+      const { messageLogComment } = await import("@/lib/notifications/events");
+      await messageLogComment(payload.logId, REVIEW_STAGE, stageComment, actorId);
+    });
+  }
+
+  revalidatePath("/approvals");
+  revalidatePath(`/logs/${payload.logId}`);
+  return { ok: true as const };
 }
 
 /**
@@ -349,9 +412,6 @@ export async function batchApproveAction(payload: {
 }> {
   const { logIds, signatureUrl, comment } = payload;
   const okList: string[] = [];
-  // 這批通過後進了哪一關(審核關批簽時:審閱關開著 → review,否則 approve)
-  let toReview = 0;
-  let toApprove = 0;
   const failed: { logId: string; reason: string }[] = [];
 
   if (!Array.isArray(logIds) || logIds.length === 0) {
@@ -385,8 +445,6 @@ export async function batchApproveAction(payload: {
         );
         if (res.ok) {
           okList.push(id);
-          if (res.nextStage === "review") toReview++;
-          else if (res.nextStage === "approve") toApprove++;
         } else {
           failed.push({ logId: id, reason: res.error });
         }
@@ -399,17 +457,15 @@ export async function batchApproveAction(payload: {
   await Promise.all(workers);
 
   // 批簽彙總通知:一批只送一則(而不是 N 則),省官方帳號訊息額度。
-  //   office_staff 批審核 → 進審閱關的通知審閱人、進核定關的通知核定人
-  //   reviewer 批審閱 → 通知核定人
+  //   office_staff 批審核 → 通知核定人「N 份待核定」
   //   owner 批核定 → 依主任分組通知「已核定」
   if (okList.length > 0) {
     const { role } = await getActor();
     const finalizedIds = [...okList];
     after(async () => {
       const events = await import("@/lib/notifications/events");
-      if (role === "office_staff" || role === "reviewer") {
-        if (toReview > 0) await events.notifyLogsBatchAwaitingReview(toReview);
-        if (toApprove > 0) await events.notifyLogsBatchAwaitingApproval(toApprove);
+      if (role === "office_staff") {
+        await events.notifyLogsBatchAwaitingApproval(okList.length);
       } else if (role === "owner") {
         await events.notifyLogsBatchApproved(finalizedIds);
       }

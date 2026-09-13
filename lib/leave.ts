@@ -9,7 +9,7 @@ import type {
  * 角色階層(由低到高)。簽核鏈 = 申請人之上所有角色,依序往上送。
  * field_assistant 是基層;owner 是最高,owner 本人不能送請假(沒人能簽)。
  *
- * 審閱人(reviewer,2026-09)**不在**這條階層裡:他只簽日誌的審閱關,不簽任何人的假;
+ * 審閱人(reviewer,2026-09)**不在**這條階層裡:他只加簽日誌(跟流程無關),不簽任何人的假;
  * 自己請假直接給 owner 簽(見 getApprovalChain)。
  */
 const ROLE_HIERARCHY: UserRole[] = [

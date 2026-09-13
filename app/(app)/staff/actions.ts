@@ -259,45 +259,5 @@ export async function toggleActiveAction(formData: FormData): Promise<StaffActio
   return { ok: true };
 }
 
-/**
- * 審閱關開關(2026-09-09 業主拍板,取代原本的核定雙簽)。
- *
- * 為什麼放在人員管理頁:這條規則講的是「誰要簽」,跟帳號是同一件事;
- * 而且能改帳號角色的人本來就能左右簽核權,不需要另立一個更嚴的權限。
- *
- * 寫入走 service-role — app_settings 沒有 INSERT/UPDATE policy(見 migration-2.34),
- * 角色由上面的 requireManager() 擋。誰改的記在 updated_by,並由 audit trigger
- * 留一筆 audit_logs。
- */
-export async function setReviewStageAction(
-  enabled: boolean,
-): Promise<StaffActionResult> {
-  const auth = await requireManager();
-  if (!auth.ok) return { ok: false, error: auth.error };
-
-  const admin = createServiceClient();
-  const { error } = await admin.from("app_settings").upsert(
-    {
-      key: "approval.review_stage_enabled",
-      value: enabled,
-      description:
-        "辦公室審核通過後是否先經過審閱人(在系統上簽核、不進 PDF)再交核定人。false = 審核後直接核定。沒有啟用中的審閱人帳號時會自動跳過。",
-      updated_by: auth.currentUserId,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "key" },
-  );
-  if (error) {
-    return {
-      ok: false,
-      error:
-        "設定儲存失敗（請確認 migration-2.34 已執行）：" + error.message,
-    };
-  }
-
-  // 影響簽核流程與各頁文案 → 相關頁面都要重新產生
-  revalidatePath("/staff");
-  revalidatePath("/approvals");
-  revalidatePath("/logs");
-  return { ok: true };
-}
+// (2026-09-13)人員管理頁原本的簽核規則開關(雙簽 → 審閱關)都已拿掉:
+// 審閱人的加簽跟流程無關,沒有需要開關的規則。app_settings 表留著給之後的設定用。

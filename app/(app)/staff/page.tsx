@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { isReviewStageEnabled } from "@/lib/settings";
 import { emailToUsername } from "@/lib/auth/username";
 import type { NotificationPrefs } from "@/lib/notifications/prefs";
 import type { Profile, UserRole } from "@/lib/types";
@@ -42,8 +41,6 @@ export default async function StaffPage() {
 
   // 抓所有 profile + 用 service role 拿對應 email
   const admin = createServiceClient();
-  // 審閱關開關(app_settings,migration-2.36)— 跟人員清單無關,一起發不排隊
-  const reviewStagePromise = isReviewStageEnabled(supabase);
   const [{ data: profiles }, { data: usersList }, { data: bindings }] =
     await Promise.all([
       admin
@@ -100,18 +97,11 @@ export default async function StaffPage() {
     else byRole.set(s.role as UserRole, [s]);
   }
 
-  const reviewStageEnabled = await reviewStagePromise;
-  const activeReviewerCount = staff.filter(
-    (s) => s.role === "reviewer" && s.is_active,
-  ).length;
-
   return (
     <StaffManager
       currentUserId={user.id}
       currentUserRole={me.role as UserRole}
       staffByRole={Object.fromEntries(byRole) as Record<UserRole, StaffRow[]>}
-      reviewStageEnabled={reviewStageEnabled}
-      activeReviewerCount={activeReviewerCount}
     />
   );
 }

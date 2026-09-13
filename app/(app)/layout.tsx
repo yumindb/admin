@@ -270,17 +270,18 @@ function navByRole(
         ],
       };
     case "reviewer":
-      // 審閱人(2026-09):只簽日誌的審閱關,其餘唯讀。不給儀表板 / 人員 / 報表。
+      // 審閱人(2026-09-13):加簽跟流程無關、簽不簽隨意 → 不掛紅色待辦數字。
+      // 其餘唯讀,不給儀表板 / 人員 / 報表。
       return {
         desktopNav: [
-          { href: "/approvals", label: "待審閱", badge: approvalsBadge },
+          { href: "/approvals", label: "加簽" },
           { href: "/approvals/history", label: "我簽過的" },
           { href: "/logs", label: "日誌" },
           { href: "/cases", label: "案件總覽" },
           leavesLink,
         ],
         mobileTabs: [
-          { href: "/approvals", label: "待審閱", icon: "check" },
+          { href: "/approvals", label: "加簽", icon: "check" },
           { href: "/logs", label: "日誌", icon: "file" },
           { href: "/cases", label: "案件", icon: "folder" },
           { href: "/leaves", label: "請假", icon: "clock" },

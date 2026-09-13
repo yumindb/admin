@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   approveStageAction,
+  endorseLogAction,
   rejectStageAction,
   nextPendingRedirect,
   getPendingCount,
@@ -29,12 +31,20 @@ export function ApprovalActions({
   logId,
   stage,
   stampUrl,
+  mode: panelMode = "stage",
 }: {
   logId: string;
   stage: ApprovalStage;
   /** 簽名圖章預覽 URL(已上傳的人才有;2026-07 Phil 先試用)。有值時預設用蓋章。 */
   stampUrl?: string | null;
+  /**
+   * "stage" = 關卡簽核(通過 / 退回,推進流程);
+   * "endorse" = 審閱人加簽(2026-09-13):只簽名 + 選填意見,不能退回、不動流程
+   */
+  mode?: "stage" | "endorse";
 }) {
+  const router = useRouter();
+  const endorse = panelMode === "endorse";
   const sigRef = useRef<SignatureCanvas>(null);
   const [mode, setMode] = useState<"approve" | "reject">("approve");
   // 簽名方式:有圖章的人預設蓋章(這正是圖章的目的 — 免手寫),可切回手寫
@@ -127,6 +137,23 @@ export function ApprovalActions({
         toast.error((e as Error).message);
         return;
       }
+      if (endorse) {
+        const res = await endorseLogAction({
+          logId,
+          signatureUrl,
+          comment: comment.trim() || undefined,
+        });
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success("已加簽", {
+          description: "只記錄在系統裡，不會印在 PDF 上",
+        });
+        router.push("/approvals");
+        router.refresh();
+        return;
+      }
       const res = await approveStageAction({
         logId,
         signatureUrl,
@@ -168,6 +195,8 @@ export function ApprovalActions({
 
   return (
     <div className="rounded-lg border border-[#E0DCD6] bg-card p-5 md:p-6">
+      {/* 加簽沒有「退回」— 那是關卡的事;審閱人只能簽名 + 留意見 */}
+      {!endorse && (
       <div className="mb-4 inline-flex rounded-md border border-[#E0DCD6] p-1">
         <button
           type="button"
@@ -192,6 +221,7 @@ export function ApprovalActions({
           退回
         </button>
       </div>
+      )}
 
       {mode === "approve" ? (
         <div>

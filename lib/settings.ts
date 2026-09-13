@@ -11,15 +11,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * 只會維持這個功能上線前的樣子。
  */
 
-export const SETTING_KEYS = {
-  /** 審閱關要不要跑(2026-09-09 取代雙簽;審閱人在系統上簽核、不進 PDF) */
-  reviewStage: "approval.review_stage_enabled",
-} as const;
+/**
+ * 目前沒有任何設定在用(2026-09-13):雙簽開關 08-04 → 09-09 拿掉,審閱關開關
+ * 09-09 → 09-13 拿掉(審閱改成跟流程無關的加簽)。表與 readSetting 留著給下一個。
+ */
+export const SETTING_KEYS = {} as const;
 
-/** 審閱關開關讀不到時的預設 — 關(= 這一關出現之前的三關流程) */
-const REVIEW_STAGE_FALLBACK = false;
-
-async function readSetting(
+export async function readSetting(
   supabase: SupabaseClient,
   key: string,
 ): Promise<unknown | undefined> {
@@ -40,20 +38,3 @@ async function readSetting(
   return data?.value;
 }
 
-/**
- * 審閱關開關(2026-09-09 業主拍板,取代原本的核定雙簽)。
- *
- * true = 辦公室審核通過後先給審閱人簽,再給核定人;false = 審核後直接核定。
- * 開關只是「要不要這關」;實際會不會跑還要看有沒有啟用中的審閱人 —
- * 見 lib/approvals/review-stage.ts 的 isReviewStageActive()。
- * 在「人員管理」頁切換,不用改程式。
- */
-export async function isReviewStageEnabled(
-  supabase: SupabaseClient,
-): Promise<boolean> {
-  const value = await readSetting(supabase, SETTING_KEYS.reviewStage);
-  if (value === undefined || value === null) return REVIEW_STAGE_FALLBACK;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") return value === "true";
-  return REVIEW_STAGE_FALLBACK;
-}

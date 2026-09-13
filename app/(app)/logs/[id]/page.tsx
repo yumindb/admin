@@ -22,6 +22,7 @@ import {
   normalizeLogPhotos,
 } from "@/lib/daily-log";
 import { STAGE_ACTOR_LABEL, STAGE_FOR_ROLE } from "@/lib/approvals/stages";
+import { canEndorseLog } from "@/lib/approvals/review-stage";
 import type {
   DailyLog,
   DailyLogEditableField,
@@ -418,6 +419,22 @@ export default async function LogDetailPage({
               </button>
             </form>
           )}
+          {/* 審閱人加簽(2026-09-13):辦公室審核通過後隨時可簽,這一輪簽過就不再顯示 */}
+          {role === "reviewer" &&
+            canEndorseLog(l) &&
+            !apList.some(
+              (a) =>
+                a.stage === "review" &&
+                a.approver_id === user!.id &&
+                (!l.submitted_at || a.created_at >= l.submitted_at),
+            ) && (
+              <Button
+                asChild
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Link href={`/approvals/${id}`}>加簽</Link>
+              </Button>
+            )}
           {l.status === "submitted" &&
             !!l.current_stage &&
             STAGE_FOR_ROLE[role] === l.current_stage && (
@@ -527,9 +544,7 @@ export default async function LogDetailPage({
               tone="info"
               title={`已送出，目前在「${stage ? STAGE_ACTOR_LABEL[stage] : "?"}」階段`}
             >
-              {stage === "review"
-                ? "審閱人審閱中（審閱簽名只留在系統，不進 PDF）。"
-                : stage === "audit"
+              {stage === "audit"
                 ? "辦公室助理審核中。"
                 : stage === "approve"
                 ? "核定人核定中，簽名後即完成並產生 PDF。"

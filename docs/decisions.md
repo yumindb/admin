@@ -1390,3 +1390,32 @@ production 查了 135 份日誌也找不到固定寫法（零工項的兩份都�
 migration-2.35 → 2.36，然後在人員管理頁建審閱人帳號、打開審閱關。
 production 現有三個 owner 帳號（Phil、管理員、洪冠菁）— 哪一位要改成審閱人由 Evelyn 跟 Phil 確認，
 改角色在人員管理頁「編輯」即可。
+
+## 2026-09-13 — 審閱關改成「加簽」：跟流程無關
+
+09-09 那版把審閱做成閘門（audit → review → approve，審閱人沒簽核定人收不到）。
+Evelyn 跟業主確認後，業主原話：「這個審閱動作跟流程無關，辦公室簽完後隨時可隨意加簽，
+然後只出現在系統上，都不用出現在 PDF。」— 所以不是關卡，是**旁支的一筆紀錄**。
+migration-2.35 / 2.36 當天已在 production 跑過，改動在那之上。
+
+### 改成什麼
+
+- **不是關卡**：`STAGE_FOR_ROLE.reviewer = null`，三關流程回到 fill → audit → approve，
+  `approveStageAction` 不再有動態下一關。審閱關開關（`approval.review_stage_enabled`）、
+  人員管理頁的開關 UI、`isReviewStageActive`、LINE 的 `log_to_review` 事件全部拿掉。
+- **加簽 = `endorseLogAction`**：條件是 `canEndorseLog`（status=approved，或 submitted 且
+  current_stage=approve，即辦公室審核已通過）；只 insert 一筆 stage='review' 的 log_approvals，
+  daily_logs 不動。同一輪只能簽一次（以 submitted_at 為界）；有意見才發站內消息。
+  已核定的日誌也能補簽 — 業主說「隨時」，而且加簽本來就不影響 PDF。
+- **審閱人的 /approvals 是「加簽」清單**（`endorse-list.tsx`）：audit 已過、這一輪還沒簽的
+  最近 100 份，最近的在前。**沒有紅色待辦數字** — 簽不簽隨意，不該像待辦一樣催人。
+  詳情頁沿用簽核頁（摘要 / 工項 / 照片都要看），`ApprovalActions mode="endorse"`：
+  沒有「退回」分頁，按鈕是「加簽」。日誌詳情頁右上也有「加簽」按鈕（這一輪簽過就不顯示）。
+- PDF 一樣用 `omitReviewStage()` 濾掉；簽核歷程、「我簽過的」照常顯示「審閱」。
+- **migration-2.37**：drop `logs_reviewer_stage_update`（加簽不動 daily_logs）、
+  delete `approval.review_stage_enabled`。`app_settings` 現在是空表，留給下一個設定。
+
+### 為什麼不做「核定完就不能補簽」
+
+業主說「隨時」。而且加簽不進 PDF、不改狀態，事後補簽沒有任何副作用；
+反過來限制了只會讓審閱人漏簽的那份永遠補不回來。

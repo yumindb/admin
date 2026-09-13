@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 // 角色導向首頁:
 //   site_supervisor → /logs
 //   owner          → /dashboard
-//   reviewer       → /approvals(待審閱)
+//   reviewer       → /approvals(加簽清單)
 //   field_assistant → /field-reports(現場回報清單)
 //   office_staff   → /cases(案件總覽)
 //   未登入或未知   → /cases(案件總覽,layout 已擋未登入)

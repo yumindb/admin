@@ -33,7 +33,6 @@ import {
   resetPasswordAction,
   toggleActiveAction,
   setNotificationPrefsAction,
-  setReviewStageAction,
 } from "./actions";
 import {
   NOTIFICATION_CATEGORIES,
@@ -79,7 +78,7 @@ const ROLES: RoleMeta[] = [
     shortLabel: "審閱",
     icon: FileSearch,
     tint: "#3A5670",
-    permission: "審閱工作日誌（簽名只留在系統、不進 PDF）、日誌與案件唯讀",
+    permission: "辦公室審核通過後可加簽日誌（不影響流程、簽名不進 PDF）、日誌與案件唯讀",
     level: 3,
   },
   {
@@ -134,16 +133,10 @@ export function StaffManager({
   currentUserId,
   currentUserRole,
   staffByRole,
-  reviewStageEnabled,
-  activeReviewerCount,
 }: {
   currentUserId: string;
   currentUserRole: UserRole;
   staffByRole: Record<UserRole, StaffRow[]>;
-  /** 審閱關要不要跑(app_settings `approval.review_stage_enabled`) */
-  reviewStageEnabled: boolean;
-  /** 啟用中的審閱人帳號數 — 開關開著但一個都沒有時,這關會自動跳過 */
-  activeReviewerCount: number;
 }) {
   const [modal, setModal] = useState<ModalMode>(null);
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
@@ -228,13 +221,6 @@ export function StaffManager({
           停用後該員無法登入，歷史簽核記錄保留。改密碼後請當面／LINE 告知本人。
         </NextStepHint>
       </div>
-
-      {canManage && (
-        <ReviewStageSetting
-          enabled={reviewStageEnabled}
-          activeReviewerCount={activeReviewerCount}
-        />
-      )}
 
       {/* 搜尋：姓名 / 帳號 / 電話 — 三家公司幾十人時用得到 */}
       <div className="mb-3 rounded-lg border border-[#E0DCD6] bg-card px-4 py-2.5">
@@ -1500,87 +1486,4 @@ function NotifyModal({
   );
 }
 
-/**
- * 審閱關設定(2026-09-09,取代原本的「核定雙簽」開關)。
- *
- * 業主:核定維持一位核定人簽完就產 PDF;另外加一個「審閱人」角色,在系統上簽核就好,
- * 不進 PDF。這關做成開關 — 有審閱人才開,沒有就是原本的三關流程。
- *
- * 文案要把「開 / 關代表什麼」講明白 — 這是簽核規則,不是外觀選項。
- */
-function ReviewStageSetting({
-  enabled,
-  activeReviewerCount,
-}: {
-  enabled: boolean;
-  activeReviewerCount: number;
-}) {
-  const router = useRouter();
-  const [optimistic, setOptimistic] = useState(enabled);
-  const [isPending, startTransition] = useTransition();
 
-  // server 端狀態變了(別人改的 / revalidate 回來)→ 跟著同步
-  useEffect(() => setOptimistic(enabled), [enabled]);
-
-  function toggle(next: boolean) {
-    setOptimistic(next);
-    startTransition(async () => {
-      const res = await setReviewStageAction(next);
-      if (!res.ok) {
-        setOptimistic(!next);
-        toast.error(res.error ?? "設定失敗");
-        return;
-      }
-      toast.success(
-        next
-          ? "已開啟審閱關：辦公室審核通過後先給審閱人簽，再交核定人"
-          : "已關閉審閱關：辦公室審核通過後直接交核定人",
-      );
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="mb-4 rounded-lg border border-[#E0DCD6] bg-card px-4 py-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-primary">審閱關</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {optimistic
-              ? "目前：辦公室審核通過 → 審閱人簽 → 核定人簽完就完成核定並產出 PDF。審閱人的簽名與意見只留在系統，不會印在 PDF 上。"
-              : "目前：辦公室審核通過後直接交核定人，一位簽完就完成核定並產出 PDF。"}
-          </p>
-          {optimistic && activeReviewerCount === 0 && (
-            <p className="mt-1.5 text-sm text-[#B91C1C]">
-              ⚠ 目前沒有啟用中的「審閱人」帳號，這關會自動跳過（日誌不會卡住）。
-              請先新增或啟用一個審閱人帳號。
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={optimistic}
-          aria-label="審閱關"
-          disabled={isPending}
-          onClick={() => toggle(!optimistic)}
-          className={`relative inline-flex h-11 w-[4.5rem] shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
-            optimistic
-              ? "border-[#003153] bg-[#003153]"
-              : "border-[#E0DCD6] bg-[#F5F1EC]"
-          }`}
-        >
-          <span
-            className={`inline-block size-9 rounded-full bg-white shadow-sm transition-transform ${
-              optimistic ? "translate-x-[2.05rem]" : "translate-x-[0.15rem]"
-            }`}
-          />
-        </button>
-      </div>
-      <p className="mt-2.5 text-xs text-muted-foreground">
-        切換立即生效，只影響之後通過辦公室審核的日誌；已經在審閱關或核定關的不受影響。
-        改動會記錄是誰在什麼時候改的。
-      </p>
-    </div>
-  );
-}

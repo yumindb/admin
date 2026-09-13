@@ -37,7 +37,7 @@
 | `field_assistant` 現場人員 | 手機 | /field-reports | 現場回報、打卡、請假 |
 | `site_supervisor` 工地主任 | 手機 | /logs | 施工日誌、打卡、現場回報、請假、簽現場人員的假單 |
 | `office_staff` 辦公室助理 | 桌機 | /dashboard | 開案、標單匯入、審核、報表、帳號管理、追加合約 |
-| `reviewer` 審閱人（2026-09） | 桌機+手機 | /approvals | **只簽日誌的審閱關**（簽名不進 PDF）；日誌／案件唯讀；請假直接給 owner 簽 |
+| `reviewer` 審閱人（2026-09） | 桌機+手機 | /approvals | **加簽**辦公室審核通過的日誌（跟流程無關、簽名不進 PDF）；日誌／案件唯讀；請假直接給 owner 簽 |
 | `owner` 老闆 Phil | 手機+桌機 | /dashboard | 核定簽名、dashboard、報表、帳號管理 |
 
 - 「系統管理員」角色**沒有做**：帳號管理放在 `/staff`，office_staff / owner 皆可操作。
@@ -45,19 +45,20 @@
 - **主任跨案件是設計不是漏洞**：裕民 2026-05 拍板主任可看所有案件、對任何案件建日誌
   （daily_logs / cases read-all）。但 signatures bucket 仍隔離（只能讀自己 folder）。
 
-## 簽核流程（每關都要手寫簽名；審閱關可選）
+## 簽核流程（三關，每關都要手寫簽名）
 
 ```
 draft →[主任填表+簽名 fill]→ submitted+audit
-     →[辦公室審核 audit]→ submitted+review（審閱關開著且有啟用中的審閱人）
-                        └→ submitted+approve（否則直接跳過）
-     →[審閱人簽名 review，不進 PDF]→ submitted+approve
+     →[辦公室審核 audit]→ submitted+approve
      →[核定人簽名 approve ×1]→ approved（自動產 PDF）
      →[任一關退回]→ rejected →[修正重送]→ 回到 audit
+
+（旁支，不在鏈上）審閱人「加簽」：audit 通過後（核定中或已核定）隨時可簽，
+  寫一筆 stage='review' 的 log_approvals，daily_logs 不動、不擋核定、不進 PDF
 ```
 
 - role ↔ stage 對照集中在 `lib/approvals/stages.ts`（`STAGE_FOR_ROLE`），不要再各檔抄一份。
-  主任沒有自己的關卡（fill 的簽名寫在 saveLogAction）。
+  主任與審閱人都沒有自己的關卡（fill 的簽名寫在 saveLogAction；加簽走 `endorseLogAction`）。
 
 - **退回後的重送有兩條路**（2026-08 修，業主回報「改完只能存檔、送不出去」）：
   - **主任本人**：`/logs/[id]/edit` 是 classic 模式 → 改完按「送出核定」，要**重新手寫簽名**
@@ -71,13 +72,15 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 - **核定是單簽**（2026-09-09 業主拍板）：一位核定人簽完就 `approved` + 產 PDF。
   2026-07 的「雙簽」構想整套拿掉（第二位核定人始終沒到職，production 從 2026-08-04
   起就是單簽）。`daily_logs.approve_signatures` 欄位留著但程式已不讀寫。
-- **審閱關（review）是可選的第四關**（2026-09-09 取代雙簽）：辦公室審核通過後、核定前，
-  由 `reviewer`（審閱人）在系統上簽名；**簽名與意見都不進 PDF**（`omitReviewStage()`）。
-  開關在 `/staff` 頁最上方，值存在 `app_settings.approval.review_stage_enabled`
-  （migration-2.36，預設 false）；`isReviewStageActive()`（`lib/approvals/review-stage.ts`）
-  = 開關開 **且** 至少一位啟用中的審閱人，否則 audit 直接跳到 approve（不會卡死）。
-  設定讀不到一律當「關」= 三關流程。切換只影響之後通過 audit 的日誌。
-  `review` 這個 stage 值 2026-09 前是「主任複核」，production 從沒用過。
+- **審閱人加簽**（2026-09-13 業主定案；09-09 曾做成閘門式「審閱關」，同週改掉）：
+  `reviewer` 在日誌通過辦公室審核後（`canEndorseLog`：核定中或已核定）隨時可以加簽，
+  `endorseLogAction` 只寫一筆 stage='review' 的 `log_approvals`，**daily_logs 完全不動、
+  不擋核定、不發 LINE**；同一輪只能簽一次（退回重送 / 撤回核定後可再簽）。
+  **簽名與意見都不進 PDF**（`omitReviewStage()`）；有寫意見才發站內消息。
+  審閱人的 `/approvals` 是「加簽」清單（`endorse-list.tsx`：audit 已過、這一輪還沒簽的最近 100 份，
+  沒有紅色待辦數字），點進去是同一個簽核頁但只有簽名 + 意見（`ApprovalActions mode="endorse"`）。
+  沒有任何開關；`app_settings` 目前是空表。`review` 這個 stage 值 2026-09 前是「主任複核」，
+  production 從沒用過。
   ⚠ **UI 文案一律寫「核定人」不寫「老闆」**（2026-08 業主要求，畫面上不點名老闆）。
 
 - 統一走 `approveStageAction` / `rejectStageAction`（role↔stage map 集中驗證）。
@@ -106,7 +109,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 |---|---|
 | `/cases` `/cases/new` `/cases/[id]` | 案件 CRUD、標單 .xlsx 匯入 preview、工項樹 + 累計進度、合約外/未簽約區塊、出勤時間軸、座標 picker |
 | `/logs` `/logs/new` `/logs/[id]` | 施工日誌（工項勾選、percent/absolute 數量、出工＋點工人數、照片+說明、天氣 chips、localStorage 草稿、**「本日無施工」一鍵送單**：旗標在 `manpower.no_work`，零工項照走完整簽核） |
-| `/approvals` | role-aware 待辦（同 URL：助理看 audit、審閱人看 review、核定人看 approve） |
+| `/approvals` | role-aware 待辦（同 URL：助理看 audit、核定人看 approve、審閱人看「加簽」清單） |
 | `/field-reports` | 現場回報（field_assistant 為主；離線 IndexedDB 佇列） |
 | `/attendance` | GPS 上下班打卡（軟性 geofence、離線前景排隊） |
 | `/leaves` | 請假申請 + 簽核 |
@@ -114,7 +117,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 | `/dashboard` | owner / office_staff 紅黃綠健康卡片 |
 | `/my-cases` | field_assistant / supervisor 的個人案件視角 |
 | `/reports/*` | 出勤、簽核延遲、未簽約、工項、案件總覽等報表 + xlsx 匯出 |
-| `/staff` | 帳號管理 + 審閱關開關（office_staff / owner） |
+| `/staff` | 帳號管理（office_staff / owner） |
 | `/account` | 個人設定（改密碼、LINE 通知綁定） |
 | `/api/cron/*` | Vercel cron 入口（見下方「排程」節） |
 | `/api/line/webhook` | LINE 官方帳號 webhook（綁定碼、解除綁定；詳見 [`docs/LINE.md`](LINE.md)） |

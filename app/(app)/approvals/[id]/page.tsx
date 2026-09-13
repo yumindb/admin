@@ -25,6 +25,7 @@ import {
 } from "@/lib/work-item-grouping";
 import { getSignedUrl, getSignedUrls } from "@/lib/supabase/storage";
 import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
+import { canEndorseLog, findEndorsedLogIds } from "@/lib/approvals/review-stage";
 import { buildRevisionDiffs } from "@/lib/log-diff";
 import { RevisionDiffRows } from "@/components/revision-diff";
 import { formatTW } from "@/lib/datetime";
@@ -46,7 +47,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 const STAGE_COPY: Record<ApprovalStage, { title: string; verb: string }> = {
   fill: { title: "填寫", verb: "送出" },
-  review: { title: "審閱", verb: "審閱通過" },
+  review: { title: "加簽", verb: "加簽" },
   audit: { title: "審核", verb: "審核通過" },
   approve: { title: "核定", verb: "核定通過" },
 };
@@ -71,8 +72,13 @@ export default async function ApprovalDetailPage({
   if (!actor) redirect("/login");
   const supabase = await createClient();
   const role: UserRole = actor.role;
+  // 審閱人的「加簽」不是關卡:同一頁面(摘要 / 工項 / 照片都要看),但不看 current_stage,
+  // 改看 canEndorseLog(辦公室審核已通過)+ 這一輪還沒簽過。
+  const endorseMode = role === "reviewer";
   const allowedStage = STAGE_FOR_ROLE[role];
-  if (!allowedStage) redirect("/logs");
+  if (!allowedStage && !endorseMode) redirect("/logs");
+  // 簽名面板要的 stage:加簽固定寫 review
+  const panelStage: ApprovalStage = allowedStage ?? "review";
 
   // 簽名圖章(owner 先試用):有上傳過 → 簽核卡預設出「蓋章」選項。
   // 6h TTL — Phil 會開著待辦連續簽,5 分鐘效期會破圖
@@ -102,9 +108,17 @@ export default async function ApprovalDetailPage({
   };
 
   // 已處理過或當前不在我的關卡 → 回 detail / 列表
-  if (l.status !== "submitted") redirect(`/logs/${id}`);
-  if (l.current_stage !== allowedStage) redirect(`/logs/${id}`);
-  const stageCopy = STAGE_COPY[allowedStage];
+  if (endorseMode) {
+    if (!canEndorseLog(l)) redirect(`/logs/${id}`);
+    const endorsed = await findEndorsedLogIds(supabase, actor.id, [
+      { id, submitted_at: l.submitted_at ?? null },
+    ]);
+    if (endorsed.has(id)) redirect(`/logs/${id}`);
+  } else {
+    if (l.status !== "submitted") redirect(`/logs/${id}`);
+    if (l.current_stage !== allowedStage) redirect(`/logs/${id}`);
+  }
+  const stageCopy = STAGE_COPY[panelStage];
 
   // 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
   const { count: dayCount } = await supabase
@@ -609,14 +623,21 @@ export default async function ApprovalDetailPage({
 
       <div className="mb-4">
         <NextStepHint tone="info">
-          {allowedStage === "approve"
-            ? "你簽完這份就完成核定並自動產生 PDF。"
-            : allowedStage === "review"
-              ? `確認上方內容後在下方簽名按「${stageCopy.verb}」，日誌會交給核定人。你的簽名與意見只留在系統裡，不會印在 PDF 上；要主任修正就切到「退回」分頁。`
+          {endorseMode
+            ? `看完上方內容後在下方簽名按「加簽」。加簽跟流程無關 —— 不擋核定、簽不簽都可以；簽名與意見只留在系統裡（簽核歷程、我簽過的），不會印在 PDF 上。${
+                l.status === "approved" ? "這份已經核定完成，加簽只是補一筆紀錄。" : ""
+              }`
+            : allowedStage === "approve"
+              ? "你簽完這份就完成核定並自動產生 PDF。"
               : `確認上方內容後在下方簽名按「${stageCopy.verb}」，系統會把日誌推到下一關。小地方不用退回 —— 點右上「直接修改這份」就能改，改了誰改的、改了哪裡都會留紀錄；要主任自己重做才切到「退回」分頁。`}
         </NextStepHint>
       </div>
-      <ApprovalActions logId={id} stage={allowedStage} stampUrl={stampUrl} />
+      <ApprovalActions
+        logId={id}
+        stage={panelStage}
+        stampUrl={stampUrl}
+        mode={endorseMode ? "endorse" : "stage"}
+      />
     </div>
   );
 }
