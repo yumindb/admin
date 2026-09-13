@@ -45,6 +45,7 @@ const CARDS: Record<Role, CardDef> = {
     videos: [
       { href: "/videos/field-basics.mp4", label: "打卡與拍照回報（3 分鐘）" },
       { href: "/videos/field-leave.mp4", label: "用手機請假（1 分半）" },
+      { href: "/videos/line-binding.mp4", label: "LINE 通知綁定（2 分鐘）" },
     ],
   },
   site_supervisor: {
@@ -60,6 +61,7 @@ const CARDS: Record<Role, CardDef> = {
     manualHash: "supervisor",
     videos: [
       { href: "/videos/supervisor-log.mp4", label: "施工日誌從填到送（2 分半）" },
+      { href: "/videos/line-binding.mp4", label: "LINE 通知綁定（2 分鐘）" },
     ],
   },
   office_staff: {
@@ -75,6 +77,7 @@ const CARDS: Record<Role, CardDef> = {
     manualHash: "office",
     videos: [
       { href: "/videos/office-overview.mp4", label: "系統全覽（3 分鐘，建議電腦看）" },
+      { href: "/videos/line-binding.mp4", label: "LINE 通知綁定（2 分鐘）" },
     ],
   },
   reviewer: {
@@ -87,7 +90,9 @@ const CARDS: Record<Role, CardDef> = {
       ["要請假", "「請假」→ 新請假，直接送給核定人。"],
     ],
     manualHash: "reviewer",
-    videos: [],
+    videos: [
+      { href: "/videos/line-binding.mp4", label: "LINE 通知綁定（2 分鐘）" },
+    ],
   },
   owner: {
     title: "老闆",
@@ -101,6 +106,7 @@ const CARDS: Record<Role, CardDef> = {
     manualHash: "boss",
     videos: [
       { href: "/videos/owner-overview.mp4", label: "核定與儀表板（1 分半）" },
+      { href: "/videos/line-binding.mp4", label: "LINE 通知綁定（2 分鐘）" },
     ],
   },
 };
