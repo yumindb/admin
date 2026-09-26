@@ -144,8 +144,13 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 - 表：profiles, cases, case_work_items, daily_logs, log_approvals, tender_imports,
   field_reports, daily_log_revisions, extra_contracts, login_attempts, audit_logs,
   attendance_events, leave_requests, leave_approvals, line_bindings,
-  notification_queue, app_messages, app_settings（+ storage buckets:
+  notification_queue, app_messages, app_settings, request_logs, error_logs（+ storage buckets:
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
+- **資料庫層的防線（migration-2.38）**：一般使用者只能改自己 profiles 的姓名／電話；
+  `current_user_role()` 對停用帳號回 null；`trg_daily_logs_guard` 只准 owner 把日誌變成 approved、
+  主任不能改／刪已核定的日誌。**改簽核流程時要一起看這個 trigger**，不然合法流程會被擋。
+  新帳號的 profile 由 trigger 建成「停用的現場人員」，/staff 再用 service role 設角色並啟用。
+  健檢結果與還沒擋的項目見 [`docs/SECURITY.md`](SECURITY.md)。
 - **RLS 是正式 role-based**（migration-2.10 起），不是 POC 全開版。改 policy 前先讀
   MIGRATIONS.md 2.10 / 2.14 / 2.15 / 2.18 的收緊歷史。
 - **`daily_logs.manpower` 是 jsonb**：出工（`today_total`）、點工（`day_labor` +
@@ -178,6 +183,27 @@ draft →[主任填表+簽名 fill]→ submitted+audit
   （`lib/notifications/notify.ts`）都掛在 `recheck-stuck-pdfs` route 內執行。
 - **每日備份**：GitHub Actions `backup.yml`（02:00 台北）→ DB pg_dump + Storage → Cloudflare R2；
   失敗寄 email、每週寄 heartbeat。細節見 [`docs/BACKUP.md`](BACKUP.md)。
+
+## 系統監控（2026-09-26）
+
+四頁：`/reports/logins` 登入紀錄、`/system/usage` 常用操作、`/system/slow` 慢請求、`/system/errors` 錯誤紀錄。
+後三頁與上方的「系統監控」入口**只有 `SYSTEM_ADMIN_USERNAMES` 名單上的帳號看得到**（Vercel 環境變數，
+逗號分隔的登入帳號；目前是 `admin` = Evelyn）。名單外的人打網址是 404；登入紀錄仍照舊開給助理 / 老闆。
+本機開發的名單放 `.env.development.local`。
+
+資料怎麼來（`lib/monitor/`，表在 migration-2.39，保留 90 天）：
+- **request_logs**：proxy 在每個已登入的請求貼上 `x-ym-*` header（起始時間、request id、user id；
+  client 送來的同名 header 一律清掉）→ `createClient()` 第一次被呼叫時登記、`getActor()` 補上角色 →
+  用 `after()` 在**回應送完之後**寫一筆（耗時 = proxy 收到請求到回應送完，不含使用者端網路）。
+  server action 的名稱從 Next 的 server-reference manifest 取 `exportedName`。prefetch、`/api/*`、公開頁不記。
+- **error_logs**：伺服器錯誤走 `instrumentation.ts` 的 `onRequestError`；資料庫錯誤走 `wrapDbError`
+  （記下 DB 原文，使用者只看到中文）；瀏覽器錯誤由 `app/error.tsx`、`global-error.tsx`、
+  `instrumentation-client.ts` 用 sendBeacon 送到 `/api/monitor/client-error`（每人 10 分鐘最多 30 則）。
+- 記錄失敗絕不影響正常功能（全部吞錯；表不存在時只 warn 一次）。
+- 彙總一律用 `monitor_*` SQL function（PostgREST 單次 1000 筆上限，不能拉原始列回來算）。
+
+⚠ **新增頁面或 server action 時，要在 `lib/monitor/labels.ts` 加中文名稱** —
+`lib/__tests__/monitor.test.ts` 會掃 `app/` 底下所有 page 與 `'use server'` 檔，漏了測試會失敗。
 - Secrets / production 憑證放 `D:\Evelyn\_secrets\`（本機）+ GitHub Actions secrets，
   **絕不進 repo**（.gitignore 已有 `*secrets*` 防呆）。
 
@@ -192,9 +218,11 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 7. **手機優先**：主任/工人介面觸控目標 ≥ 44px、表單回饋用 sonner toast、爛訊號要能存草稿
 8. **UI 文案**：台灣繁體、全形標點、對話感、不用「您」；引導提示一律用 `<NextStepHint>` 元件
 9. **會影響效能／DB 查詢量／storage 成本的功能，動工前先警告 Evelyn**
-   - **auth 一律走 `tryGetActor()` / `getActor()`**（`lib/auth/require-role.ts`，已包 React
-     `cache()`）。不要在 page / layout 自己寫 `supabase.auth.getUser()` + 撈 profile —
-     那是真的打一趟 Supabase Auth server，一次導覽重複三四遍就是使用者說的「很慢」。
+   - **auth 一律走 `tryGetActor()` / `getActor()` / `requireRole()`**（`lib/auth/require-role.ts`，
+     已包 React `cache()`，會擋停用帳號）。不要在 page / layout / action 自己寫
+     `supabase.auth.getUser()` + 撈 profile — 那是真的打一趟 Supabase Auth server，也沒看 is_active。
+     2026-09-26 起 proxy 與 `getActor()` 用 `getClaims()`（ES256 公鑰本機驗章，不打 Auth server）；
+     只有 proxy 處理 `/login` 時用 `getUser()`（停用帳號的 JWT 還沒過期時，只看 JWT 會無限導向）。
    - **同一頁的獨立查詢用 `Promise.all`**，不要一個個 await 排隊。
    - **日誌表單的工項／累計只撈「當下這一案」**（`lib/logs/case-form-data.ts`），
      換案時由 client 呼 `loadCaseFormDataAction` 補抓。不要再一次撈全部 active 案件。
@@ -237,6 +265,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 - [`docs/decisions.md`](decisions.md) — 各 Phase 決策記錄（why）。**改架構前必讀**
 - [`docs/MIGRATIONS.md`](MIGRATIONS.md) — migration 執行順序 + 排錯
 - [`docs/LINE.md`](LINE.md) — LINE 通知架構、後台設定、額度成本、疑難排解
+- [`docs/SECURITY.md`](SECURITY.md) — 資安 / 效能健檢紀錄（修了什麼、還要 Evelyn 處理什麼、第二批建議）
 - [`docs/BACKUP.md`](BACKUP.md) — 備份機制
 - [`docs/SETUP.md`](SETUP.md) — 初始建置紀錄（歷史文件，內容為 POC 時期）
 - `docs/schema.sql` — 初始 schema（之後的變更都在 migration-2.X.sql）
