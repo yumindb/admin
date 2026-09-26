@@ -6,8 +6,8 @@
  *
  * 資料流(細節見 docs/PROJECT.md「系統監控」節):
  *   proxy.ts 在每個已登入的 request 貼上 x-ym-* header(起始時間、request id、user id)
- *   → getActor()/tryGetActor() 第一次被呼叫時(lib/auth/require-role.ts)用 after()
- *     在回應送完後寫一筆 request_logs(耗時 = 現在 − proxy 起始時間)
+ *   → createClient()(lib/supabase/server.ts)第一次被呼叫時登記、getActor() 補上角色,
+ *     用 after() 在回應送完後寫一筆 request_logs(耗時 = 現在 − proxy 起始時間)
  *   → 伺服器錯誤走 instrumentation.ts 的 onRequestError、DB 錯誤走 wrapDbError、
  *     瀏覽器錯誤走 /api/monitor/client-error,都寫進 error_logs
  */
@@ -32,6 +32,26 @@ export const DEFAULT_SLOW_MS = 2000;
 
 /** 監控頁的時間範圍選項(天) */
 export const MONITOR_DAY_OPTIONS = [1, 7, 30, 90] as const;
+
+export type RequestKind = "page" | "nav" | "action";
+
+/**
+ * 請求種類:開頁面(page)/ 站內換頁(nav)/ 按鈕操作(action)。
+ *
+ * ⚠ 不能看 RSC、Next-Router-Prefetch 這些 header:Next 16 的 headers() 會把它們刪掉
+ * (node_modules/next/dist/server/async-storage/request-store.js 的 getHeaders),
+ * proxy 也看不到。所以開頁面 / 站內換頁改看瀏覽器自己帶的 header:
+ *   - Sec-Fetch-Mode: navigate → 瀏覽器整頁載入(輸入網址、重新整理、登入後導向)
+ *   - 其他值(cors / same-origin)→ 前端 fetch → 站內換頁或 router.refresh()
+ *   - 沒有 Sec-Fetch-*(Safari 16.4 之前的版本)→ 看 Accept 有沒有 text/html
+ * prefetch 同樣分不出來,但預載只跑到 loading 邊界、執行不到 createClient,本來就不會被記。
+ */
+export function requestKind(get: (name: string) => string | null): RequestKind {
+  if (get("next-action")) return "action";
+  const mode = get("sec-fetch-mode");
+  if (mode) return mode === "navigate" ? "page" : "nav";
+  return (get("accept") ?? "").includes("text/html") ? "page" : "nav";
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

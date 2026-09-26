@@ -195,11 +195,15 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 - **request_logs**：proxy 在每個已登入的請求貼上 `x-ym-*` header（起始時間、request id、user id；
   client 送來的同名 header 一律清掉）→ `createClient()` 第一次被呼叫時登記、`getActor()` 補上角色 →
   用 `after()` 在**回應送完之後**寫一筆（耗時 = proxy 收到請求到回應送完，不含使用者端網路）。
-  server action 的名稱從 Next 的 server-reference manifest 取 `exportedName`。prefetch、`/api/*`、公開頁不記。
+  server action 的名稱從 Next 的 server-reference manifest 取 `exportedName`。
+  開頁面／站內換頁看瀏覽器的 `Sec-Fetch-Mode`（Next 16 的 `headers()` 會刪掉 `RSC` 這類 header，proxy 也看不到）。
+  `/api/*`、公開頁不記；prefetch 只跑到 loading 邊界、執行不到 `createClient()`，自然不會被記。
 - **error_logs**：伺服器錯誤走 `instrumentation.ts` 的 `onRequestError`；資料庫錯誤走 `wrapDbError`
   （記下 DB 原文，使用者只看到中文）；瀏覽器錯誤由 `app/error.tsx`、`global-error.tsx`、
   `instrumentation-client.ts` 用 sendBeacon 送到 `/api/monitor/client-error`（每人 10 分鐘最多 30 則）。
 - 記錄失敗絕不影響正常功能（全部吞錯；表不存在時只 warn 一次）。
+- **本機 `next dev` 預設不寫**：本機連的也是正式 DB，開發模式的編譯時間（5～30 秒）會灌爆慢請求頁。
+  要在本機測監控功能時，在 `.env.development.local` 加 `MONITOR_IN_DEV=1`，測完拿掉。
 - 彙總一律用 `monitor_*` SQL function（PostgREST 單次 1000 筆上限，不能拉原始列回來算）。
 
 ⚠ **新增頁面或 server action 時，要在 `lib/monitor/labels.ts` 加中文名稱** —

@@ -7,6 +7,7 @@ import {
   isTransientClientError,
   normalizeErrorMessage,
   normalizeRoute,
+  requestKind,
 } from "../monitor/shared";
 import { ACTION_LABELS, ROUTE_LABELS } from "../monitor/labels";
 import { startOfMonthTaipei, startOfRecentDaysTaipei, startOfTodayTaipei } from "../datetime";
@@ -30,6 +31,25 @@ describe("normalizeRoute", () => {
     expect(normalizeRoute("/")).toBe("/");
     expect(normalizeRoute("")).toBe("/");
     expect(normalizeRoute("/reports/work-items")).toBe("/reports/work-items");
+  });
+});
+
+describe("requestKind", () => {
+  const kind = (h: Record<string, string>) => requestKind((name) => h[name] ?? null);
+
+  it("有 next-action 就是按鈕操作", () => {
+    expect(kind({ "next-action": "7f3a9c", "sec-fetch-mode": "cors", accept: "text/x-component" })).toBe("action");
+  });
+
+  it("Sec-Fetch-Mode: navigate 是開頁面,前端 fetch 是站內換頁", () => {
+    expect(kind({ "sec-fetch-mode": "navigate", accept: "text/html,application/xhtml+xml,*/*;q=0.8" })).toBe("page");
+    expect(kind({ "sec-fetch-mode": "cors", accept: "*/*" })).toBe("nav");
+    expect(kind({ "sec-fetch-mode": "same-origin", accept: "*/*" })).toBe("nav");
+  });
+
+  it("舊版 Safari 沒有 Sec-Fetch-*:改看 Accept", () => {
+    expect(kind({ accept: "text/html,application/xhtml+xml,*/*;q=0.8" })).toBe("page");
+    expect(kind({ accept: "*/*" })).toBe("nav");
   });
 });
 

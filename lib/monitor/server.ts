@@ -4,7 +4,8 @@
  * 設計重點:
  *   - **不增加使用者等待時間**:一律用 after() 在回應送完之後才寫 DB
  *   - **記錄失敗絕不影響正常功能**:所有進入點都吞掉自己的錯誤;表還沒建(migration 沒跑)也只是靜默略過
- *   - 只記「經過 proxy、已登入」的請求(proxy 貼了 x-ym-t0 才算),prefetch / 公開頁 / cron 不記
+ *   - 只記「經過 proxy、已登入」的請求(proxy 貼了 x-ym-t0 才算);公開頁、cron 不記,
+ *     prefetch 只跑到 loading 邊界、執行不到 createClient,也不會被記
  *
  * 進入點:
  *   trackRequest()      — lib/supabase/server.ts 的 createClient() 每次都呼叫;同一個 request 只登記一次
@@ -21,9 +22,9 @@ import {
   deviceLabel,
   errorGroupKey,
   normalizeRoute,
+  requestKind,
+  type RequestKind,
 } from "./shared";
-
-type RequestKind = "page" | "nav" | "action";
 
 type Trace = {
   requestId: string;
@@ -55,8 +56,6 @@ export type ErrorLogInput = {
   role?: string | null;
   userAgent?: string | null;
 };
-
-type HeaderReader = { get(name: string): string | null };
 
 /**
  * 跨 bundle 共用的狀態放 globalThis:instrumentation.ts 與各路由的 chunk
@@ -91,13 +90,6 @@ function isUuid(value: string | null | undefined): value is string {
   return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-function kindFromHeaders(h: HeaderReader): RequestKind | null {
-  if (h.get("next-router-prefetch") || h.get("next-router-segment-prefetch")) return null;
-  if (h.get("next-action")) return "action";
-  if (h.get("rsc") === "1") return "nav";
-  return "page";
-}
-
 /**
  * server action 的 id → export 名稱。
  * Next 16 把 server-reference manifest(含 exportedName)放在 globalThis 的
@@ -118,7 +110,16 @@ export function resolveActionName(actionId: string | null | undefined): string |
   return `#${actionId.slice(0, 10)}`;
 }
 
+/**
+ * 本機 next dev 連的也是正式資料庫:開發時的編譯時間(動輒 5~30 秒)會把慢請求頁灌爆,
+ * 測試時故意弄出來的錯誤也會混進錯誤紀錄,所以預設不寫。要在本機測監控功能時設 MONITOR_IN_DEV=1。
+ */
+function writeEnabled(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.MONITOR_IN_DEV === "1";
+}
+
 async function insertRow(table: "request_logs" | "error_logs", row: Record<string, unknown>) {
+  if (!writeEnabled()) return;
   try {
     const { createServiceClient } = await import("@/lib/supabase/server");
     const { error } = await createServiceClient().from(table).insert(row);
@@ -151,8 +152,7 @@ export async function trackRequest(): Promise<void> {
 
     const t0 = Number(h.get(MONITOR_HEADERS.start));
     if (!Number.isFinite(t0) || t0 <= 0) return; // 沒經過 proxy 的已登入流程(公開頁、cron、after 裡的背景工作)
-    const kind = kindFromHeaders(h);
-    if (!kind) return;
+    const kind = requestKind((name) => h.get(name));
     const path = h.get(MONITOR_HEADERS.path) ?? "/";
     if (path.startsWith("/api/")) return;
 
