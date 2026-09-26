@@ -20,6 +20,9 @@
 --     寫入只走 service-role(server action 先 requireRole office_staff / owner)。
 --
 -- 跑法:Supabase SQL Editor 貼上執行。冪等。
+--
+-- ✅ 執行狀態:**production(ref sgeuznnfasrgxlsqzxpc)已於 2026-09-26 執行完畢**
+--    (Supabase MCP apply_migration,Evelyn 授權;先乾跑 rollback 一次,自我檢查通過)。
 -- ==========================================================================
 
 -- --------------------------------------------------------------------------
