@@ -263,6 +263,8 @@ function navByRole(
           { href: "/field-reports", label: "現場回報" },
           { href: "/my-cases", label: "我的案場" },
           leavesLink,
+          // 排班唯讀:主任要知道工班誰哪天在哪個工地(自己的班在打卡頁也看得到)
+          { href: "/schedule", label: "排班" },
           { href: "/cases", label: "案件總覽" },
           { href: "/reports", label: "報表" },
         ],
@@ -304,6 +306,7 @@ function navByRole(
           leavesLink,
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
+          { href: "/schedule", label: "排班" },
           { href: "/payroll", label: "薪資" },
         ],
         // 2026-07-07:老闆手機版原本沒有「回報」入口(桌機 nav 有、頁面權限也開,
@@ -347,7 +350,8 @@ function navByRole(
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
           // 薪資(2026-09,Phase A):規則與假日助理都能改;金額要老闆授權(頁內自己判斷)。
-          // 手機不加 tab — 薪資是桌機作業。
+          // 手機不加 tab — 排班 / 薪資是桌機作業。
+          { href: "/schedule", label: "排班" },
           { href: "/payroll", label: "薪資" },
         ],
         mobileTabs: [

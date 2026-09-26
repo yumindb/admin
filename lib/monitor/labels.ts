@@ -49,6 +49,8 @@ export const ROUTE_LABELS: Record<string, string> = {
   "/payroll": "薪資",
   "/payroll/settings": "薪資規則設定",
   "/payroll/holidays": "假日行事曆",
+  "/schedule": "排班表",
+  "/schedule/templates": "班別範本",
 };
 
 /** server action export 名稱 → 中文。名稱來自 Next 的 server-reference manifest(exportedName)。 */
@@ -135,6 +137,12 @@ export const ACTION_LABELS: Record<string, string> = {
   setPayrollAccessAction: "授權助理處理薪資",
   saveHolidayAction: "新增／修改假日",
   deleteHolidayAction: "移除假日",
+  // 排班(Phase B)
+  saveShiftTemplateAction: "新增／修改班別",
+  setShiftTemplateActiveAction: "停用／啟用班別",
+  setDayScheduleAction: "排某人某天的班",
+  fillWeekScheduleAction: "快速排班(整週)",
+  copyWeekScheduleAction: "複製上週班表",
 };
 
 /**

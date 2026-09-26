@@ -128,10 +128,16 @@ export default async function PayrollHomePage() {
           icon={<Users className="size-6" strokeWidth={1.75} />}
         />
         <EntryCard
-          href="/payroll"
-          title="排班表・月結・薪資單"
-          description="下一階段:週曆排班、工時對帳、每月產生薪資快照與 Excel、員工查自己的薪資單"
+          href="/schedule"
+          title="排班表"
+          description="週曆排班、快速排班、複製上週;工人在打卡頁看自己的本週班表。遲到與季滿勤都以這張表為準"
           icon={<CalendarRange className="size-6" strokeWidth={1.75} />}
+        />
+        <EntryCard
+          href="/payroll"
+          title="工時對帳・月結・薪資單"
+          description="下一階段:打卡配對成工時、分段加班、每月產生薪資快照與 Excel、員工查自己的薪資單"
+          icon={<Banknote className="size-6" strokeWidth={1.75} />}
           comingSoon
         />
       </div>

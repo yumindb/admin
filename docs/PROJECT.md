@@ -119,6 +119,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 | `/reports/*` | 出勤、簽核延遲、未簽約、工項、案件總覽等報表 + xlsx 匯出 |
 | `/staff` | 帳號管理（office_staff / owner）；有薪資權限的人多一顆「薪制」按鈕（月薪／日薪＋生效日），老闆編輯助理時可勾「可處理薪資」 |
 | `/payroll` `/payroll/settings` `/payroll/holidays` | 薪資（2026-09 Phase A，office_staff / owner）：規則設定、假日行事曆、人員薪制總覽。見下方「人事／薪資」節 |
+| `/schedule` `/schedule/templates` | 排班（Phase B）：週曆格子（點格子排、快速排班、複製上週）、班別範本。office_staff / owner 編輯，site_supervisor 唯讀；工人在 `/attendance` 看「本週班表」卡 |
 | `/account` | 個人設定（改密碼、LINE 通知綁定） |
 | `/api/cron/*` | Vercel cron 入口（見下方「排程」節） |
 | `/api/line/webhook` | LINE 官方帳號 webhook（綁定碼、解除綁定；詳見 [`docs/LINE.md`](LINE.md)） |
@@ -146,7 +147,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
   field_reports, daily_log_revisions, extra_contracts, login_attempts, audit_logs,
   attendance_events, leave_requests, leave_approvals, line_bindings,
   notification_queue, app_messages, app_settings, request_logs, error_logs,
-  employee_pay_profiles, holidays（+ storage buckets:
+  employee_pay_profiles, holidays, shift_templates, schedule_entries（+ storage buckets:
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
 - **資料庫層的防線（migration-2.38）**：一般使用者只能改自己 profiles 的姓名／電話；
   `current_user_role()` 對停用帳號回 null；`trg_daily_logs_guard` 只准 owner 把日誌變成 approved、
@@ -294,7 +295,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 | 階段 | 內容 | 狀態 |
 |---|---|---|
 | A | 薪制檔案、假日行事曆、規則設定、權限（migration-2.40） | ✅ 2026-09-26 程式完成 |
-| B | 排班：`shift_templates` + `schedule_entries`、`/schedule` 週曆、打卡頁「本週班表」卡 | 未做 |
+| B | 排班：`shift_templates` + `schedule_entries`（migration-2.41）、`/schedule` 週曆、打卡頁「本週班表」卡 | ✅ 2026-09-26 程式完成 |
 | C | 工時配對引擎（`attendance_events` → 工作段、分段加班、異常清單）＋出勤工時報表 | 未做 |
 | D | 月結：`payroll_runs` + `payroll_items` 快照、季獎金、xlsx、員工看自己的薪資單 `/my-pay` | 未做 |
 | E | 遲到扣款實際啟用、餐飲多班別 | 未做 |
@@ -319,6 +320,15 @@ draft →[主任填表+簽名 fill]→ submitted+audit
   bonus（每季出勤 ≥ 60 天 → 天數 × 200；特休／公假視同出勤；季末後第 2 個月隨薪資發；可依季覆寫門檻）、
   payday（每月 5 號）。**讀不到一律回預設**，不會因為設定壞掉變成另一套規則。
 - 勞基法的倍率其實是 1⅓／1⅔，預設放 1.34／1.67（業主原話 1.33／1.66 是口語，四捨五入方向要對）。
+
+**排班**（`lib/payroll/schedule.ts`）：
+- `shift_templates` 班別範本：名稱、短名（格子上顯示）、起訖、休息分鐘；`end_time <= start_time` = 跨日班；
+  **不刪只停用**（舊班表還指著它）。裕民種一筆「日班 08:00–17:00 休 60」；餐飲分公司自己加早／午／晚。
+- `schedule_entries`：某人某天排哪個班，一天可多筆（兩頭班），範本或自訂時間二擇一，可綁案件、備註。
+  `setDayScheduleAction` 是**整天覆寫**（先刪再寫）；`fillWeekScheduleAction` 只填還沒排的日子；
+  `copyWeekScheduleAction` 把上週有排班的人整週覆寫到本週。
+- 週一起算（`weekStartOf`）。格子表頭帶假日名稱、週末／假日灰底。
+- 排班是遲到判定與季滿勤的基準線；排了班的日子一律算平日（Phase C 的 `dayTypeFor` 要多吃這個參數）。
 
 **明確不做**（先講清楚）：勞健保、勞退、所得稅扣繳不在範圍；月結會留手動加減項。
 
