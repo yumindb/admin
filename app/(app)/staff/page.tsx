@@ -4,6 +4,8 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { emailToUsername } from "@/lib/auth/username";
 import type { NotificationPrefs } from "@/lib/notifications/prefs";
 import type { Profile, UserRole } from "@/lib/types";
+import { hasPayrollAccess } from "@/lib/payroll/access";
+import type { PayProfile } from "@/lib/payroll/pay-profiles";
 import { StaffManager } from "./staff-manager";
 
 export type StaffRow = Profile & {
@@ -14,6 +16,10 @@ export type StaffRow = Profile & {
   line_bound: boolean;
   /** 通知分類開關(migration-2.28;null = 從未設定 → 角色預設) */
   notification_prefs: NotificationPrefs | null;
+  /** 老闆授權可處理薪資(migration-2.40;欄位不存在時 false) */
+  can_manage_payroll: boolean;
+  /** 薪制歷史(migration-2.40)。只有看得到薪資金額的人會拿到,其他人一律空陣列 */
+  pay_history: PayProfile[];
 };
 
 const ROLE_ORDER: UserRole[] = [
@@ -35,7 +41,8 @@ export default async function StaffPage() {
 
   // 抓所有 profile + 用 service role 拿對應 email
   const admin = createServiceClient();
-  const [{ data: profiles }, { data: usersList }, { data: bindings }] =
+  const payrollAccess = await hasPayrollAccess(actor);
+  const [{ data: profiles }, { data: usersList }, { data: bindings }, payRes] =
     await Promise.all([
       admin
         .from("profiles")
@@ -47,7 +54,23 @@ export default async function StaffPage() {
       admin
         .from("line_bindings")
         .select("profile_id, line_user_id, notification_prefs"),
+      // 薪制(migration-2.40):用 RLS 生效的 client 讀,看不到金額的人自然拿到空的;
+      // 表不存在時 data 為 null → 全視為未設定
+      payrollAccess
+        ? supabase
+            .from("employee_pay_profiles")
+            .select(
+              "id, user_id, employment_type, amount, effective_from, note, created_by, created_at",
+            )
+        : Promise.resolve({ data: null }),
     ]);
+
+  const payByUser = new Map<string, PayProfile[]>();
+  for (const p of ((payRes as { data: PayProfile[] | null }).data ?? [])) {
+    const list = payByUser.get(p.user_id);
+    if (list) list.push(p);
+    else payByUser.set(p.user_id, [p]);
+  }
 
   const emailById = new Map<string, string | null>();
   const lastSignInById = new Map<string, string | null>();
@@ -79,6 +102,8 @@ export default async function StaffPage() {
       last_sign_in_at: lastSignInById.get(p.id) ?? null,
       line_bound: binding?.bound ?? false,
       notification_prefs: binding?.prefs ?? null,
+      can_manage_payroll: p.can_manage_payroll === true,
+      pay_history: payByUser.get(p.id) ?? [],
     };
   });
 
@@ -96,6 +121,7 @@ export default async function StaffPage() {
       currentUserId={user.id}
       currentUserRole={actor.role}
       staffByRole={Object.fromEntries(byRole) as Record<UserRole, StaffRow[]>}
+      payrollAccess={payrollAccess}
     />
   );
 }

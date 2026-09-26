@@ -46,6 +46,9 @@ export const ROUTE_LABELS: Record<string, string> = {
   "/system/usage": "常用操作",
   "/system/slow": "慢請求",
   "/system/errors": "錯誤紀錄",
+  "/payroll": "薪資",
+  "/payroll/settings": "薪資規則設定",
+  "/payroll/holidays": "假日行事曆",
 };
 
 /** server action export 名稱 → 中文。名稱來自 Next 的 server-reference manifest(exportedName)。 */
@@ -126,6 +129,12 @@ export const ACTION_LABELS: Record<string, string> = {
   setNotificationPrefsAction: "設定人員通知",
   listRegenTargetsAction: "列出待重產的 PDF",
   regenerateOnePdfAction: "重產單份 PDF",
+  // 人事 / 薪資(Phase A)
+  savePayrollSettingAction: "儲存薪資規則",
+  savePayProfileAction: "設定人員薪制",
+  setPayrollAccessAction: "授權助理處理薪資",
+  saveHolidayAction: "新增／修改假日",
+  deleteHolidayAction: "移除假日",
 };
 
 /**

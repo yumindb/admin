@@ -13,6 +13,11 @@ export type Profile = {
   company: string;
   phone: string | null;
   is_active: boolean;
+  /**
+   * 老闆授權此帳號(限 office_staff)看薪資金額、做月結(migration-2.40)。
+   * 可選:migration 沒跑時欄位不存在,讀到 undefined 一律當 false。
+   */
+  can_manage_payroll?: boolean;
   created_at: string;
   updated_at: string;
 };

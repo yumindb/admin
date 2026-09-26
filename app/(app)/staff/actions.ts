@@ -20,7 +20,7 @@ async function requireManager() {
   if (actor.role !== "office_staff" && actor.role !== "owner") {
     return { ok: false as const, error: "只有辦公室助理或老闆可以管理人員" };
   }
-  return { ok: true as const, currentUserId: actor.id };
+  return { ok: true as const, currentUserId: actor.id, role: actor.role };
 }
 
 const CreateSchema = z.object({
@@ -103,6 +103,11 @@ const UpdateSchema = z.object({
     "field_assistant",
   ]),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
+  /**
+   * 「可處理薪資」旗標(migration-2.40)。表單只在老闆編輯助理時才送這個欄位;
+   * 沒送就完全不碰(migration 沒跑時欄位不存在,碰了會整筆失敗)。
+   */
+  can_manage_payroll: z.enum(["true", "false"]).optional(),
 });
 
 export async function updateStaffAction(
@@ -117,6 +122,7 @@ export async function updateStaffAction(
     full_name: formData.get("full_name"),
     role: formData.get("role"),
     phone: formData.get("phone") ?? "",
+    can_manage_payroll: formData.get("can_manage_payroll") ?? undefined,
   });
   if (!parsed.success) {
     return {
@@ -126,15 +132,22 @@ export async function updateStaffAction(
   }
   const data = parsed.data;
 
+  const patch: Record<string, unknown> = {
+    full_name: data.full_name,
+    role: data.role,
+    phone: data.phone || null,
+  };
+  if (data.can_manage_payroll !== undefined) {
+    // 只有老闆能授權;而且只有助理需要這個旗標(改成別的角色一律歸零)
+    if (auth.role !== "owner") {
+      return { ok: false, error: "只有核定人可以設定「可處理薪資」" };
+    }
+    patch.can_manage_payroll =
+      data.role === "office_staff" && data.can_manage_payroll === "true";
+  }
+
   const admin = createServiceClient();
-  const upd = await admin
-    .from("profiles")
-    .update({
-      full_name: data.full_name,
-      role: data.role,
-      phone: data.phone || null,
-    })
-    .eq("id", data.user_id);
+  const upd = await admin.from("profiles").update(patch).eq("id", data.user_id);
   if (upd.error) return { ok: false, error: upd.error.message };
 
   // 角色可能變了 → 已綁定 LINE 的人把 Rich Menu 換成新角色的(失敗只 log)

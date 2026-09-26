@@ -117,7 +117,8 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 | `/dashboard` | owner / office_staff 紅黃綠健康卡片 |
 | `/my-cases` | field_assistant / supervisor 的個人案件視角 |
 | `/reports/*` | 出勤、簽核延遲、未簽約、工項、案件總覽等報表 + xlsx 匯出 |
-| `/staff` | 帳號管理（office_staff / owner） |
+| `/staff` | 帳號管理（office_staff / owner）；有薪資權限的人多一顆「薪制」按鈕（月薪／日薪＋生效日），老闆編輯助理時可勾「可處理薪資」 |
+| `/payroll` `/payroll/settings` `/payroll/holidays` | 薪資（2026-09 Phase A，office_staff / owner）：規則設定、假日行事曆、人員薪制總覽。見下方「人事／薪資」節 |
 | `/account` | 個人設定（改密碼、LINE 通知綁定） |
 | `/api/cron/*` | Vercel cron 入口（見下方「排程」節） |
 | `/api/line/webhook` | LINE 官方帳號 webhook（綁定碼、解除綁定；詳見 [`docs/LINE.md`](LINE.md)） |
@@ -144,7 +145,8 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 - 表：profiles, cases, case_work_items, daily_logs, log_approvals, tender_imports,
   field_reports, daily_log_revisions, extra_contracts, login_attempts, audit_logs,
   attendance_events, leave_requests, leave_approvals, line_bindings,
-  notification_queue, app_messages, app_settings, request_logs, error_logs（+ storage buckets:
+  notification_queue, app_messages, app_settings, request_logs, error_logs,
+  employee_pay_profiles, holidays（+ storage buckets:
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
 - **資料庫層的防線（migration-2.38）**：一般使用者只能改自己 profiles 的姓名／電話；
   `current_user_role()` 對停用帳號回 null；`trg_daily_logs_guard` 只准 owner 把日誌變成 approved、
@@ -283,7 +285,46 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 - Repo：https://github.com/yumindb/admin（裕民擁有）
 - 試跑期 bug 視為保固，不另計費
 
+## 人事／薪資（2026-09 起，分階段）
+
+業主要的：排班表登記、正職月薪／日薪人員的薪資計算（加班倍率、季獎金、遲到扣款），
+而且**後台要能彈性設定，之後可能給餐飲分公司用**。全部用「只加新表、不動舊表」安插，
+打卡（`attendance_events`）、請假、簽核流程一行都沒改。分期：
+
+| 階段 | 內容 | 狀態 |
+|---|---|---|
+| A | 薪制檔案、假日行事曆、規則設定、權限（migration-2.40） | ✅ 2026-09-26 程式完成 |
+| B | 排班：`shift_templates` + `schedule_entries`、`/schedule` 週曆、打卡頁「本週班表」卡 | 未做 |
+| C | 工時配對引擎（`attendance_events` → 工作段、分段加班、異常清單）＋出勤工時報表 | 未做 |
+| D | 月結：`payroll_runs` + `payroll_items` 快照、季獎金、xlsx、員工看自己的薪資單 `/my-pay` | 未做 |
+| E | 遲到扣款實際啟用、餐飲多班別 | 未做 |
+
+**權限分兩層**（`lib/payroll/access.ts`）：
+- 規則設定、假日行事曆 → `office_staff` / `owner`（`requireRole`）
+- 薪資金額、月結、薪資單 → `owner`，或老闆在 `/staff` 勾了「可處理薪資」的助理
+  （`profiles.can_manage_payroll`；DB 端 `has_payroll_access()`）。
+  旗標**故意不放進 `loadActor`** — migration 沒跑時欄位不存在，放進去全站登入都壞；
+  `hasPayrollAccess()` 另外查一次，查不到一律當沒權限。
+
+**資料**：
+- `employee_pay_profiles` **append-only**：調薪 = 新增一列新的 `effective_from`，舊列保留；
+  某日生效的薪制 = `payProfileOn(rows, date)`（`lib/payroll/pay-profiles.ts`）。金額不放 `profiles`
+  （profiles 全員可讀）。寫入只走 service-role。
+- `holidays`：只放「實際放假的平日」（假日落在週六日就放補假日）；`is_workday = true` 是補班日。
+  週六／週日是休息日／例假日由設定決定（餐飲店休可改）。`dayTypeFor()` 在 `lib/payroll/holidays.ts`。
+- 規則在 `app_settings` 的 `payroll.*` 六組（`lib/payroll/settings.ts`，zod 每欄都有預設）：
+  work_rules（8 小時／5 天／月薪÷30÷8／自動扣休息／加班以分計／每月 46 小時只警告）、
+  overtime（平日 2h×1.34 + 2h×1.67；休息日 2h×1.34 + 6h×1.67 + 4h×2.67；例假日與國定假日 ×2）、
+  late（**預設關**，寬限 10 分，按分鐘或固定額）、leave_pay_ratios（事假 0、病假 0.5、特休／公假／婚喪 1）、
+  bonus（每季出勤 ≥ 60 天 → 天數 × 200；特休／公假視同出勤；季末後第 2 個月隨薪資發；可依季覆寫門檻）、
+  payday（每月 5 號）。**讀不到一律回預設**，不會因為設定壞掉變成另一套規則。
+- 勞基法的倍率其實是 1⅓／1⅔，預設放 1.34／1.67（業主原話 1.33／1.66 是口語，四捨五入方向要對）。
+
+**明確不做**（先講清楚）：勞健保、勞退、所得稅扣繳不在範圍；月結會留手動加減項。
+
 ## 已知待辦（大方向）
+
+- 人事／薪資 Phase B–E（見上節）；動工前要 Phil 確認的都已在 2026-09-26 拍板（見 decisions.md）
 
 - LINE 整合（Phase 5）：**通知推播已上線（2026-07，見 docs/LINE.md）**；LIFF 打卡未做
 - LINE 訊息額度觀察：免費方案 200 則/月，試用期後視用量決定是否升級中用量（NT$800/月）

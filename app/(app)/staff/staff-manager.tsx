@@ -21,6 +21,7 @@ import {
   Rows3,
   Bell,
   FileSearch,
+  Banknote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,21 @@ import {
 } from "@/lib/notifications/prefs";
 import type { StaffActionResult } from "./types";
 import type { StaffRow } from "./page";
+import { savePayProfileAction } from "../payroll/actions";
+import {
+  AMOUNT_UNIT_LABEL,
+  EMPLOYMENT_TYPE_LABEL,
+  describePayProfile,
+  formatNTD,
+  payProfileOn,
+  sortPayProfilesDesc,
+  type EmploymentType,
+} from "@/lib/payroll/pay-profiles";
+
+/** 台灣今天的 YYYY-MM-DD(client 端;薪制「目前生效」與生效日預設值用) */
+function todayTaipei(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+}
 
 type RoleMeta = {
   key: UserRole;
@@ -125,6 +141,7 @@ type ModalMode =
   | { kind: "edit"; staff: StaffRow }
   | { kind: "reset"; staff: StaffRow }
   | { kind: "notify"; staff: StaffRow }
+  | { kind: "pay"; staff: StaffRow }
   | null;
 
 type ViewMode = "card" | "table";
@@ -133,10 +150,13 @@ export function StaffManager({
   currentUserId,
   currentUserRole,
   staffByRole,
+  payrollAccess,
 }: {
   currentUserId: string;
   currentUserRole: UserRole;
   staffByRole: Record<UserRole, StaffRow[]>;
+  /** 看得到薪資金額、可設定薪制(owner 或被授權的助理;lib/payroll/access.ts) */
+  payrollAccess: boolean;
 }) {
   const [modal, setModal] = useState<ModalMode>(null);
   const [hierarchyOpen, setHierarchyOpen] = useState(false);
@@ -312,9 +332,11 @@ export function StaffManager({
             staff={allStaff}
             currentUserId={currentUserId}
             canManage={canManage}
+            payrollAccess={payrollAccess}
             onEdit={(s) => setModal({ kind: "edit", staff: s })}
             onReset={(s) => setModal({ kind: "reset", staff: s })}
             onNotify={(s) => setModal({ kind: "notify", staff: s })}
+            onPay={(s) => setModal({ kind: "pay", staff: s })}
           />
         ) : (
           <div className="space-y-6">
@@ -325,9 +347,11 @@ export function StaffManager({
                 staff={filteredStaffByRole[role.key] ?? []}
                 currentUserId={currentUserId}
                 currentUserRole={currentUserRole}
+                payrollAccess={payrollAccess}
                 onEdit={(s) => setModal({ kind: "edit", staff: s })}
                 onReset={(s) => setModal({ kind: "reset", staff: s })}
                 onNotify={(s) => setModal({ kind: "notify", staff: s })}
+                onPay={(s) => setModal({ kind: "pay", staff: s })}
               />
             ))}
           </div>
@@ -339,13 +363,20 @@ export function StaffManager({
         <CreateModal onClose={() => setModal(null)} />
       )}
       {modal?.kind === "edit" && (
-        <EditModal staff={modal.staff} onClose={() => setModal(null)} />
+        <EditModal
+          staff={modal.staff}
+          currentUserRole={currentUserRole}
+          onClose={() => setModal(null)}
+        />
       )}
       {modal?.kind === "reset" && (
         <ResetModal staff={modal.staff} onClose={() => setModal(null)} />
       )}
       {modal?.kind === "notify" && (
         <NotifyModal staff={modal.staff} onClose={() => setModal(null)} />
+      )}
+      {modal?.kind === "pay" && (
+        <PayModal staff={modal.staff} onClose={() => setModal(null)} />
       )}
     </div>
   );
@@ -530,16 +561,20 @@ function StaffTable({
   staff,
   currentUserId,
   canManage,
+  payrollAccess,
   onEdit,
   onReset,
   onNotify,
+  onPay,
 }: {
   staff: StaffRow[];
   currentUserId: string;
   canManage: boolean;
+  payrollAccess: boolean;
   onEdit: (s: StaffRow) => void;
   onReset: (s: StaffRow) => void;
   onNotify: (s: StaffRow) => void;
+  onPay: (s: StaffRow) => void;
 }) {
   if (staff.length === 0) {
     return (
@@ -561,6 +596,9 @@ function StaffTable({
               <th className="px-4 py-3 font-medium">角色</th>
               <th className="px-4 py-3 font-medium">狀態</th>
               <th className="px-4 py-3 font-medium">LINE</th>
+              {payrollAccess && (
+                <th className="px-4 py-3 font-medium">薪制</th>
+              )}
               <th className="px-4 py-3 font-medium">最後登入</th>
               {canManage && (
                 <th className="px-4 py-3 text-right font-medium">操作</th>
@@ -574,9 +612,11 @@ function StaffTable({
                 staff={s}
                 isSelf={s.id === currentUserId}
                 canManage={canManage}
+                payrollAccess={payrollAccess}
                 onEdit={() => onEdit(s)}
                 onReset={() => onReset(s)}
                 onNotify={() => onNotify(s)}
+                onPay={() => onPay(s)}
               />
             ))}
           </tbody>
@@ -590,16 +630,20 @@ function StaffTableRow({
   staff,
   isSelf,
   canManage,
+  payrollAccess,
   onEdit,
   onReset,
   onNotify,
+  onPay,
 }: {
   staff: StaffRow;
   isSelf: boolean;
   canManage: boolean;
+  payrollAccess: boolean;
   onEdit: () => void;
   onReset: () => void;
   onNotify: () => void;
+  onPay: () => void;
 }) {
   const role = ROLE_BY_KEY.get(staff.role as UserRole);
   const Icon = role?.icon ?? UserCog;
@@ -671,6 +715,11 @@ function StaffTableRow({
           <span className="text-xs text-muted-foreground">未綁定</span>
         )}
       </td>
+      {payrollAccess && (
+        <td className="whitespace-nowrap px-4 py-3">
+          <PaySummary staff={staff} compact />
+        </td>
+      )}
       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
         {lastLoginLabel(staff.last_sign_in_at)}
       </td>
@@ -686,6 +735,17 @@ function StaffTableRow({
               <Pencil className="size-3" />
               編輯
             </button>
+            {payrollAccess && staff.role !== "reviewer" && (
+              <button
+                type="button"
+                onClick={onPay}
+                title="薪制設定"
+                className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-2 py-1 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
+              >
+                <Banknote className="size-3" />
+                薪制
+              </button>
+            )}
             <button
               type="button"
               onClick={onReset}
@@ -750,17 +810,21 @@ function RoleSection({
   staff,
   currentUserId,
   currentUserRole,
+  payrollAccess,
   onEdit,
   onReset,
   onNotify,
+  onPay,
 }: {
   role: RoleMeta;
   staff: StaffRow[];
   currentUserId: string;
   currentUserRole: UserRole;
+  payrollAccess: boolean;
   onEdit: (s: StaffRow) => void;
   onReset: (s: StaffRow) => void;
   onNotify: (s: StaffRow) => void;
+  onPay: (s: StaffRow) => void;
 }) {
   const Icon = role.icon;
   const activeCount = staff.filter((s) => s.is_active).length;
@@ -794,9 +858,11 @@ function RoleSection({
               canManage={
                 currentUserRole === "owner" || currentUserRole === "office_staff"
               }
+              payrollAccess={payrollAccess}
               onEdit={() => onEdit(s)}
               onReset={() => onReset(s)}
               onNotify={() => onNotify(s)}
+              onPay={() => onPay(s)}
             />
           ))}
         </div>
@@ -810,17 +876,21 @@ function StaffCard({
   role,
   isSelf,
   canManage,
+  payrollAccess,
   onEdit,
   onReset,
   onNotify,
+  onPay,
 }: {
   staff: StaffRow;
   role: RoleMeta;
   isSelf: boolean;
   canManage: boolean;
+  payrollAccess: boolean;
   onEdit: () => void;
   onReset: () => void;
   onNotify: () => void;
+  onPay: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [confirmingToggle, setConfirmingToggle] = useState(false);
@@ -870,6 +940,11 @@ function StaffCard({
           <div className="mt-0.5 text-sm text-muted-foreground">
             LINE：{staff.line_bound ? "已綁定" : "未綁定"}
           </div>
+          {payrollAccess && staff.role !== "reviewer" && (
+            <div className="mt-0.5 text-sm text-muted-foreground">
+              薪制：<PaySummary staff={staff} />
+            </div>
+          )}
         </div>
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${
@@ -915,6 +990,15 @@ function StaffCard({
           >
             <Bell className="size-3" /> 通知
           </button>
+          {payrollAccess && staff.role !== "reviewer" && (
+            <button
+              type="button"
+              onClick={onPay}
+              className="inline-flex items-center gap-1 rounded-md border border-[#E0DCD6] bg-white px-2.5 py-1 text-xs text-foreground transition-colors hover:border-accent hover:text-accent"
+            >
+              <Banknote className="size-3" /> 薪制
+            </button>
+          )}
           {!isSelf && (
             <button
               type="button"
@@ -1202,14 +1286,23 @@ function CreateModal({ onClose }: { onClose: () => void }) {
 
 function EditModal({
   staff,
+  currentUserRole,
   onClose,
 }: {
   staff: StaffRow;
+  currentUserRole: UserRole;
   onClose: () => void;
 }) {
   const [role, setRole] = useState<UserRole>(staff.role as UserRole);
+  const [canManagePayroll, setCanManagePayroll] = useState<boolean>(
+    staff.can_manage_payroll,
+  );
   const [state, setState] = useState<StaffActionResult | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
+
+  // 「可處理薪資」只有老闆能設、只對助理有意義。表單只在這個情況下才送這個欄位
+  // (migration-2.40 沒跑時欄位不存在,送了會整筆失敗)。
+  const showPayrollAccess = currentUserRole === "owner" && role === "office_staff";
 
   useEffect(() => {
     if (state?.error) toast.error(state.error);
@@ -1220,6 +1313,11 @@ function EditModal({
     const fd = new FormData(e.currentTarget);
     fd.set("user_id", staff.id);
     fd.set("role", role);
+    fd.delete("can_manage_payroll");
+    if (showPayrollAccess || (currentUserRole === "owner" && staff.can_manage_payroll)) {
+      // 助理改成別的角色時把旗標歸零(server 端也會)
+      fd.set("can_manage_payroll", showPayrollAccess && canManagePayroll ? "true" : "false");
+    }
     startTransition(async () => {
       const res = await updateStaffAction(undefined, fd);
       setState(res);
@@ -1260,6 +1358,22 @@ function EditModal({
             {ROLE_BY_KEY.get(role)?.permission}
           </p>
         </div>
+        {showPayrollAccess && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-[#E0DCD6] bg-[#F5F1EC]/40 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={canManagePayroll}
+              onChange={(e) => setCanManagePayroll(e.target.checked)}
+              className="mt-0.5 size-5 shrink-0 accent-[#003153]"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">可處理薪資</span>
+              <span className="block text-xs text-muted-foreground">
+                看得到每個人的薪資金額、可以設定薪制與做月結。薪資規則與假日行事曆不需要這個授權,助理本來就能改。
+              </span>
+            </span>
+          </label>
+        )}
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
             取消
@@ -1269,6 +1383,207 @@ function EditModal({
           </Button>
         </div>
       </form>
+    </ModalShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 薪制(月薪 / 日薪 + 生效日;append-only,調薪就是再加一筆)              */
+/* ------------------------------------------------------------------ */
+
+function PaySummary({ staff, compact = false }: { staff: StaffRow; compact?: boolean }) {
+  const today = todayTaipei();
+  const current = payProfileOn(staff.pay_history, today);
+  if (current) {
+    return (
+      <span className="text-foreground">
+        {compact
+          ? `${EMPLOYMENT_TYPE_LABEL[current.employment_type]} ${formatNTD(current.amount)}`
+          : describePayProfile(current)}
+      </span>
+    );
+  }
+  const upcoming = sortPayProfilesDesc(staff.pay_history).filter(
+    (p) => p.effective_from > today,
+  );
+  if (upcoming.length > 0) {
+    const next = upcoming[upcoming.length - 1];
+    return (
+      <span className="text-muted-foreground">
+        {next.effective_from} 起 {EMPLOYMENT_TYPE_LABEL[next.employment_type]}{" "}
+        {formatNTD(next.amount)}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-xs text-[#92400E]">
+      未設定
+    </span>
+  );
+}
+
+function PayModal({ staff, onClose }: { staff: StaffRow; onClose: () => void }) {
+  const router = useRouter();
+  const today = todayTaipei();
+  const history = sortPayProfilesDesc(staff.pay_history);
+  const current = payProfileOn(staff.pay_history, today);
+
+  const [employmentType, setEmploymentType] = useState<EmploymentType>(
+    current?.employment_type ?? "daily",
+  );
+  const [amount, setAmount] = useState<string>(current ? String(current.amount) : "");
+  const [effectiveFrom, setEffectiveFrom] = useState<string>(today);
+  const [note, setNote] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]> | undefined>();
+  const [isPending, startTransition] = useTransition();
+
+  function save() {
+    const n = Number(amount);
+    startTransition(async () => {
+      const res = await savePayProfileAction({
+        userId: staff.id,
+        employmentType,
+        amount: Number.isFinite(n) ? n : -1,
+        effectiveFrom,
+        note,
+      });
+      if (res.ok) {
+        toast.success(`已設定「${staff.full_name}」的薪制`);
+        onClose();
+        router.refresh();
+      } else {
+        setFieldErrors(res.fieldErrors);
+        toast.error(res.error);
+      }
+    });
+  }
+
+  return (
+    <ModalShell title={`薪制設定：${staff.full_name}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-md border border-[#E0DCD6] bg-[#F5F1EC]/40 px-3 py-2 text-sm">
+          目前生效：
+          {current ? (
+            <span className="font-medium text-foreground">
+              {describePayProfile(current)}（{current.effective_from} 起）
+            </span>
+          ) : (
+            <span className="text-muted-foreground">還沒設定</span>
+          )}
+        </div>
+
+        <div>
+          <Label>雇用類型</Label>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {(["monthly", "daily"] as const).map((t) => {
+              const active = employmentType === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setEmploymentType(t)}
+                  className={`flex items-center justify-between rounded-md border p-3 text-left text-sm transition-colors ${
+                    active
+                      ? "border-accent bg-[#F5F1EC] font-medium text-foreground"
+                      : "border-[#E0DCD6] bg-white text-foreground hover:border-accent/50"
+                  }`}
+                >
+                  {EMPLOYMENT_TYPE_LABEL[t]}
+                  {active && <Check className="size-3.5 text-accent" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <Label htmlFor="pay-amount">
+              {employmentType === "monthly" ? "月薪" : "日薪"}
+            </Label>
+            <div className="mt-1 flex items-center gap-2">
+              <Input
+                id="pay-amount"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder={employmentType === "monthly" ? "例:36000" : "例:1800"}
+                className={fieldErrors?.amount ? "border-[#FCA5A5]" : ""}
+              />
+              <span className="shrink-0 text-sm text-muted-foreground">
+                {AMOUNT_UNIT_LABEL[employmentType]}
+              </span>
+            </div>
+            <FieldError msg={fieldErrors?.amount?.[0]} />
+          </div>
+          <div>
+            <Label htmlFor="pay-effective">生效日</Label>
+            <Input
+              id="pay-effective"
+              type="date"
+              value={effectiveFrom}
+              onChange={(e) => setEffectiveFrom(e.target.value)}
+              className={`mt-1 ${fieldErrors?.effectiveFrom ? "border-[#FCA5A5]" : ""}`}
+            />
+            <FieldError msg={fieldErrors?.effectiveFrom?.[0]} />
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="pay-note">備註（選填）</Label>
+          <Input
+            id="pay-note"
+            value={note}
+            maxLength={200}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="例:年度調薪、轉正職"
+            className="mt-1"
+          />
+        </div>
+
+        <NextStepHint tone="muted">
+          調薪不會改掉舊的,是「從生效日起用新的」— 算以前月份的薪水時仍用當時的金額。
+          填錯了就用同一個生效日再填一次,新的會蓋掉舊的。
+        </NextStepHint>
+
+        {history.length > 0 && (
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground">歷史紀錄</div>
+            <div className="max-h-40 divide-y divide-[#F0EBE4] overflow-y-auto rounded-md border border-[#E0DCD6] bg-white text-sm">
+              {history.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-baseline gap-x-3 px-3 py-1.5">
+                  <span className="font-mono text-xs text-muted-foreground">{p.effective_from}</span>
+                  <span className={p.id === current?.id ? "font-medium text-foreground" : "text-muted-foreground"}>
+                    {describePayProfile(p)}
+                  </span>
+                  {p.note && <span className="text-xs text-muted-foreground">{p.note}</span>}
+                  {p.id === current?.id && (
+                    <span className="rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-1.5 text-[11px] text-[#4A7C59]">
+                      目前
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button type="button" variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button
+            type="button"
+            onClick={save}
+            disabled={isPending || amount.trim() === "" || effectiveFrom.length !== 10}
+          >
+            {isPending ? "儲存中…" : "儲存"}
+          </Button>
+        </div>
+      </div>
     </ModalShell>
   );
 }

@@ -304,6 +304,7 @@ function navByRole(
           leavesLink,
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
+          { href: "/payroll", label: "薪資" },
         ],
         // 2026-07-07:老闆手機版原本沒有「回報」入口(桌機 nav 有、頁面權限也開,
         // 只漏了 tab),Phil 在手機上等於看不到也不能建現場回報 — 補上,共 6 tab。
@@ -345,6 +346,9 @@ function navByRole(
           leavesLink,
           { href: "/reports", label: "報表" },
           { href: "/staff", label: "人員管理" },
+          // 薪資(2026-09,Phase A):規則與假日助理都能改;金額要老闆授權(頁內自己判斷)。
+          // 手機不加 tab — 薪資是桌機作業。
+          { href: "/payroll", label: "薪資" },
         ],
         mobileTabs: [
           { href: "/dashboard", label: "首頁", icon: "home" },
