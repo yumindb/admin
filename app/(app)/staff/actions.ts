@@ -3,26 +3,24 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { usernameSchema, usernameToEmail } from "@/lib/auth/username";
 import { CATEGORY_KEYS } from "@/lib/notifications/prefs";
 import type { StaffActionResult } from "./types";
 
+/**
+ * 共用 tryGetActor:本機驗 JWT、而且會擋「已停用」的帳號 —
+ * 以前這裡自己 getUser() + 撈 profile,沒看 is_active,停用的助理在 token 過期前
+ * (最長 1 小時)還能新增 / 重設別人的帳號。
+ */
 async function requireManager() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "未登入" };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (profile?.role !== "office_staff" && profile?.role !== "owner") {
+  const actor = await tryGetActor();
+  if (!actor) return { ok: false as const, error: "未登入" };
+  if (actor.role !== "office_staff" && actor.role !== "owner") {
     return { ok: false as const, error: "只有辦公室助理或老闆可以管理人員" };
   }
-  return { ok: true as const, currentUserId: user.id };
+  return { ok: true as const, currentUserId: actor.id };
 }
 
 const CreateSchema = z.object({

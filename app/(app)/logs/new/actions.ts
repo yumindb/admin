@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { evaluateGeofence } from "@/lib/geo";
 import { FIELD_LABEL, stableStringify } from "@/lib/log-diff";
 import { extractStoragePath, normalizePhotoPaths } from "@/lib/supabase/storage";
@@ -62,16 +63,11 @@ const EDITABLE_FIELDS: DailyLogEditableField[] = [
 
 export async function saveLogAction(payload: SaveLogPayload) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "未登入" };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const role = (profile?.role ?? null) as UserRole | null;
+  // 共用 tryGetActor:本機驗 JWT、會擋停用帳號(以前自己 getUser() 多打一趟 Auth server)
+  const actor = await tryGetActor();
+  if (!actor) return { ok: false, error: "未登入" };
+  const user = { id: actor.id };
+  const role = actor.role as UserRole | null;
 
   // ----- 角色守則 -----
   // draft / submit:工地主任、老闆(原本就有,owner 為了測試流程也保留)
@@ -96,10 +92,14 @@ export async function saveLogAction(payload: SaveLogPayload) {
   // client 傳來的 photos[].path 是上傳 action 回的 signed URL(要即時預覽用),
   // 進 DB 前一律收斂成 storage path — 見 normalizePhotoPaths 的說明。
   const photos = normalizePhotoPaths(payload.photos, PHOTO_BUCKET);
-  // 填表人簽名同理:uploadSignatureAction / stampSignatureAction 回的是 signed URL
+  // 填表人簽名同理:uploadSignatureAction / stampSignatureAction 回的是 signed URL。
+  // 只收填表人自己資料夾裡的簽名(log_approvals 大家都讀得到,不檢查就能拿別人的簽名來用)
   const fillSignaturePath = payload.fillSignatureUrl
     ? extractStoragePath(payload.fillSignatureUrl, SIGNATURE_BUCKET)
     : undefined;
+  if (payload.fillSignatureUrl && !fillSignaturePath?.startsWith(`${user.id}/`)) {
+    return { ok: false, error: "簽名檔讀取失敗，請重新簽名一次" };
+  }
 
   if (!payload.caseId) return { ok: false, error: "請選案件" };
   if (!payload.logDate) return { ok: false, error: "請選日期" };
@@ -585,22 +585,15 @@ export async function deleteLogAction(formData: FormData) {
   const logId = String(formData.get("logId") ?? "");
   if (!logId) return;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (profile?.role !== "site_supervisor" && profile?.role !== "owner") return;
+  const actor = await tryGetActor();
+  if (!actor) return;
+  if (actor.role !== "site_supervisor" && actor.role !== "owner") return;
   // 只能刪自己的草稿
   await supabase
     .from("daily_logs")
     .delete()
     .eq("id", logId)
-    .eq("supervisor_id", user.id)
+    .eq("supervisor_id", actor.id)
     .eq("status", "draft");
   revalidatePath("/logs");
   redirect("/logs");

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { generatePdfForLog } from "@/lib/pdf/generate";
 import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
 import { REVIEW_STAGE, canEndorseLog } from "@/lib/approvals/review-stage";
@@ -52,18 +53,26 @@ type ActPayload = {
   comment?: string;        // 退回必填，通過可選
 };
 
+/**
+ * 走共用的 tryGetActor(本機驗 JWT + 檢查帳號是否停用)。
+ * 以前這裡自己 getUser() + 撈 profile:每個簽核動作多打一趟 Auth server,
+ * 也沒看 is_active — 停用的帳號在 token 過期前(最長 1 小時)還能簽。
+ */
 async function getActor() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, user: null, role: null as UserRole | null };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  return { supabase, user, role: (profile?.role ?? null) as UserRole | null };
+  const actor = await tryGetActor();
+  if (!actor) return { supabase, user: null, role: null as UserRole | null };
+  return { supabase, user: { id: actor.id }, role: actor.role };
+}
+
+/**
+ * client 送回來的簽名 → storage path,而且必須是簽核人**自己資料夾**裡的檔案。
+ * 所有人都讀得到 log_approvals.signature_url,不檢查的話可以拿別人的簽名路徑
+ * 當成自己的簽名送出(PDF 上就會印出別人的筆跡)。
+ */
+function ownSignaturePath(url: string | null | undefined, userId: string): string | null {
+  const path = signaturePath(url);
+  return path && path.startsWith(`${userId}/`) ? path : null;
 }
 
 async function loadLogStage(supabase: Awaited<ReturnType<typeof createClient>>, logId: string) {
@@ -107,6 +116,10 @@ export async function approveStageAction(
 
   if (!payload.signatureUrl) {
     return { ok: false as const, error: "請先簽名" };
+  }
+  const approveSignature = ownSignaturePath(payload.signatureUrl, user.id);
+  if (!approveSignature) {
+    return { ok: false as const, error: "簽名檔讀取失敗，請重新簽名一次" };
   }
 
   // 寫入順序:先 conditional update 日誌 → 成功才寫 approval 紀錄。
@@ -200,7 +213,7 @@ export async function approveStageAction(
     approver_id: user.id,
     decision: "approved",
     comment: payload.comment?.trim() || null,
-    signature_url: signaturePath(payload.signatureUrl),
+    signature_url: approveSignature,
   });
   if (insErr) {
     console.error(
@@ -266,6 +279,10 @@ export async function endorseLogAction(payload: ActPayload) {
   if (!payload.signatureUrl) {
     return { ok: false as const, error: "請先簽名" };
   }
+  const endorseSignature = ownSignaturePath(payload.signatureUrl, user.id);
+  if (!endorseSignature) {
+    return { ok: false as const, error: "簽名檔讀取失敗，請重新簽名一次" };
+  }
 
   const log = await loadLogStage(supabase, payload.logId);
   if (!log) return { ok: false as const, error: "找不到日誌" };
@@ -298,7 +315,7 @@ export async function endorseLogAction(payload: ActPayload) {
     approver_id: user.id,
     decision: "approved",
     comment: payload.comment?.trim() || null,
-    signature_url: signaturePath(payload.signatureUrl),
+    signature_url: endorseSignature,
   });
   if (insErr) {
     return { ok: false as const, error: "加簽寫入失敗：" + insErr.message };
@@ -362,7 +379,8 @@ export async function rejectStageAction(payload: ActPayload) {
     approver_id: user.id,
     decision: "rejected",
     comment: payload.comment.trim(),
-    signature_url: signaturePath(payload.signatureUrl),
+    // 退回不一定有簽名;有的話也只收本人的
+    signature_url: ownSignaturePath(payload.signatureUrl, user.id),
   });
   if (insErr) {
     console.error(

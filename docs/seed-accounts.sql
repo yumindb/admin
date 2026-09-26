@@ -1,8 +1,12 @@
+-- ⚠ 2026-09-26:這個檔案以前寫著明文的種子密碼,而且 repo 是公開的 —
+--   用過這支 seed 建出來的 owner / office / supervisor / field 帳號一律要改密碼。
+--   新環境要用的話,先把 CHANGE_ME_請改成強密碼 換成只有你知道的強密碼再跑,
+--   跑完不要把改過的檔案 commit 回來。
 -- ==========================================================================
 -- POC 帳號建立 — 在 Supabase SQL Editor 執行
 -- ==========================================================================
 -- 此腳本建立 4 個帳號:office_staff / site_supervisor / owner / field_assistant
--- 密碼統一為 'yumin1234'(POC 階段,正式版改用邀請流程)
+-- 密碼統一為 'CHANGE_ME_請改成強密碼'(POC 階段,正式版改用邀請流程)
 --
 -- ⚠ 此腳本依賴 schema.sql 已先執行(profiles 表 + handle_new_user trigger)。
 -- 執行後,profiles 會由 trigger 自動補上 role / full_name。
@@ -35,7 +39,7 @@ values (
   'authenticated',
   'authenticated',
   'office@yumin.local',
-  crypt('yumin1234', gen_salt('bf')),
+  crypt('CHANGE_ME_請改成強密碼', gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
   jsonb_build_object('full_name','辦公室助理','role','office_staff'),
@@ -59,7 +63,7 @@ values (
   'authenticated',
   'authenticated',
   'supervisor@yumin.local',
-  crypt('yumin1234', gen_salt('bf')),
+  crypt('CHANGE_ME_請改成強密碼', gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
   jsonb_build_object('full_name','工地主任','role','site_supervisor'),
@@ -83,7 +87,7 @@ values (
   'authenticated',
   'authenticated',
   'owner@yumin.local',
-  crypt('yumin1234', gen_salt('bf')),
+  crypt('CHANGE_ME_請改成強密碼', gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
   jsonb_build_object('full_name','Phil 老闆','role','owner'),
@@ -107,7 +111,7 @@ values (
   'authenticated',
   'authenticated',
   'field@yumin.local',
-  crypt('yumin1234', gen_salt('bf')),
+  crypt('CHANGE_ME_請改成強密碼', gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
   jsonb_build_object('full_name','現場人員','role','field_assistant'),

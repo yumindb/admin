@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { emailToUsername } from "@/lib/auth/username";
 import type { NotificationPrefs } from "@/lib/notifications/prefs";
@@ -25,17 +26,10 @@ const ROLE_ORDER: UserRole[] = [
 
 export default async function StaffPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (me?.role !== "office_staff" && me?.role !== "owner") {
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  const user = { id: actor.id };
+  if (actor.role !== "office_staff" && actor.role !== "owner") {
     redirect("/");
   }
 
@@ -100,7 +94,7 @@ export default async function StaffPage() {
   return (
     <StaffManager
       currentUserId={user.id}
-      currentUserRole={me.role as UserRole}
+      currentUserRole={actor.role}
       staffByRole={Object.fromEntries(byRole) as Record<UserRole, StaffRow[]>}
     />
   );
