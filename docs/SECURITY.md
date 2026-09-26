@@ -56,6 +56,8 @@
 1. 🔴 **改種子帳號密碼**:`owner`(= Phil 的帳號)、`office`、`supervisor`、`field` 都曾用 `docs/seed-accounts.sql`
    的密碼,而 repo 是公開的,等於任何人都能從登入頁登入。至少 9/13 時 `office` 還在用。
    到 /staff 用「重設密碼」改掉(Phil 的先跟他講);`Test-*` 開頭沒在用的帳號直接停用。
+   `owner` 是 Phil 每天在用的帳號(9/26 查:簽過 195 份日誌,9/25 還在用),優先處理。
+   本機錄教學影片的 `_work/video-*-capture.mjs`(沒進 git)把這幾個帳號的密碼寫死在 `page.fill`,改完要跟著更新。
    想確認還有誰用那組密碼,可在 SQL Editor 跑(把 `<種子密碼>` 換成舊檔案裡的值):
    ```sql
    select split_part(u.email,'@',1) as username, p.full_name, p.role, p.is_active
@@ -64,8 +66,19 @@
    ```
 2. 🔴 **GitHub repo `yumindb/admin` 改成 private**(Settings → General → Danger Zone)。公開內容包含所有 RLS 設計、
    專案 ref、客戶的標單範例、Actions 執行紀錄。
+   ⚠ **先處理部署才能改**(9/26 查證):Vercel 是免費的 Hobby 方案,官方規定 private repo 的 commit 作者
+   必須是 Hobby 團隊擁有者本人([文件](https://vercel.com/docs/deployments/troubleshoot-project-collaboration):
+   "The Hobby Plan does not support collaboration for private repositories")。擁有者是 `yumindb`,
+   但 commit 作者是 `evelynytliu` → 直接改 private,之後 push 就不會部署(網站停在舊版)。二選一:
+   - (a) 這個 repo 的 commit 改用 `yumindb` 身分:`git config user.name yumindb`、
+     `git config user.email 276292130+yumindb@users.noreply.github.com`(repo 內設定,不影響其他專案)。
+     先到 Vercel → Account Settings → Authentication 確認 Login Connections 連的是 GitHub `yumindb`。
+   - (b) Vercel 升 Pro(US$20/月),把 Evelyn 加進團隊。
+   GitHub Actions 改 private 後每月有 2,000 分鐘免費額度;目前每日備份約 5 分鐘 + CI,一個月約 200 分鐘,夠用。
 3. 🟠 **Supabase → Authentication**:關掉「Allow new users to sign up」(/staff 用 admin API 建帳號不受影響);
-   開啟 Leaked password protection;最短密碼建議改 8 碼(程式端目前擋 6 碼)。
+   開啟 Leaked password protection;最短密碼建議改 8 碼(程式端目前擋 6 碼,要改時
+   `account/actions.ts`、`staff/actions.ts` 與畫面上的「至少 6 碼」一起改)。
+   風險已因 migration-2.38 降低:自己註冊的帳號會被建成停用的現場人員,看不到任何資料。
 4. 🟠 **GitHub Actions 加固**:各 workflow 加 `permissions:`;`run-migration.yml` 的 `${{ inputs.file }}` 改用 env 傳入
    (現在可注入指令);`dawidd6/action-send-mail` 改用 commit SHA 釘版本;`migrate-to-tokyo.yml` 與 `TOKYO_*` secrets
    已完成任務,建議刪除(它現在指向正式站,只剩來源檢查擋著)。
