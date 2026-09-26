@@ -5,6 +5,7 @@ import { tryGetActor } from "@/lib/auth/require-role";
 import { startOfTodayTaipei } from "@/lib/datetime";
 import { AttendanceClient, type CaseOption, type AttendanceItem } from "./attendance-client";
 import { WeekScheduleCard } from "@/components/week-schedule-card";
+import { DayOffSection } from "@/components/day-off-section";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,8 @@ export default async function AttendancePage({
       {/* 本週班表(排班 Phase B):工人 / 主任手機沒有第六個 tab,班表放在打卡頁。
           沒排班或表不存在時整張卡不顯示。 */}
       <WeekScheduleCard userId={actor.id} />
+      {/* 排休:在班表排出來前標「這天不能上」(不簽核,給排班的人看) */}
+      <DayOffSection userId={actor.id} />
     </div>
   );
 }

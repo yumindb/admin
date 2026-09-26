@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { BottomTabNav, type BottomTab } from "@/components/bottom-tab-nav";
+import { DesktopNav, type DesktopLink } from "@/components/desktop-nav";
 import { LogoutButton } from "@/components/logout-button";
 import { RouteProgress } from "@/components/route-progress";
 import { RoleWelcomeCard } from "@/components/role-welcome-card";
@@ -21,8 +22,6 @@ const ROLE_LABEL: Record<string, string> = {
   reviewer: "審閱人",
   field_assistant: "現場人員",
 };
-
-type DesktopLink = { href: string; label: string; badge?: number };
 
 export default async function AppLayout({
   children,
@@ -81,18 +80,18 @@ export default async function AppLayout({
   );
   // 系統監控只給 SYSTEM_ADMIN_USERNAMES 名單上的人(顧問),其他人完全看不到入口
   if (isSystemAdmin(actor)) {
-    desktopNav.push({ href: "/system", label: "系統監控" });
+    desktopNav.push({ href: "/system", label: "系統監控", tier: "secondary" });
   }
 
   return (
     <div className="flex min-h-screen flex-col">
       <RouteProgress />
       <header className="border-b border-[#E0DCD6] bg-primary text-primary-foreground">
-        <div className="flex h-16 items-center justify-between px-4 md:px-8">
-          <div className="flex items-center gap-8">
+        <div className="flex h-16 items-center justify-between gap-4 px-4 md:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-5 lg:gap-7">
             <Link
               href="/"
-              className="flex items-center gap-3 text-lg font-semibold tracking-wider"
+              className="flex shrink-0 items-center gap-3 text-lg font-semibold tracking-wider"
             >
               <Image
                 src="/yumin-badge-white.svg"
@@ -102,29 +101,15 @@ export default async function AppLayout({
                 priority
                 className="h-8 w-auto"
               />
-              裕民工務 管理系統
+              {/* 平板(md)只放徽章;lg 起「裕民工務」;xl 起才是全名 — 把寬度讓給導覽項目 */}
+              <span className="hidden whitespace-nowrap lg:inline">
+                裕民工務<span className="hidden xl:inline"> 管理系統</span>
+              </span>
             </Link>
-            {desktopNav.length > 0 && (
-              <nav className="hidden items-center gap-6 text-base text-[#E8E4DE] md:flex">
-                {desktopNav.map((l) => (
-                  <Link
-                    key={l.href}
-                    href={l.href}
-                    className="inline-flex items-center gap-1.5 hover:text-white"
-                  >
-                    <span>{l.label}</span>
-                    {l.badge !== undefined && l.badge > 0 && (
-                      <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-[#B91C1C] px-1.5 py-0 text-xs font-semibold tabular-nums leading-5 text-white">
-                        {l.badge}
-                      </span>
-                    )}
-                  </Link>
-                ))}
-              </nav>
-            )}
+            {desktopNav.length > 0 && <DesktopNav links={desktopNav} />}
           </div>
 
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex shrink-0 items-center gap-3 text-sm lg:gap-4">
             {/* 消息 — 簽核意見 / 退回原因的站內通道(不需綁 LINE)。
                 全角色、手機桌機都放這顆:業主 2026-08「底下的人不會跳通知出來」
                 的解法就是這個紅點。有未讀時鈴鐺會閃。 */}
@@ -184,7 +169,7 @@ export default async function AppLayout({
             </a>
             <Link
               href="/account"
-              className="hidden text-right md:block hover:opacity-90"
+              className="hidden text-right xl:block hover:opacity-90"
               title="我的帳號 / 修改密碼"
             >
               <div className="text-base text-[#E8E4DE] underline-offset-4 hover:underline">
@@ -194,13 +179,13 @@ export default async function AppLayout({
                 {company} · {roleLabel}
               </div>
             </Link>
-            {/* 手機版：小頭像連結 — 點開到 /account 改密碼 / 看身份。
-                桌機版上方那塊 Link 已負責，所以這顆 md:hidden。 */}
+            {/* 小頭像連結 — 點開到 /account 改密碼 / 看身份。
+                xl 以上由上面的姓名 / 公司那塊負責,所以這顆 xl:hidden(手機、平板、小筆電都用它)。 */}
             <Link
               href="/account"
               aria-label="我的帳號"
-              title="我的帳號"
-              className="inline-flex size-9 items-center justify-center rounded-full border border-[#A07850]/40 text-[#E8E4DE] transition-colors hover:bg-white/5 md:hidden"
+              title={`我的帳號：${fullName}（${company} · ${roleLabel}）`}
+              className="inline-flex size-9 items-center justify-center rounded-full border border-[#A07850]/40 text-[#E8E4DE] transition-colors hover:bg-white/5 xl:hidden"
             >
               <svg
                 width="18"
@@ -256,17 +241,18 @@ function navByRole(
       return {
         // 2026-09-09:「待複核」拿掉 — 主任複核關從沒啟用過,那一頁永遠是空的;
         // 位置換成「請假」(主任要簽現場人員的假單,以前手機版沒有入口)。
+        // 2026-09-26:9 項一排放不下 → 每天用的直接放,其餘 secondary(寬螢幕直接放、窄的收「更多」)。
         desktopNav: [
           { href: "/logs", label: "日誌" },
-          { href: "/approvals/history", label: "我簽過的" },
           { href: "/attendance", label: "打卡" },
           { href: "/field-reports", label: "現場回報" },
           { href: "/my-cases", label: "我的案場" },
           leavesLink,
+          { href: "/approvals/history", label: "我簽過的", tier: "secondary" },
           // 排班唯讀:主任要知道工班誰哪天在哪個工地(自己的班在打卡頁也看得到)
-          { href: "/schedule", label: "排班" },
-          { href: "/cases", label: "案件總覽" },
-          { href: "/reports", label: "報表" },
+          { href: "/schedule", label: "排班", tier: "secondary" },
+          { href: "/cases", label: "案件總覽", tier: "secondary" },
+          { href: "/reports", label: "報表", tier: "secondary" },
         ],
         // 手機:核心 4 個 tab。案件總覽在桌機 nav 可看,手機則透過日誌/打卡 → 案件 link 進入。
         mobileTabs: [
@@ -296,18 +282,20 @@ function navByRole(
       };
     case "owner":
       return {
+        // 2026-09-26:12 項一排放不下 → 人員 / 排班 / 薪資收成「人事 ▾」;
+        // 我簽過的 / 現場回報 / 報表是 secondary(寬螢幕直接放、窄的收「更多 ▾」)。
         desktopNav: [
           { href: "/dashboard", label: "儀表板" },
           { href: "/approvals", label: "待核定", badge: approvalsBadge },
-          { href: "/approvals/history", label: "我簽過的" },
           { href: "/cases", label: "案件總覽" },
           { href: "/logs", label: "日誌" },
-          { href: "/field-reports", label: "現場回報" },
           leavesLink,
-          { href: "/reports", label: "報表" },
-          { href: "/staff", label: "人員管理" },
-          { href: "/schedule", label: "排班" },
-          { href: "/payroll", label: "薪資" },
+          { href: "/staff", label: "人員管理", group: "人事" },
+          { href: "/schedule", label: "排班", group: "人事" },
+          { href: "/payroll", label: "薪資", group: "人事" },
+          { href: "/approvals/history", label: "我簽過的", tier: "secondary" },
+          { href: "/field-reports", label: "現場回報", tier: "secondary" },
+          { href: "/reports", label: "報表", tier: "secondary" },
         ],
         // 2026-07-07:老闆手機版原本沒有「回報」入口(桌機 nav 有、頁面權限也開,
         // 只漏了 tab),Phil 在手機上等於看不到也不能建現場回報 — 補上,共 6 tab。
@@ -339,20 +327,21 @@ function navByRole(
       };
     case "office_staff":
       return {
+        // 2026-09-26:12 項一排放不下 → 人員 / 排班 / 薪資收成「人事 ▾」;
+        // 我簽過的 / 現場回報 / 報表是 secondary(寬螢幕直接放、窄的收「更多 ▾」)。
+        // 薪資(Phase A):規則與假日助理都能改;金額要老闆授權(頁內自己判斷)。手機不加 tab。
         desktopNav: [
           { href: "/dashboard", label: "儀表板" },
           { href: "/cases", label: "案件總覽" },
           { href: "/approvals", label: "待審核", badge: approvalsBadge },
-          { href: "/approvals/history", label: "我簽過的" },
           { href: "/logs", label: "日誌" },
-          { href: "/field-reports", label: "現場回報" },
           leavesLink,
-          { href: "/reports", label: "報表" },
-          { href: "/staff", label: "人員管理" },
-          // 薪資(2026-09,Phase A):規則與假日助理都能改;金額要老闆授權(頁內自己判斷)。
-          // 手機不加 tab — 排班 / 薪資是桌機作業。
-          { href: "/schedule", label: "排班" },
-          { href: "/payroll", label: "薪資" },
+          { href: "/staff", label: "人員管理", group: "人事" },
+          { href: "/schedule", label: "排班", group: "人事" },
+          { href: "/payroll", label: "薪資", group: "人事" },
+          { href: "/approvals/history", label: "我簽過的", tier: "secondary" },
+          { href: "/field-reports", label: "現場回報", tier: "secondary" },
+          { href: "/reports", label: "報表", tier: "secondary" },
         ],
         mobileTabs: [
           { href: "/dashboard", label: "首頁", icon: "home" },

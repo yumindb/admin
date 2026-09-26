@@ -143,6 +143,7 @@ export const ACTION_LABELS: Record<string, string> = {
   setDayScheduleAction: "排某人某天的班",
   fillWeekScheduleAction: "快速排班(整週)",
   copyWeekScheduleAction: "複製上週班表",
+  toggleDayOffAction: "標／取消排休",
 };
 
 /**

@@ -30,6 +30,8 @@ import {
 
 export type StaffOpt = { id: string; name: string; role: string; company: string | null };
 export type CaseOpt = { id: string; label: string; paused: boolean };
+/** 員工自己標的排休(migration-2.42):只是提醒,排班的人可以照排,存檔時會再問一次 */
+export type DayOff = { userId: string; date: string; note: string | null };
 
 const ROLE_LABEL: Record<string, string> = {
   owner: "老闆",
@@ -58,6 +60,7 @@ export function ScheduleGrid({
   entries,
   cases,
   holidays,
+  dayOffs = [],
   canEdit,
 }: {
   weekStart: string;
@@ -70,8 +73,14 @@ export function ScheduleGrid({
   entries: ScheduleEntry[];
   cases: CaseOpt[];
   holidays: Holiday[];
+  dayOffs: DayOff[];
   canEdit: boolean;
 }) {
+  const dayOffByKey = useMemo(() => {
+    const m = new Map<string, DayOff>();
+    for (const d of dayOffs) m.set(`${d.userId}|${d.date}`, d);
+    return m;
+  }, [dayOffs]);
   const router = useRouter();
   const dates = weekDates(weekStart);
   const templatesById = useMemo(() => indexTemplates(templates), [templates]);
@@ -204,6 +213,7 @@ export function ScheduleGrid({
                     const list = byDate?.get(d) ?? [];
                     const h = holidayByDate.get(d);
                     const off = h ? !h.is_workday : isoWeekday(d) >= 6;
+                    const dayOff = dayOffByKey.get(`${s.id}|${d}`);
                     return (
                       <td key={d} className={`p-1 align-top ${off ? "bg-[#EFEAE3]/40" : ""}`}>
                         <button
@@ -212,11 +222,21 @@ export function ScheduleGrid({
                           onClick={() => setEditing({ staff: s, date: d })}
                           className={`flex min-h-11 w-full flex-col items-stretch gap-1 rounded-md border px-1.5 py-1 text-left transition-colors ${
                             canEdit ? "hover:border-accent" : "cursor-default"
-                          } ${list.length > 0 ? "border-[#E0DCD6] bg-white" : "border-dashed border-[#E0DCD6]/80 bg-transparent"}`}
-                          title={canEdit ? "點一下排班" : undefined}
+                          } ${
+                            list.length > 0
+                              ? "border-[#E0DCD6] bg-white"
+                              : dayOff
+                                ? "border-dashed border-[#D97706]/50 bg-[#FFFBEB]/60"
+                                : "border-dashed border-[#E0DCD6]/80 bg-transparent"
+                          }`}
+                          title={dayOff ? `本人排休${dayOff.note ? `:${dayOff.note}` : ""}` : canEdit ? "點一下排班" : undefined}
                         >
                           {list.length === 0 ? (
-                            <span className="text-[11px] text-muted-foreground/60">{canEdit ? "＋" : "—"}</span>
+                            dayOff ? (
+                              <span className="text-[11px] text-[#92400E]">休{dayOff.note ? "・" + dayOff.note : ""}</span>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground/60">{canEdit ? "＋" : "—"}</span>
+                            )
                           ) : (
                             list.map((e) => (
                               <span key={e.id} className="flex items-center gap-1 text-xs">
@@ -228,6 +248,9 @@ export function ScheduleGrid({
                                 </span>
                               </span>
                             ))
+                          )}
+                          {list.length > 0 && dayOff && (
+                            <span className="text-[10px] text-[#92400E]">本人有排休</span>
                           )}
                         </button>
                       </td>
@@ -254,6 +277,7 @@ export function ScheduleGrid({
           </span>
         ))}
         <span>灰底 = 休息日／例假日／國定假日</span>
+        <span className="text-[#92400E]">休 = 本人排休(可以照排,存檔會再問)</span>
       </div>
 
       {editing && (
@@ -261,6 +285,7 @@ export function ScheduleGrid({
           staff={editing.staff}
           date={editing.date}
           existing={grouped.get(editing.staff.id)?.get(editing.date) ?? []}
+          dayOff={dayOffByKey.get(`${editing.staff.id}|${editing.date}`) ?? null}
           templates={activeTemplates}
           templatesById={templatesById}
           cases={cases}
@@ -328,6 +353,7 @@ function DayEditor({
   staff,
   date,
   existing,
+  dayOff,
   templates,
   templatesById,
   cases,
@@ -337,12 +363,14 @@ function DayEditor({
   staff: StaffOpt;
   date: string;
   existing: ScheduleEntry[];
+  dayOff: DayOff | null;
   templates: ShiftTemplate[];
   templatesById: Map<string, ShiftTemplate>;
   cases: CaseOpt[];
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [confirmDayOff, setConfirmDayOff] = useState(false);
   const defaultTemplate = templates[0]?.id ?? null;
   const [rows, setRows] = useState<DraftEntry[]>(() =>
     existing.length > 0
@@ -389,6 +417,11 @@ function DayEditor({
   return (
     <Modal title={`${staff.name}・${WEEKDAY_LABEL[isoWeekday(date)]} ${shortDateLabel(date)}`} onClose={onClose}>
       <div className="space-y-4">
+        {dayOff && (
+          <NextStepHint tone="warning" title="本人這天有標排休">
+            {dayOff.note ? `原因:${dayOff.note}。` : ""}可以照排,但存檔前會再確認一次;排了記得跟本人說。
+          </NextStepHint>
+        )}
         {existing.length > 0 && (
           <div className="text-xs text-muted-foreground">
             目前:{existing.map((e) => describeEntry(e, templatesById)).join("、")}
@@ -478,9 +511,15 @@ function DayEditor({
           </Button>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-            <Button type="button" onClick={() => save(rows)} disabled={isPending || rows.length === 0}>
-              {isPending ? "儲存中…" : "儲存"}
-            </Button>
+            {dayOff && !confirmDayOff ? (
+              <Button type="button" onClick={() => setConfirmDayOff(true)} disabled={isPending || rows.length === 0}>
+                儲存
+              </Button>
+            ) : (
+              <Button type="button" onClick={() => save(rows)} disabled={isPending || rows.length === 0}>
+                {isPending ? "儲存中…" : dayOff ? "本人排休,仍要排班" : "儲存"}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -528,7 +567,7 @@ function FillWeekDialog({
   }
 
   return (
-    <Modal title="快速排班(只填還沒排的日子)" onClose={onClose}>
+    <Modal title="快速排班(只填還沒排、也沒排休的日子)" onClose={onClose}>
       <div className="space-y-4">
         <div>
           <Label>班別</Label>

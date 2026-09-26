@@ -12,6 +12,7 @@ import {
   PAYROLL_SECTION_LABEL,
   WEEKDAY_LABEL,
   type BonusRules,
+  type DayOffRules,
   type LateRules,
   type LeavePayRatios,
   type OvertimeRules,
@@ -269,6 +270,7 @@ export function PayrollSettingsForm({ initial }: { initial: PayrollSettings }) {
   const [ratios, setRatios] = useState<LeavePayRatios>(initial.leave_pay_ratios);
   const [bonus, setBonus] = useState<BonusRules>(initial.bonus);
   const [payday, setPayday] = useState<PaydayRules>(initial.payday);
+  const [dayOff, setDayOff] = useState<DayOffRules>(initial.day_off);
 
   // 季覆寫用陣列編輯,存的時候再轉成物件
   const [overrides, setOverrides] = useState<{ quarter: string; days: number }[]>(() =>
@@ -649,6 +651,51 @@ export function PayrollSettingsForm({ initial }: { initial: PayrollSettings }) {
               >
                 <Plus className="size-3" /> 新增覆寫
               </button>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard section="day_off" description="員工在班表排出來前標「這天不能上」;不簽核,只是給排班的人看" value={dayOff}>
+        {(errors) => (
+          <div className="space-y-4">
+            <Toggle
+              checked={dayOff.enabled}
+              onChange={(v) => setDayOff({ ...dayOff, enabled: v })}
+              label="開放員工標排休"
+              help="關掉後打卡頁不顯示排休卡;已標的保留"
+            />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <NumField
+                id="monthly_cap"
+                label="每月上限"
+                value={dayOff.monthly_cap}
+                step="1"
+                onChange={(n) => setDayOff({ ...dayOff, monthly_cap: n })}
+                suffix="天"
+                help="0 = 不限制;餐飲常設 4–8"
+                error={firstError(errors, "monthly_cap")}
+              />
+              <NumField
+                id="deadline_day"
+                label="截止日"
+                value={dayOff.deadline_day}
+                step="1"
+                onChange={(n) => setDayOff({ ...dayOff, deadline_day: n })}
+                suffix="號前標下個月"
+                help="0 = 不限制;例如 20 → 9/20 之後不能再標 10 月"
+                error={firstError(errors, "deadline_day")}
+              />
+              <NumField
+                id="min_days_ahead"
+                label="至少提前"
+                value={dayOff.min_days_ahead}
+                step="1"
+                onChange={(n) => setDayOff({ ...dayOff, min_days_ahead: n })}
+                suffix="天"
+                help="1 = 明天起可標,今天不行"
+                error={firstError(errors, "min_days_ahead")}
+              />
             </div>
           </div>
         )}

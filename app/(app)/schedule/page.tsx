@@ -37,7 +37,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Sea
   const dates = weekDates(weekStart);
 
   const supabase = await createClient();
-  const [staffRes, tplRes, entryRes, caseRes, holidayRes] = await Promise.all([
+  const [staffRes, tplRes, entryRes, caseRes, holidayRes, dayOffRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name, role, company")
@@ -67,7 +67,18 @@ export default async function SchedulePage({ searchParams }: { searchParams: Sea
       .select("holiday_date, name, is_workday")
       .gte("holiday_date", dates[0])
       .lte("holiday_date", dates[6]),
+    // 排休(migration-2.42;表不存在時 data 為 null → 沒有人排休)
+    supabase
+      .from("day_off_requests")
+      .select("user_id, off_date, note")
+      .gte("off_date", dates[0])
+      .lte("off_date", dates[6]),
   ]);
+  const dayOffs = (dayOffRes.data ?? []).map((r) => ({
+    userId: r.user_id as string,
+    date: r.off_date as string,
+    note: (r.note as string | null) ?? null,
+  }));
 
   const tableMissing = !!tplRes.error || !!entryRes.error;
 
@@ -147,6 +158,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Sea
           entries={entries}
           cases={cases}
           holidays={holidays}
+          dayOffs={dayOffs}
           canEdit={canEdit}
         />
       )}

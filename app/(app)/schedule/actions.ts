@@ -222,7 +222,7 @@ const WeekFillSchema = z.object({
 });
 
 /**
- * 快速排班:把某個班別填進這些人、這些星期幾 — **只填還沒排的日子**,已排的不動。
+ * 快速排班:把某個班別填進這些人、這些星期幾 — **只填還沒排的日子**,已排的與本人排休的都不動。
  * 裕民每週一次「全員週一到週五日班」就靠這個。
  */
 export async function fillWeekScheduleAction(
@@ -244,13 +244,22 @@ export async function fillWeekScheduleAction(
   if (!tpl || !tpl.is_active) return fail("班別已停用或不存在");
 
   const dates = weekDates(d.weekStart).filter((_, i) => d.weekdays.includes(i + 1));
-  const { data: existing, error: exErr } = await admin
-    .from("schedule_entries")
-    .select("user_id, work_date")
-    .in("user_id", d.userIds)
-    .in("work_date", dates);
+  const [{ data: existing, error: exErr }, dayOffRes] = await Promise.all([
+    admin
+      .from("schedule_entries")
+      .select("user_id, work_date")
+      .in("user_id", d.userIds)
+      .in("work_date", dates),
+    // 排休的日子也跳過(表不存在時當沒有人排休)
+    admin
+      .from("day_off_requests")
+      .select("user_id, off_date")
+      .in("user_id", d.userIds)
+      .in("off_date", dates),
+  ]);
   if (exErr) return fail("讀取班表失敗:" + exErr.message);
   const taken = new Set((existing ?? []).map((e) => `${e.user_id}|${e.work_date}`));
+  for (const r of dayOffRes.data ?? []) taken.add(`${r.user_id}|${r.off_date}`);
 
   const rows = [];
   for (const userId of d.userIds) {

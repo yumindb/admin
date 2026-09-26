@@ -139,3 +139,27 @@ describe("日型別判定", () => {
     );
   });
 });
+
+describe("排休規則", () => {
+  const rules = { deadline_day: 0, min_days_ahead: 1 };
+  it("過去與今天不能標(預設要提前 1 天)", async () => {
+    const { dayOffBlockedReason } = await import("../payroll/settings");
+    expect(dayOffBlockedReason("2026-09-25", "2026-09-26", rules)).toMatch(/提前/);
+    expect(dayOffBlockedReason("2026-09-26", "2026-09-26", rules)).toMatch(/提前/);
+    expect(dayOffBlockedReason("2026-09-27", "2026-09-26", rules)).toBeNull();
+  });
+
+  it("截止日只鎖下個月:20 號後不能標下個月,再下個月不鎖,本月不鎖", async () => {
+    const { dayOffBlockedReason } = await import("../payroll/settings");
+    const r = { deadline_day: 20, min_days_ahead: 1 };
+    expect(dayOffBlockedReason("2026-10-05", "2026-09-26", r)).toMatch(/9 月 20 號後/);
+    expect(dayOffBlockedReason("2026-10-05", "2026-09-19", r)).toBeNull();
+    expect(dayOffBlockedReason("2026-11-05", "2026-09-26", r)).toBeNull();
+    expect(dayOffBlockedReason("2026-09-30", "2026-09-26", r)).toBeNull();
+  });
+
+  it("預設值:開放、不限上限、不限截止", () => {
+    const d = defaultPayrollSettings().day_off;
+    expect(d).toEqual({ enabled: true, monthly_cap: 0, deadline_day: 0, min_days_ahead: 1 });
+  });
+});

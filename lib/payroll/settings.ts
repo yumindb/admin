@@ -27,6 +27,7 @@ export const PAYROLL_SETTING_KEYS = {
   leave_pay_ratios: "payroll.leave_pay_ratios",
   bonus: "payroll.bonus",
   payday: "payroll.payday",
+  day_off: "payroll.day_off",
 } as const;
 
 export type PayrollSettingSection = keyof typeof PAYROLL_SETTING_KEYS;
@@ -141,6 +142,18 @@ export const PaydaySchema = z.object({
   day_of_month: z.number().int().min(1).max(28).default(5),
 });
 
+/** 排休(migration-2.42):員工在排班前標「這天不能上」 */
+export const DayOffSchema = z.object({
+  /** 關掉 = 員工端不顯示排休卡 */
+  enabled: z.boolean().default(true),
+  /** 每月最多標幾天;0 = 不限 */
+  monthly_cap: z.number().int().min(0).max(31).default(0),
+  /** 每月幾號前要標完「下個月」的排休;0 = 不限(例如 20 → 9/20 之後不能再標 10 月) */
+  deadline_day: z.number().int().min(0).max(28).default(0),
+  /** 至少要提前幾天標(1 = 明天起可標,今天不行) */
+  min_days_ahead: z.number().int().min(0).max(60).default(1),
+});
+
 export const PAYROLL_SCHEMAS = {
   work_rules: WorkRulesSchema,
   overtime: OvertimeSchema,
@@ -148,6 +161,7 @@ export const PAYROLL_SCHEMAS = {
   leave_pay_ratios: LeavePayRatiosSchema,
   bonus: BonusSchema,
   payday: PaydaySchema,
+  day_off: DayOffSchema,
 } as const;
 
 export type WorkRules = z.infer<typeof WorkRulesSchema>;
@@ -156,6 +170,7 @@ export type LateRules = z.infer<typeof LateSchema>;
 export type LeavePayRatios = z.infer<typeof LeavePayRatiosSchema>;
 export type BonusRules = z.infer<typeof BonusSchema>;
 export type PaydayRules = z.infer<typeof PaydaySchema>;
+export type DayOffRules = z.infer<typeof DayOffSchema>;
 
 export type PayrollSettings = {
   work_rules: WorkRules;
@@ -164,6 +179,7 @@ export type PayrollSettings = {
   leave_pay_ratios: LeavePayRatios;
   bonus: BonusRules;
   payday: PaydayRules;
+  day_off: DayOffRules;
 };
 
 /** 設定頁 / DB description 用的中文名 */
@@ -174,6 +190,7 @@ export const PAYROLL_SECTION_LABEL: Record<PayrollSettingSection, string> = {
   leave_pay_ratios: "請假給薪比例",
   bonus: "季績效獎金",
   payday: "發薪日",
+  day_off: "排休",
 };
 
 /**
@@ -206,7 +223,38 @@ export function defaultPayrollSettings(): PayrollSettings {
     leave_pay_ratios: LeavePayRatiosSchema.parse({}),
     bonus: BonusSchema.parse({}),
     payday: PaydaySchema.parse({}),
+    day_off: DayOffSchema.parse({}),
   };
+}
+
+/**
+ * 某一天能不能標排休(純規則,不查 DB):
+ *   - 不能是過去或太近(min_days_ahead)
+ *   - 有截止日時,下個月(含以後)的排休要在本月 deadline_day 前標;本月的不受截止日限制
+ *     (截止日的用意是「排下個月班表前要知道」,本月班表通常已經排了,由「已排班不能標」那條擋)
+ * 回 null = 可以;否則回中文原因。
+ */
+export function dayOffBlockedReason(
+  dateIso: string,
+  todayIso: string,
+  rules: Pick<DayOffRules, "deadline_day" | "min_days_ahead">,
+): string | null {
+  const today = new Date(`${todayIso}T00:00:00Z`).getTime();
+  const target = new Date(`${dateIso}T00:00:00Z`).getTime();
+  const daysAhead = Math.round((target - today) / 86_400_000);
+  if (daysAhead < rules.min_days_ahead) {
+    return rules.min_days_ahead <= 0 ? "不能標過去的日子" : `要提前至少 ${rules.min_days_ahead} 天`;
+  }
+  if (rules.deadline_day > 0) {
+    const [ty, tm, td] = todayIso.split("-").map(Number);
+    const [dy, dm] = dateIso.split("-").map(Number);
+    const monthsAhead = (dy - ty) * 12 + (dm - tm);
+    // 只鎖「下個月」:本月 deadline_day 之後就不能再標下個月;再下個月還早,不鎖
+    if (monthsAhead === 1 && td > rules.deadline_day) {
+      return `${tm} 月 ${rules.deadline_day} 號後不能再標 ${dm} 月的排休`;
+    }
+  }
+  return null;
 }
 
 /** 一次讀六組(單一查詢);任何一組讀不到就用預設 */
