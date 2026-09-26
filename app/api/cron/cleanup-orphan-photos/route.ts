@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 
 // Vercel Functions 預設 10 秒 timeout;掃 bucket + 兩張表 + 分批刪除
 // 在資料量大時容易超時。Hobby 上限 60 秒,設到上限。
@@ -103,31 +104,53 @@ export async function GET(request: Request) {
   }
 
   // 2) 撈所有被引用的 path(從兩張表的 photos jsonb)
+  //    ⚠ 一定要分頁撈完:PostgREST 單次最多回 1000 筆、超過的默默截斷。
+  //    2026-09 前這裡直接 select,表超過 1000 列後「第 1001 筆以後的日誌照片」
+  //    會被當成孤兒刪掉,而且凌晨的備份 rclone sync 會把 R2 上的備份一起刪掉,救不回來。
   const referenced = new Set<string>();
-  const { data: logRows, error: logErr } = await supabase
-    .from("daily_logs")
-    .select("photos");
-  if (logErr) {
-    return NextResponse.json(
-      { ok: false, error: "select daily_logs: " + logErr.message },
-      { status: 500 }
-    );
+  const [logRes, reportRes] = await Promise.all([
+    fetchAllRows<{ photos: unknown }>((from, to) =>
+      supabase.from("daily_logs").select("photos").order("id").range(from, to),
+    ),
+    fetchAllRows<{ photos: unknown }>((from, to) =>
+      supabase.from("field_reports").select("photos").order("id").range(from, to),
+    ),
+  ]);
+  for (const [name, res] of [
+    ["daily_logs", logRes],
+    ["field_reports", reportRes],
+  ] as const) {
+    if (res.error || res.truncated) {
+      return NextResponse.json(
+        { ok: false, error: `select ${name}: ${res.error?.message ?? "資料量超過分頁上限,為安全起見不刪任何檔案"}` },
+        { status: 500 },
+      );
+    }
   }
-  const { data: reportRows, error: repErr } = await supabase
-    .from("field_reports")
-    .select("photos");
-  if (repErr) {
-    return NextResponse.json(
-      { ok: false, error: "select field_reports: " + repErr.message },
-      { status: 500 }
-    );
-  }
-  for (const r of [...(logRows ?? []), ...(reportRows ?? [])]) {
+  for (const r of [...logRes.data, ...reportRes.data]) {
     collectPaths(r.photos, referenced);
   }
 
-  // 3) 比對:bucket 中超過 24h 但 DB 沒引用的就是孤兒
+  // 3) 比對:bucket 中超過 72h 但 DB 沒引用的就是孤兒
   const orphans = oldFilePaths.filter((p) => !referenced.has(p));
+
+  // 保險絲:正常每天的孤兒只有幾張(取消的草稿)。一次要刪一大批,
+  // 八成是「被引用清單」讀漏了 — 寧可不刪、留給人看,也不要誤刪正式照片。
+  const maxOrphans = Math.max(50, Math.floor(oldFilePaths.length * 0.2));
+  if (orphans.length > maxOrphans) {
+    console.error(
+      `[cleanup-orphan-photos] 孤兒 ${orphans.length} 張超過保險上限 ${maxOrphans}(掃描 ${oldFilePaths.length} 張),這次不刪`,
+    );
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `孤兒照片 ${orphans.length} 張超過保險上限 ${maxOrphans},這次不刪,請人工確認`,
+        scanned: oldFilePaths.length,
+        referenced: referenced.size,
+      },
+      { status: 500 },
+    );
+  }
 
   // 4) 分批刪除(Supabase remove 沒明文上限,保守 100 個一批)
   let deleted = 0;

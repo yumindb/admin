@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { tryGetActor } from "@/lib/auth/require-role";
-import { formatDateTW } from "@/lib/datetime";
+import { formatDateTW, startOfMonthTaipei, startOfTodayTaipei } from "@/lib/datetime";
 import {
   BEHIND_GAP_PP,
   computeCaseProgress,
@@ -44,8 +44,9 @@ export default async function DashboardPage() {
 
   const supabase = await createClient();
   const now = Date.now();
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  // 台灣時間今天 0 點(setHours(0,0,0,0) 在 Vercel 上是台灣早上 8 點 —
+  // 8 點前打卡的主任會被列成「今天還沒打卡」)
+  const todayStart = startOfTodayTaipei();
 
   // 4 個獨立 query 並行
   const [
@@ -195,10 +196,7 @@ export default async function DashboardPage() {
   const missingClockIn = supervisors.filter((s) => !clockedInToday.has(s.id));
 
   // 4. 本月新增合約外 + 未簽約金額(更 actionable — 累計沒辦法看出趨勢)
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const monthStartIso = monthStart.toISOString();
+  const monthStartIso = startOfMonthTaipei().toISOString();
 
   const [{ data: contracts }, { data: unsignedItems }] = await Promise.all([
     supabase

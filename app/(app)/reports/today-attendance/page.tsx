@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { formatDistance } from "@/lib/geo";
+import { todayLocalDate } from "@/lib/daily-log";
 
 export const dynamic = "force-dynamic";
 
@@ -61,13 +62,11 @@ export default async function TodayAttendancePage() {
 
   const supabase = await createClient();
 
-  // 今日起迄(Asia/Taipei,簡化用 +08:00)
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, "0");
-  const d = String(today.getDate()).padStart(2, "0");
-  const fromIso = `${y}-${m}-${d}T00:00:00+08:00`;
-  const toIso = `${y}-${m}-${d}T23:59:59+08:00`;
+  // 今日起迄(Asia/Taipei)。日期要用台灣時區取 — getFullYear/getDate 在 Vercel 上是 UTC,
+  // 台灣 00:00–07:59 會拿到昨天的日期
+  const ymd = todayLocalDate();
+  const fromIso = `${ymd}T00:00:00+08:00`;
+  const toIso = `${ymd}T23:59:59+08:00`;
 
   // 撈所有 active 主任 + 現場人員
   const { data: profiles } = await supabase

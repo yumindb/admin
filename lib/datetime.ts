@@ -32,3 +32,27 @@ export function formatDateTW(input: DateInput, opts?: Intl.DateTimeFormatOptions
   if (!d) return "";
   return d.toLocaleDateString("zh-TW", { timeZone: TZ, ...opts });
 }
+
+/**
+ * 台灣「今天 00:00」的時間點 — 給 `.gte("created_at", …)` 這類查詢當起點。
+ *
+ * ⚠ 不能用 `new Date().setHours(0, 0, 0, 0)`:Vercel 跑在 UTC,那是台灣早上 8 點,
+ * 8 點前的打卡 / 紀錄會被當成昨天(2026-09-26 健檢抓到打卡頁與儀表板都中)。
+ * 台灣沒有日光節約時間,固定 +08:00。
+ */
+export function startOfTodayTaipei(now: Date = new Date()): Date {
+  const ymd = now.toLocaleDateString("en-CA", { timeZone: TZ });
+  return new Date(`${ymd}T00:00:00+08:00`);
+}
+
+/** 台灣「本月 1 號 00:00」 */
+export function startOfMonthTaipei(now: Date = new Date()): Date {
+  const ymd = now.toLocaleDateString("en-CA", { timeZone: TZ });
+  return new Date(`${ymd.slice(0, 8)}01T00:00:00+08:00`);
+}
+
+/** 「近 N 天」的起點:今天算第 1 天,往前推到第 N 天的台灣 00:00 */
+export function startOfRecentDaysTaipei(days: number, now: Date = new Date()): Date {
+  const start = startOfTodayTaipei(now);
+  return new Date(start.getTime() - (Math.max(1, days) - 1) * 24 * 60 * 60 * 1000);
+}

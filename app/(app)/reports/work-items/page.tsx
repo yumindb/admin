@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
+import { fetchAllRows } from "@/lib/db/fetch-all";
 import {
   computeCrossCaseSummaryRows,
   type CrossCaseSummaryRow,
@@ -71,16 +72,26 @@ export default async function WorkItemsReportPage({
   }
 
   const caseIds = cases.map((c) => c.id);
+  // 一定要分頁撈完(PostgREST 單次 1000 筆上限,超過默默截斷)— 2026-09 正式站
+  // 進行中案件的工項已有 6,800 多筆,這頁之前只算到前 1000 筆。
   const [{ data: workItems }, { data: logs }] = await Promise.all([
-    supabase
-      .from("case_work_items")
-      .select("*")
-      .in("case_id", caseIds),
-    supabase
-      .from("daily_logs")
-      .select("case_id, work_items")
-      .in("case_id", caseIds)
-      .in("status", ["submitted", "approved"]),
+    fetchAllRows<CaseWorkItem>((from, to) =>
+      supabase
+        .from("case_work_items")
+        .select("*")
+        .in("case_id", caseIds)
+        .order("id")
+        .range(from, to),
+    ),
+    fetchAllRows<{ case_id: string; work_items: DailyLogWorkItem[] | null }>((from, to) =>
+      supabase
+        .from("daily_logs")
+        .select("case_id, work_items")
+        .in("case_id", caseIds)
+        .in("status", ["submitted", "approved"])
+        .order("id")
+        .range(from, to),
+    ),
   ]);
 
   const items = (workItems ?? []) as CaseWorkItem[];

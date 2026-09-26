@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
+import { startOfTodayTaipei } from "@/lib/datetime";
 import { AttendanceClient, type CaseOption, type AttendanceItem } from "./attendance-client";
 
 export const dynamic = "force-dynamic";
@@ -37,10 +38,9 @@ export default async function AttendancePage({
     status: c.status as "active" | "paused",
   }));
 
-  // 撈本人今日打卡紀錄(以 Asia/Taipei 日界)
-  const today = new Date();
-  const startOfToday = new Date(today);
-  startOfToday.setHours(0, 0, 0, 0);
+  // 撈本人今日打卡紀錄(以 Asia/Taipei 日界 — setHours(0,0,0,0) 在 Vercel 上是台灣早上 8 點,
+  // 8 點前打的卡會從「今天」消失,工人以為沒打到又打一次)
+  const startOfToday = startOfTodayTaipei();
 
   const { data: eventRows } = await supabase
     .from("attendance_events")

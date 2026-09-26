@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
+import { todayLocalDate } from "@/lib/daily-log";
 import { AttendanceReportClient, type CaseOpt, type UserOpt, type EventRow } from "./client";
 
 export const dynamic = "force-dynamic";
@@ -21,19 +22,13 @@ const ROLE_LABEL: Record<string, string> = {
   field_assistant: "現場人員",
 };
 
+// 預設日期區間用台灣日期(伺服器在 UTC,getFullYear/getDate 在台灣 00:00–07:59 會拿到昨天)
 function todayLocalIsoDate(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return todayLocalDate();
 }
 
 function firstOfMonthLocalIsoDate(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}-01`;
+  return `${todayLocalDate().slice(0, 8)}01`;
 }
 
 export default async function AttendanceReportPage({
