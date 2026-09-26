@@ -102,6 +102,7 @@ export function AttendanceClient({
     setFlushing(true);
     try {
       const list = await listPending();
+      let sent = 0;
       for (const item of list) {
         if (item.attempts >= MAX_ATTEMPTS) continue;
         const fd = new FormData();
@@ -115,6 +116,7 @@ export function AttendanceClient({
           const res = await clockAction(fd);
           if (res.ok) {
             await remove(item.id);
+            sent += 1;
           } else {
             // server 端 validation 拒絕 → 不會再成功,記下並停止重試
             await bumpAttempts(item.id, res.error);
@@ -124,7 +126,9 @@ export function AttendanceClient({
         }
       }
       await refreshPending();
-      router.refresh();
+      // 真的有補送成功才重抓頁面 — 以前每次打開打卡頁都無條件 refresh,
+      // 伺服器端整頁(含 layout 的待辦數字)多跑一遍,工人手機每次都等兩輪
+      if (sent > 0) router.refresh();
     } finally {
       setFlushing(false);
     }

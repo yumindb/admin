@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
@@ -23,10 +24,9 @@ const ROLE_LABEL: Record<string, string> = {
 
 export default async function AccountPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  const user = { id: actor.id, email: actor.email };
 
   const { data: profile } = await supabase
     .from("profiles")

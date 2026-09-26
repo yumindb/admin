@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireRole, tryGetActor } from "@/lib/auth/require-role";
 import { extractStoragePath, getSignedUrl } from "@/lib/supabase/storage";
 
 const BUCKET = "daily-photos";
@@ -26,7 +26,7 @@ const PREVIEW_TTL = 6 * 60 * 60;
  * storage path。
  */
 export async function uploadPhotoAction(formData: FormData) {
-  await requireRole([
+  const actor = await requireRole([
     "site_supervisor",
     "office_staff",
     "owner",
@@ -42,11 +42,9 @@ export async function uploadPhotoAction(formData: FormData) {
     return { ok: false as const, error: "圖片超過 8MB" };
   }
 
+  // requireRole 已驗過身分(本機驗 JWT + 停用檢查),不必再打一趟 Auth server
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "未登入" };
+  const user = { id: actor.id };
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
   const path = `${user.id}/${Date.now()}-${Math.random()
@@ -167,11 +165,10 @@ export async function deletePhotoAction(publicUrl: string) {
   const path = extractStoragePath(publicUrl, BUCKET);
   if (!path) return { ok: false as const, error: "URL 缺少路徑" };
 
+  const actor = await tryGetActor();
+  if (!actor) return { ok: false as const, error: "未登入" };
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "未登入" };
+  const user = { id: actor.id };
 
   // 路徑格式為 `{userId}/{filename}`,只允許刪自己的
   const ownerId = path.split("/")[0];
@@ -205,7 +202,7 @@ function stampPath(userId: string) {
 
 /** 上傳 / 更換簽名圖章。client 端已轉成 PNG(白底、寬度上限),這裡再驗一次。 */
 export async function uploadSignatureStampAction(formData: FormData) {
-  await requireRole([...STAMP_ROLES]);
+  const actor = await requireRole([...STAMP_ROLES]);
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false as const, error: "未提供檔案" };
@@ -216,11 +213,9 @@ export async function uploadSignatureStampAction(formData: FormData) {
     return { ok: false as const, error: "圖章超過 2MB，請換小一點的圖" };
   }
 
+  // requireRole 已驗過身分(本機驗 JWT + 停用檢查),不必再打一趟 Auth server
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "未登入" };
+  const user = { id: actor.id };
 
   const buf = Buffer.from(await file.arrayBuffer());
   const { error: upErr } = await supabase.storage
@@ -238,12 +233,10 @@ export async function uploadSignatureStampAction(formData: FormData) {
 
 /** 移除簽名圖章(之後核定回到手寫)。 */
 export async function deleteSignatureStampAction() {
-  await requireRole([...STAMP_ROLES]);
+  const actor = await requireRole([...STAMP_ROLES]);
+  // requireRole 已驗過身分(本機驗 JWT + 停用檢查),不必再打一趟 Auth server
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "未登入" };
+  const user = { id: actor.id };
 
   const { error } = await supabase.storage
     .from(SIG_BUCKET)
@@ -257,12 +250,10 @@ export async function deleteSignatureStampAction() {
  * 回傳格式與 uploadSignatureAction 相同,approveStageAction 直接沿用。
  */
 export async function stampSignatureAction() {
-  await requireRole([...STAMP_ROLES]);
+  const actor = await requireRole([...STAMP_ROLES]);
+  // requireRole 已驗過身分(本機驗 JWT + 停用檢查),不必再打一趟 Auth server
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "未登入" };
+  const user = { id: actor.id };
 
   const dest = `${user.id}/${Date.now()}-stamp.png`;
   const { error: cpErr } = await supabase.storage
@@ -288,7 +279,7 @@ const SignatureDataUrlSchema = z
 
 /** 簽核人簽名圖上傳(dataURL → png):填表 / 審核 / 審閱 / 核定各關都走這裡 */
 export async function uploadSignatureAction(formData: FormData) {
-  await requireRole(["site_supervisor", "office_staff", "reviewer", "owner"]);
+  const actor = await requireRole(["site_supervisor", "office_staff", "reviewer", "owner"]);
 
   const dataUrl = String(formData.get("dataUrl") ?? "");
   const parsed = SignatureDataUrlSchema.safeParse(dataUrl);
@@ -305,11 +296,9 @@ export async function uploadSignatureAction(formData: FormData) {
     return { ok: false as const, error: "簽名圖過大" };
   }
 
+  // requireRole 已驗過身分(本機驗 JWT + 停用檢查),不必再打一趟 Auth server
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "未登入" };
+  const user = { id: actor.id };
 
   const buf = Buffer.from(m[2], "base64");
 

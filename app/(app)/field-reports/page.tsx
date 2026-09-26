@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ChevronDown, Plus } from "lucide-react";
 import { PendingReportsCard } from "./pending-reports-card";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { formatTW } from "@/lib/datetime";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { NextStepHint } from "@/components/next-step-hint";
@@ -78,21 +79,15 @@ export default async function FieldReportsPage({
   searchParams: Promise<{ range?: string; case_q?: string }>;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  // 共用 tryGetActor(本機驗 JWT、有 cache)— 現場人員的首頁,每次開都會經過
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  const user = { id: actor.id };
 
   // 2026-05-08:office_staff 從清單退出 redirect 拿掉,辦公室助理要定期處理回報
   // (下載照片、封存、刪除)。原 redirect 是早期 POC 的偷懶設定,已不符實際流程。
-  const isFieldAssistant = profile?.role === "field_assistant";
-  const canCreate = !!profile && REPORTERS.includes(profile.role as UserRole);
+  const isFieldAssistant = actor.role === "field_assistant";
+  const canCreate = REPORTERS.includes(actor.role as UserRole);
 
   const sp = await searchParams;
   const rangeKey: RangeKey = rangeFromParam(sp.range);
@@ -436,6 +431,9 @@ function ReportCard({
           <img
             src={firstPhoto}
             alt=""
+            // 列表可能有上百張卡片(預設看 90 天):捲到才下載,不要一進頁面就抓全部原圖
+            loading="lazy"
+            decoding="async"
             className="mx-auto block h-56 w-full object-contain"
           />
           {photoCount > 1 && (

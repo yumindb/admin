@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { formatDateTW } from "@/lib/datetime";
 
 /**
@@ -18,22 +19,12 @@ import { formatDateTW } from "@/lib/datetime";
  */
 export default async function MyCasesPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  const user = { id: actor.id };
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
   // 這頁主要給 field_assistant + supervisor 看,owner / office_staff 用「案件總覽」更全
-  if (
-    profile?.role === "owner" ||
-    profile?.role === "office_staff" ||
-    profile?.role === "reviewer"
-  ) {
+  if (actor.role === "owner" || actor.role === "office_staff" || actor.role === "reviewer") {
     redirect("/cases");
   }
 

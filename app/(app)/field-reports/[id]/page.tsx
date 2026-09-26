@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { formatTW, formatDateTW } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
@@ -31,10 +32,9 @@ export default async function FieldReportDetailPage({
   const { edit: editFlag } = await searchParams;
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  const user = { id: actor.id };
 
   const { data: report } = await supabase
     .from("field_reports")
@@ -49,11 +49,7 @@ export default async function FieldReportDetailPage({
     merged_log: { id: string; log_date: string } | null;
   };
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const profile = { role: actor.role, full_name: actor.fullName };
 
   const isAuthor = r.author_id === user.id;
   const canEdit = isAuthor && r.status === "pending";

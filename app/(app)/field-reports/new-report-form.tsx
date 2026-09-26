@@ -152,7 +152,7 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
     flushingRef.current = true;
     setFlushing(true);
     try {
-      await flushPendingReports((item) =>
+      const { sent } = await flushPendingReports((item) =>
         createFieldReportAction({
           caseId: item.case_id,
           note: item.note,
@@ -168,7 +168,9 @@ export function NewReportForm({ cases, presetCaseId, reportId, initial }: Props)
         }),
       );
       await refreshPending();
-      router.refresh();
+      // 真的有補送成功才重抓頁面 — 以前每次打開這頁都無條件 refresh,
+      // 整個頁面(含 layout 的待辦數字)在伺服器上多跑一遍,手機上等於每次都載兩次
+      if (sent > 0) router.refresh();
     } finally {
       flushingRef.current = false;
       setFlushing(false);

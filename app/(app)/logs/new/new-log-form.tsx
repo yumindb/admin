@@ -1358,6 +1358,8 @@ export function NewLogForm({
                                 <img
                                   src={p.path}
                                   alt=""
+                                  loading="lazy"
+                                  decoding="async"
                                   className="h-full w-full object-cover"
                                 />
                               </button>

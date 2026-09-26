@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { tryGetActor } from "@/lib/auth/require-role";
 import { NewReportForm, type CaseOption } from "../new-report-form";
 import type { UserRole } from "@/lib/types";
 
@@ -13,17 +14,9 @@ export default async function NewFieldReportPage({
 }) {
   const { case: presetCaseId } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile || !REPORTERS.includes(profile.role as UserRole)) {
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+  if (!REPORTERS.includes(actor.role)) {
     redirect("/field-reports");
   }
 
