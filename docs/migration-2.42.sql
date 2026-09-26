@@ -14,6 +14,9 @@
 --   - 順手補 schedule_entries 的 audit trigger(誰改了誰的班、改前長什麼樣)。
 --
 -- 跑法:Supabase SQL Editor 貼上執行。冪等。
+--
+-- ✅ 執行狀態:**production(ref sgeuznnfasrgxlsqzxpc)已於 2026-09-26 執行完畢**
+--    (Supabase MCP apply_migration,Evelyn 授權;先乾跑 rollback 一次,自我檢查通過)。
 -- ==========================================================================
 
 create table if not exists public.day_off_requests (
