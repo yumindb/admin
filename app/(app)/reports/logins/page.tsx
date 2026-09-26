@@ -5,6 +5,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { emailToUsername } from "@/lib/auth/username";
 import { formatTW } from "@/lib/datetime";
+import { isSystemAdmin } from "@/lib/monitor/access";
+import { deviceLabel } from "@/lib/monitor/shared";
+import { MonitorHeader } from "../../system/monitor-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -32,17 +35,6 @@ type AttemptRow = {
   ip?: string | null;
 };
 
-/** UA → 給人看的裝置標籤。純 heuristic,認不出就顯示「其他」。 */
-function deviceLabel(ua: string | null | undefined): string {
-  if (!ua) return "—";
-  if (/iPhone/i.test(ua)) return "iPhone";
-  if (/iPad/i.test(ua)) return "iPad";
-  if (/Android/i.test(ua)) return "Android";
-  if (/Windows/i.test(ua)) return "Windows 電腦";
-  if (/Macintosh/i.test(ua)) return "Mac";
-  return "其他";
-}
-
 export default async function LoginRecordsPage({
   searchParams,
 }: {
@@ -50,7 +42,9 @@ export default async function LoginRecordsPage({
 }) {
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
-  if (actor.role !== "office_staff" && actor.role !== "owner") redirect("/");
+  // 系統管理者(SYSTEM_ADMIN_USERNAMES)看得到四頁籤的系統監控版面
+  const systemAdmin = isSystemAdmin(actor);
+  if (actor.role !== "office_staff" && actor.role !== "owner" && !systemAdmin) redirect("/");
 
   const sp = await searchParams;
   const days = DAY_OPTIONS.includes(Number(sp.days) as (typeof DAY_OPTIONS)[number])
@@ -123,13 +117,20 @@ export default async function LoginRecordsPage({
   };
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-primary md:text-3xl">登入紀錄</h1>
-        <p className="mt-1.5 text-base text-muted-foreground">
-          每次登入（成功與失敗）都會留下時間、裝置與來源 — 成功紀錄保留一年、失敗紀錄保留 30 天
-        </p>
-      </div>
+    <div className={systemAdmin ? "mx-auto max-w-6xl" : "mx-auto max-w-5xl"}>
+      {systemAdmin ? (
+        <MonitorHeader
+          active="logins"
+          subtitle="每次登入（成功與失敗）都會留下時間、裝置與來源 — 成功紀錄保留一年、失敗紀錄保留 30 天"
+        />
+      ) : (
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-primary md:text-3xl">登入紀錄</h1>
+          <p className="mt-1.5 text-base text-muted-foreground">
+            每次登入（成功與失敗）都會留下時間、裝置與來源 — 成功紀錄保留一年、失敗紀錄保留 30 天
+          </p>
+        </div>
+      )}
 
       {suspicious.length > 0 && (
         <div className="mb-5 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 p-4">
@@ -146,7 +147,7 @@ export default async function LoginRecordsPage({
               ))}
             </ul>
             <p className="mt-1 text-red-700">
-              連續失敗 3 次會自動鎖定 15 分鐘。若確認是本人忘記密碼，可到「人員管理」重設。
+              同一台裝置（同一個 IP）連續錯 3 次會暫停 15 分鐘；不同地方累計錯 20 次會鎖住整個帳號 15 分鐘。若確認是本人忘記密碼，可到「人員管理」重設。
             </p>
           </div>
         </div>

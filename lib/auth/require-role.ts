@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { annotateRequest } from "@/lib/monitor/server";
 import type { UserRole } from "@/lib/types";
 import { ERROR_DIGEST, type ErrorDigest } from "./error-codes";
 
@@ -39,17 +40,28 @@ type ProfileRow = {
 };
 
 /**
+ * 「JWT issued at future」(PGRST303):token 剛換新時,簽發端的時鐘比資料庫快了一點點,
+ * 資料庫認為這張 token 還沒生效。等一下就好 — 立刻重試一定還是失敗
+ * (2026-09 正式站 7 天內 3 位使用者碰到,log 裡兩次重試都在同一毫秒失敗)。
+ */
+const CLOCK_SKEW_RETRY_DELAYS_MS = [800, 1600];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
  * 讀 profile。查詢**失敗**(連線 / DB 暫時性錯誤)跟查**不到**是兩回事:
  * 以前 `const { data } = …` 把 error 吞掉,暫時性失敗會被當成「沒有 profile」
  * → 丟「請先登入」→ 使用者明明登入著卻看到一整頁錯誤(2026-09-03 業主回報,
- * 三秒後重進首頁又正常)。現在失敗先原地重試一次,再失敗才丟可重試的錯誤。
+ * 三秒後重進首頁又正常)。現在失敗先重試,再失敗才丟可重試的錯誤。
+ * 時鐘誤差(PGRST303)要隔一下再試,其他錯誤立即重試一次。
  */
 async function loadProfile(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<ProfileRow | null> {
   let lastMessage = "";
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  const maxAttempts = 1 + CLOCK_SKEW_RETRY_DELAYS_MS.length;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const { data, error } = await supabase
       .from("profiles")
       .select("id, role, full_name, is_active, company")
@@ -60,6 +72,11 @@ async function loadProfile(
     console.error(
       `[require-role] 讀 profile 失敗(第 ${attempt} 次) user=${userId} code=${error.code ?? "-"}: ${error.message}`,
     );
+    const clockSkew = error.code === "PGRST303";
+    if (!clockSkew && attempt >= 2) break;
+    if (attempt < maxAttempts) {
+      await sleep(clockSkew ? CLOCK_SKEW_RETRY_DELAYS_MS[attempt - 1] : 0);
+    }
   }
   throw authError(
     ERROR_DIGEST.profileLoadFailed,
@@ -70,35 +87,41 @@ async function loadProfile(
 /**
  * ⚠ 一定要包 React `cache()`。
  *
- * `auth.getUser()` 每次都會真的打一趟 Supabase Auth server 驗 JWT(不是本地解),
- * 而一次導覽會經過 middleware → layout → page(→ 有些頁還有子元件)。沒有 cache
- * 的話光「你是誰」就要來回三四次,加上每次都重撈一次 profile — 2026-08 業主回報
- * 「按一下都很慢」的主因之一。cache() 讓同一個 request 內只查一次。
+ * 一次導覽會經過 layout → page(→ 有些頁還有子元件),沒有 cache 的話光「你是誰」
+ * 就要查三四次,加上每次都重撈一次 profile — 2026-08 業主回報「按一下都很慢」的
+ * 主因之一。cache() 讓同一個 request 內只查一次。
+ * (server action 不在 render 裡,cache() 不生效 — action 裡只呼叫一次就好)
+ *
+ * 身分驗證用 `getClaims()`:專案用非對稱簽章金鑰(ES256),JWT 在本機用快取的公鑰
+ * 驗章,不必像 `getUser()` 每次打一趟 Supabase Auth server(2026-09-26 起)。
+ * 被停用的帳號 JWT 在過期前(最長 1 小時)仍驗得過,所以下面一定要再看 profile.is_active;
+ * 資料庫那層 current_user_role() 也會擋停用帳號(migration-2.38)。
  */
 const loadActor = cache(async function loadActor(): Promise<Actor | null> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!userId) return null;
+  const email = typeof data.claims.email === "string" ? data.claims.email : null;
 
-  const profile = await loadProfile(supabase, user.id);
+  const profile = await loadProfile(supabase, userId);
 
   if (!profile) {
     // 有 auth user 但沒 profile — 異常狀態,不要嘗試自動修補,直接視為未登入。
     // 留一行 log:這種帳號要人工處理(補 profile 或刪 auth user),不留就查不到是誰。
-    console.error(`[require-role] auth user ${user.id} 沒有 profile`);
+    console.error(`[require-role] auth user ${userId} 沒有 profile`);
     throw authError(ERROR_DIGEST.authRequired, "請先登入");
   }
   if (!profile.is_active) {
     return null;
   }
+  void annotateRequest({ userId: profile.id, role: profile.role });
   return {
     id: profile.id,
     role: profile.role as UserRole,
     fullName: profile.full_name ?? null,
     isActive: !!profile.is_active,
-    email: user.email ?? null,
+    email,
     company: profile.company ?? null,
   };
 });

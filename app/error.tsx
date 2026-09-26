@@ -9,6 +9,7 @@ import {
   type ErrorKind,
 } from "@/lib/auth/error-codes";
 import { logoutAction } from "./login/actions";
+import { reportClientError } from "@/lib/monitor/client";
 
 const COPY: Record<ErrorKind, { label: string; title: string; body: string }> = {
   permission: {
@@ -47,6 +48,10 @@ export default function RouteError({
 }) {
   useEffect(() => {
     console.error("[RouteError]", error);
+    // 有 digest 的是伺服器端丟出來的,onRequestError 已經記過;沒有 digest 才是瀏覽器端的錯
+    if (!error?.digest) {
+      reportClientError({ kind: "boundary", message: error?.message ?? "", stack: error?.stack });
+    }
   }, [error]);
 
   // production 下 server 端錯誤的 message 會被 React 遮掉,只剩 digest —

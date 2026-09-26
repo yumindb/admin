@@ -12,6 +12,8 @@ const EXPECTED_TIME_COLUMNS: Record<string, string> = {
   daily_log_revisions: "edited_at",
   audit_logs: "changed_at",
   app_messages: "created_at",
+  request_logs: "occurred_at",
+  error_logs: "occurred_at",
 };
 
 type Call = { table: string; col: string; cutoff: string; match?: Record<string, boolean> };
@@ -57,10 +59,18 @@ describe("cleanupOldLogs", () => {
       expect(EXPECTED_TIME_COLUMNS[c.table], `未知的表 ${c.table}`).toBeDefined();
       expect(c.col, `${c.table} 的時間欄位`).toBe(EXPECTED_TIME_COLUMNS[c.table]);
     }
-    // 五張表 / 條件都有掃到
+    // 每張表 / 條件都有掃到
     const tables = calls.map((c) => c.table).sort();
     expect(tables).toEqual(
-      ["app_messages", "audit_logs", "daily_log_revisions", "login_attempts", "login_attempts"].sort(),
+      [
+        "app_messages",
+        "audit_logs",
+        "daily_log_revisions",
+        "error_logs",
+        "login_attempts",
+        "login_attempts",
+        "request_logs",
+      ].sort(),
     );
   });
 

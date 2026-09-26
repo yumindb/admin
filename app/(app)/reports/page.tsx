@@ -10,8 +10,10 @@ import {
   ShieldCheck,
   MapPin,
   Activity,
+  Gauge,
 } from "lucide-react";
 import { tryGetActor } from "@/lib/auth/require-role";
+import { isSystemAdmin } from "@/lib/monitor/access";
 
 /**
  * /reports 入口頁。提供 4 張 card link:
@@ -94,6 +96,14 @@ export default async function ReportsHomePage() {
               icon={<FileCog className="size-6" strokeWidth={1.75} />}
             />
           </>
+        )}
+        {isSystemAdmin(actor) && (
+          <ReportCard
+            href="/system"
+            title="系統監控"
+            description="常用操作、慢請求、錯誤紀錄、登入紀錄 — 只有系統管理者看得到"
+            icon={<Gauge className="size-6" strokeWidth={1.75} />}
+          />
         )}
       </div>
     </div>

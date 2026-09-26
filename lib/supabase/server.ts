@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { trackRequest } from "@/lib/monitor/server";
 
 /**
  * Service-role client — 繞過 RLS,只在 server actions / route handlers 用。
@@ -23,6 +24,9 @@ export function createServiceClient() {
 
 export async function createClient() {
   const cookieStore = await cookies();
+  // 系統監控:幾乎每個頁面 / server action 都會建 user client,在這裡登記
+  // 「這個 request 要記一筆 request_logs」(同一 request 只記一次、回應送完才寫,不影響速度)
+  void trackRequest();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

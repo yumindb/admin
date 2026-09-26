@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/monitor/client";
 
 export default function GlobalError({
   error,
@@ -11,6 +12,10 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error("[GlobalError]", error);
+    // 有 digest 的是伺服器端丟出來的,onRequestError 已經記過
+    if (!error?.digest) {
+      reportClientError({ kind: "global", message: error?.message ?? "", stack: error?.stack });
+    }
   }, [error]);
 
   return (

@@ -12,6 +12,7 @@ import { getCompanyShort } from "@/lib/companies";
 import { emailToUsername } from "@/lib/auth/username";
 import { countUnreadMessages } from "@/lib/notifications/messages";
 import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
+import { isSystemAdmin } from "@/lib/monitor/access";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
@@ -78,6 +79,10 @@ export default async function AppLayout({
     approvalsBadge,
     leavesBadge,
   );
+  // 系統監控只給 SYSTEM_ADMIN_USERNAMES 名單上的人(顧問),其他人完全看不到入口
+  if (isSystemAdmin(actor)) {
+    desktopNav.push({ href: "/system", label: "系統監控" });
+  }
 
   return (
     <div className="flex min-h-screen flex-col">

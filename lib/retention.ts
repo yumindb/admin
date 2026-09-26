@@ -20,6 +20,7 @@ import type { createServiceClient } from "@/lib/supabase/server";
  *   - daily_log_revisions 是 edited_at(2026-07-04 ~ 2026-09-03 用錯,cron 每天報
  *     column does not exist,編輯軌跡兩個月沒清;其他表因為 Promise.all 各自獨立不受影響)
  *   - audit_logs 是 changed_at
+ *   - request_logs / error_logs 是 occurred_at
  *   對應關係由 lib/__tests__/retention.test.ts 釘住,改欄位先改 schema 再改測試。
  */
 
@@ -31,6 +32,9 @@ export const RETENTION_DAYS = {
   // 站內消息只是「把人帶去看意見」的信封,意見正本永遠在 log_approvals,
   // 90 天後這個信封沒有留存價值(未讀的也一樣 — 三個月沒看就不會看了)
   app_messages: 90,
+  // 系統監控(migration-2.39):監控頁最多看 90 天
+  request_logs: 90,
+  error_logs: 90,
 } as const;
 
 export type RetentionResult = {
@@ -53,6 +57,8 @@ export async function cleanupOldLogs(
     deleteOlderThan(supabase, "daily_log_revisions", "edited_at", RETENTION_DAYS.daily_log_revisions),
     deleteOlderThan(supabase, "audit_logs", "changed_at", RETENTION_DAYS.audit_logs),
     deleteOlderThan(supabase, "app_messages", "created_at", RETENTION_DAYS.app_messages),
+    deleteOlderThan(supabase, "request_logs", "occurred_at", RETENTION_DAYS.request_logs),
+    deleteOlderThan(supabase, "error_logs", "occurred_at", RETENTION_DAYS.error_logs),
   ]);
 }
 
