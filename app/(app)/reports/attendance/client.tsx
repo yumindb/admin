@@ -22,6 +22,7 @@ export function AttendanceReportClient({
   initialCaseId,
   initialUserId,
   rows,
+  canDownload = false,
   canBackfill = false,
 }: {
   cases: CaseOpt[];
@@ -31,6 +32,8 @@ export function AttendanceReportClient({
   initialCaseId: string;
   initialUserId: string;
   rows: EventRow[];
+  /** office_staff / owner 才顯示「下載 Excel」(主任看得到明細但不開全員匯出;server action 端也會再驗一次) */
+  canDownload?: boolean;
   /** office_staff / owner 才顯示「補登打卡」(server action 端也會再驗一次) */
   canBackfill?: boolean;
 }) {
@@ -150,14 +153,16 @@ export function AttendanceReportClient({
             <Button onClick={applyFilter} className="h-10 flex-1 bg-primary text-primary-foreground hover:bg-primary/90">
               套用
             </Button>
-            <Button
-              onClick={download}
-              disabled={downloading || rows.length === 0}
-              variant="outline"
-              className="h-10"
-            >
-              {downloading ? "產生中…" : "下載 Excel"}
-            </Button>
+            {canDownload && (
+              <Button
+                onClick={download}
+                disabled={downloading || rows.length === 0}
+                variant="outline"
+                className="h-10"
+              >
+                {downloading ? "產生中…" : "下載 Excel"}
+              </Button>
+            )}
             {canBackfill && (
               <Button
                 onClick={() => setBackfillOpen(true)}

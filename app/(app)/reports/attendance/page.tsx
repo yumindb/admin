@@ -41,6 +41,8 @@ export default async function AttendanceReportPage({
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
   if (actor.role === "field_assistant") redirect("/");
+  // 主任看得到明細(打卡 read-all、跨案件是設計),下載 Excel 與補登只給辦公室 / 老闆
+  const isManager = actor.role === "office_staff" || actor.role === "owner";
 
   const sp = await searchParams;
   const from = sp.from ?? firstOfMonthLocalIsoDate();
@@ -147,7 +149,8 @@ export default async function AttendanceReportPage({
         initialCaseId={caseId}
         initialUserId={userId}
         rows={rows}
-        canBackfill={actor.role === "office_staff" || actor.role === "owner"}
+        canDownload={isManager}
+        canBackfill={isManager}
       />
     </div>
   );

@@ -29,6 +29,8 @@ export default async function ReportsHomePage() {
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
   if (actor.role === "field_assistant") redirect("/");
+  // 卡片跟著各報表頁自己的角色限制走 — 點得到卻被踢回首頁的卡片不要出現
+  const isManager = actor.role === "office_staff" || actor.role === "owner";
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -58,25 +60,33 @@ export default async function ReportsHomePage() {
           description="所有案件的進度 %、累計日誌、落後標記。可依進度、開工日期排序"
           icon={<ListChecks className="size-6" strokeWidth={1.75} />}
         />
-        <ReportCard
-          href="/reports/today-attendance"
-          title="今日打卡儀表板"
-          description="每位主任 / 現場人員今天的打卡紅綠燈。紅燈優先,老闆 9 點看誰沒打"
-          icon={<Activity className="size-6" strokeWidth={1.75} />}
-        />
+        {isManager && (
+          <ReportCard
+            href="/reports/today-attendance"
+            title="今日打卡儀表板"
+            description="每位主任 / 現場人員今天的打卡紅綠燈。紅燈優先,老闆 9 點看誰沒打"
+            icon={<Activity className="size-6" strokeWidth={1.75} />}
+          />
+        )}
         <ReportCard
           href="/reports/attendance"
           title="現場出勤（明細）"
-          description="工地主任、現場人員的 GPS 打卡紀錄。可依日期、案件、人員篩選並下載 Excel"
+          description={
+            isManager
+              ? "工地主任、現場人員的 GPS 打卡紀錄。可依日期、案件、人員篩選並下載 Excel"
+              : "工地主任、現場人員的 GPS 打卡紀錄。可依日期、案件、人員篩選"
+          }
           icon={<MapPin className="size-6" strokeWidth={1.75} />}
         />
-        <ReportCard
-          href="/reports/sign-delays"
-          title="簽核延遲分析"
-          description="本週日誌從填表到核定的工時、哪一關卡最久 — 協助辨識瓶頸"
-          icon={<ShieldCheck className="size-6" strokeWidth={1.75} />}
-        />
-        {(actor.role === "office_staff" || actor.role === "owner") && (
+        {actor.role !== "site_supervisor" && (
+          <ReportCard
+            href="/reports/sign-delays"
+            title="簽核延遲分析"
+            description="本週日誌從填表到核定的工時、哪一關卡最久 — 協助辨識瓶頸"
+            icon={<ShieldCheck className="size-6" strokeWidth={1.75} />}
+          />
+        )}
+        {isManager && (
           <>
             <ReportCard
               href="/reports/work-hours"

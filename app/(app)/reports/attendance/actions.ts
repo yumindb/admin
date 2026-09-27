@@ -26,7 +26,8 @@ export type AttendanceFilters = {
 
 /**
  * 撈打卡事件 + xlsx 匯出。office_staff / owner 可下載(管報表)。
- * 工地主任 / 現場人員目前不開下載(可看自己的時間軸,但不抓全員資料)。
+ * 工地主任看得到明細頁,但不開全員資料匯出(頁面上也不顯示按鈕);現場人員進不了這頁。
+ * 權限不符回 { ok: false } — 以前直接 throw,主任按下去整頁變錯誤畫面。
  */
 export async function exportAttendanceXlsx(
   filters: AttendanceFilters,
@@ -34,7 +35,11 @@ export async function exportAttendanceXlsx(
   | { ok: true; base64: string; filename: string }
   | { ok: false; error: string }
 > {
-  await requireRole(["office_staff", "owner"]);
+  try {
+    await requireRole(["office_staff", "owner"]);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "權限不足" };
+  }
   const supabase = await createClient();
 
   // 把 from/to 轉成 ISO 區間(Asia/Taipei 日界,簡化用 +08:00)
