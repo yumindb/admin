@@ -36,6 +36,7 @@ import type {
   DailyLogSnapshot,
   DailyLogWorkItem,
 } from "@/lib/types";
+import { labelProxyFillers } from "@/lib/logs/proxy";
 
 const ROLE_LABEL: Record<string, string> = {
   site_supervisor: "工地主任",
@@ -96,16 +97,19 @@ export default async function ApprovalDetailPage({
     .maybeSingle();
 
   if (!log) notFound();
-  const l = log as DailyLog & {
-    cases: {
-      id: string;
-      name: string;
-      code: string | null;
-      company: string;
-      expected_end: string | null;
-    } | null;
-    profiles: { full_name: string } | null;
-  };
+  // 代理日誌(migration-2.43):填表人顯示「王小明（代理 陳主任）」
+  const [l] = await labelProxyFillers([
+    log as DailyLog & {
+      cases: {
+        id: string;
+        name: string;
+        code: string | null;
+        company: string;
+        expected_end: string | null;
+      } | null;
+      profiles: { full_name: string } | null;
+    },
+  ]);
 
   // 已處理過或當前不在我的關卡 → 回 detail / 列表
   if (endorseMode) {
@@ -331,7 +335,9 @@ export default async function ApprovalDetailPage({
               daySeq,
             })}
           </span>
-          <span>工地主任：{l.profiles?.full_name ?? "—"}</span>
+          <span>
+            {l.proxy_for ? "填表" : "工地主任"}：{l.profiles?.full_name ?? "—"}
+          </span>
           <span>天氣：{formatWeatherSummary(l.weather)}</span>
         </div>
       </div>

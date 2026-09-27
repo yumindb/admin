@@ -277,9 +277,19 @@ const SignatureDataUrlSchema = z
     "簽名格式錯誤"
   );
 
-/** 簽核人簽名圖上傳(dataURL → png):填表 / 審核 / 審閱 / 核定各關都走這裡 */
+/**
+ * 簽核人簽名圖上傳(dataURL → png):填表 / 審核 / 審閱 / 核定各關都走這裡。
+ * 現場人員 = 主任請假時的代理人填表簽名(migration-2.43;簽名只存自己的資料夾,
+ * 寫進日誌前 saveLogAction 與 RLS 都會再驗他是不是代理人)。
+ */
 export async function uploadSignatureAction(formData: FormData) {
-  const actor = await requireRole(["site_supervisor", "office_staff", "reviewer", "owner"]);
+  const actor = await requireRole([
+    "site_supervisor",
+    "office_staff",
+    "reviewer",
+    "owner",
+    "field_assistant",
+  ]);
 
   const dataUrl = String(formData.get("dataUrl") ?? "");
   const parsed = SignatureDataUrlSchema.safeParse(dataUrl);

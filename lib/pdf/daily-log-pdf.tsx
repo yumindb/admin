@@ -302,7 +302,10 @@ export type PdfData = {
     expectedEnd: string | null;
   };
   daySeq: number;
+  /** daily_logs.supervisor_id 的名字 = 填表人(代理日誌就是代理人) */
   supervisorName: string;
+  /** 代理日誌(migration-2.43):請假的主任;本人填寫 = null */
+  proxyForName?: string | null;
   workItemGroups: PdfWorkItemGroup[];
   extraItems: DailyLogExtraItem[];
   unsignedItems: DailyLogUnsignedItem[];
@@ -312,7 +315,13 @@ export type PdfData = {
 
 export function DailyLogPdf({ data }: { data: PdfData }) {
   ensureFont();
-  const { log, case: caseData, daySeq, supervisorName } = data;
+  const { log, case: caseData, daySeq, supervisorName, proxyForName } = data;
+  // 代理日誌:表頭「工地主任」寫請假的主任、註明誰代理填寫;簽章欄填表關寫「代理人」
+  const supervisorCell = proxyForName
+    ? `${proxyForName}（${supervisorName} 代理填寫）`
+    : supervisorName;
+  const stageLabel = (stage: string) =>
+    stage === "fill" && proxyForName ? "填表（代理人）" : STAGE_LABEL[stage];
   const reportNumber = buildReportNumber({
     caseCode: caseData.code,
     logDate: log.log_date,
@@ -351,7 +360,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
           <Cell label="承攬廠商名稱" value={caseData.company} />
           <Cell label="施工地點" value={caseData.location ?? "—"} />
           <Cell label="預定完工日期" value={caseData.expectedEnd ?? "—"} />
-          <Cell label="工地主任" value={supervisorName} />
+          <Cell label="工地主任" value={supervisorCell} />
           <Cell
             label="本日／累計出工"
             value={`${log.manpower?.today_total ?? "—"} 人 / ${
@@ -543,7 +552,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
                     ]}
                   >
                     <Text style={styles.sigStage}>
-                      {STAGE_LABEL[g.stage]}
+                      {stageLabel(g.stage)}
                       {g.signers.length > 1 ? "（兩位簽名）" : ""}
                     </Text>
                     <View style={styles.sigSignerRow}>
@@ -587,7 +596,7 @@ export function DailyLogPdf({ data }: { data: PdfData }) {
                 <View style={styles.sigNotes}>
                   {notes.map((ap) => (
                     <Text key={`note-${ap.id}`} style={styles.sigNoteLine}>
-                      {formatTW(ap.created_at)}｜{STAGE_LABEL[ap.stage]}
+                      {formatTW(ap.created_at)}｜{stageLabel(ap.stage)}
                       {ap.decision === "rejected" ? "退回原因" : "意見"}：
                       {ap.comment || "（未填）"}
                     </Text>

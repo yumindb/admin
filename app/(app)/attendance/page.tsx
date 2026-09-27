@@ -6,6 +6,10 @@ import { startOfTodayTaipei } from "@/lib/datetime";
 import { AttendanceClient, type CaseOption, type AttendanceItem } from "./attendance-client";
 import { WeekScheduleCard } from "@/components/week-schedule-card";
 import { DayOffSection } from "@/components/day-off-section";
+import { ProxyDutyCard } from "@/components/proxy-duty-card";
+import { todayLocalDate } from "@/lib/daily-log";
+import { splitDelegations } from "@/lib/leave-proxy";
+import { loadMyDelegations } from "@/lib/logs/proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +72,14 @@ export default async function AttendancePage({
     created_at: r.created_at as string,
   }));
 
+  // 請假代理人(現場人員):打卡是每天一定會開的頁,代理任務放最上面
+  // (layout 已查過,cache 命中不再多打)
+  const today = todayLocalDate();
+  const proxyDuty =
+    actor.role === "field_assistant"
+      ? splitDelegations(await loadMyDelegations(actor.id), today)
+      : null;
+
   return (
     <div className="mx-auto max-w-2xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -85,6 +97,15 @@ export default async function AttendancePage({
       <p className="mb-6 text-sm text-muted-foreground">
         系統會記錄你的位置與離工地距離。允許瀏覽器使用定位後，會自動推薦最近案件。
       </p>
+
+      {proxyDuty && (
+        <ProxyDutyCard
+          active={proxyDuty.active}
+          upcoming={proxyDuty.upcoming}
+          today={today}
+          className="mb-6"
+        />
+      )}
 
       <AttendanceClient
         cases={cases}

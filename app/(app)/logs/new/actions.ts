@@ -3,9 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { evaluateGeofence } from "@/lib/geo";
+import { todayLocalDate } from "@/lib/daily-log";
+import { formatDateWindow, isWindowActive } from "@/lib/leave-proxy";
+import { findDelegation } from "@/lib/logs/proxy";
 import { FIELD_LABEL, stableStringify } from "@/lib/log-diff";
 import { extractStoragePath, normalizePhotoPaths } from "@/lib/supabase/storage";
 
@@ -47,6 +51,7 @@ type SaveLogPayload = {
   mergedReportIds?: string[]; // 整合的現場回報 ids，送出時翻 merged
   editReason?: string;        // post_edit 用，目前 UI 暫不收集，預留欄位
   submitLocation?: SubmitLocationInput | null;  // 送出時的位置（可選；client 沒授權時為 null）
+  proxyFor?: string | null;   // 請假代理人(現場人員)新建日誌時:替哪位請假的主任填(migration-2.43)
 };
 
 const EDITABLE_FIELDS: DailyLogEditableField[] = [
@@ -70,10 +75,12 @@ export async function saveLogAction(payload: SaveLogPayload) {
   const role = actor.role as UserRole | null;
 
   // ----- 角色守則 -----
-  // draft / submit:工地主任、老闆(原本就有,owner 為了測試流程也保留)
-  // post_edit:    工地主任本人、辦公室助理、老闆
+  // draft / submit:工地主任、老闆(原本就有,owner 為了測試流程也保留)、
+  //                主任請假時指定的代理人(現場人員,migration-2.43;下面再驗代理期間)
+  // post_edit:    工地主任本人、辦公室助理、老闆(代理人不走這條 — 送出後要改請辦公室退回)
+  const isProxyFiller = role === "field_assistant";
   if (payload.intent === "draft" || payload.intent === "submit") {
-    if (role !== "site_supervisor" && role !== "owner") {
+    if (role !== "site_supervisor" && role !== "owner" && !isProxyFiller) {
       return { ok: false, error: "只有工地主任或老闆可以填寫日誌" };
     }
   } else if (payload.intent === "post_edit") {
@@ -327,18 +334,50 @@ export async function saveLogAction(payload: SaveLogPayload) {
   // 「暫存」不可以把已退回的日誌打回 draft — 那會讓它從助理與核定人的清單整份
   // 消失、也不發任何通知(2026-08 業主回報的失蹤日誌就是這樣來的)。
   let existingStatus: string | null = null;
+  let existingProxyFor: string | null = null;
   if (payload.logId) {
+    // 代理人才讀 proxy_for — 其他角色不碰這欄,migration-2.43 沒跑時照常運作
     const { data: existingRow } = await supabase
       .from("daily_logs")
-      .select("status")
+      .select(isProxyFiller ? "status, proxy_for" : "status")
       .eq("id", payload.logId)
       .maybeSingle();
     if (!existingRow) return { ok: false, error: "找不到日誌" };
-    existingStatus = existingRow.status as string;
+    // 動態 select 字串 supabase-js 推不出型別,這裡明講
+    const row = existingRow as unknown as { status: string; proxy_for?: string | null };
+    existingStatus = row.status;
+    existingProxyFor = row.proxy_for ?? null;
     if (existingStatus !== "draft" && existingStatus !== "rejected") {
       return {
         ok: false,
         error: "這份日誌已在簽核流程中，請用「儲存編輯」而不是重新送出",
+      };
+    }
+  }
+
+  // 請假代理人(migration-2.43):現場人員只能「替請假的主任」填,日期要在請假期間內。
+  // 既有日誌沿用原本的 proxy_for(不能改成替別人);新日誌用表單帶的 proxyFor。
+  // 改既有的(草稿、退件)只看日期 — 退回的代理日誌過幾天才改好重送也要送得出去;
+  // 新建的另外要「今天還在代理期間」(請假最後一天 + 寬限),不然幾個月後還能補一堆舊日期。
+  // 資料庫 RLS(logs_proxy_insert / logs_proxy_update + is_log_proxy)是同一套規則的第二道防線。
+  let proxyFor: string | null = null;
+  if (isProxyFiller) {
+    proxyFor = payload.logId ? existingProxyFor : (payload.proxyFor ?? null);
+    if (!proxyFor) {
+      return { ok: false, error: "你目前沒有代理任務，不能填施工日誌" };
+    }
+    const delegation = await findDelegation(user.id, proxyFor, payload.logDate);
+    if (!delegation) {
+      return {
+        ok: false,
+        error:
+          "這個日期不在主任的請假期間內，或假單已取消 / 退回。代理人只能填主任請假那幾天的日誌。",
+      };
+    }
+    if (!payload.logId && !isWindowActive(delegation, todayLocalDate())) {
+      return {
+        ok: false,
+        error: `代理期間（${formatDateWindow(delegation)}，含結束後 3 天補寫）已經過了，不能再新增代理日誌`,
       };
     }
   }
@@ -424,7 +463,7 @@ export async function saveLogAction(payload: SaveLogPayload) {
     if (!updRows || updRows.length === 0) {
       return {
         ok: false,
-        error: "沒有權限修改這份日誌（只有填表的工地主任本人可以重新送出）",
+        error: "沒有權限修改這份日誌（只有填表人本人可以重新送出）",
       };
     }
 
@@ -446,6 +485,8 @@ export async function saveLogAction(payload: SaveLogPayload) {
       submitted_at: submittedAt,
     };
     if (submitLocFields) Object.assign(insertPayload, submitLocFields);
+    // 代理日誌才帶這個 key — 一般日誌不碰,migration-2.43 沒跑時照常建得起來
+    if (proxyFor) insertPayload.proxy_for = proxyFor;
 
     const { data, error } = await supabase
       .from("daily_logs")
@@ -542,7 +583,11 @@ export async function saveLogAction(payload: SaveLogPayload) {
     }
 
     if (idsToMerge.length > 0) {
-      const { data: updRows, error: mergeErr } = await supabase
+      // 代理人(現場人員)沒有改別人回報的 RLS — 刻意不開(policy 的 USING / WITH CHECK 會跟
+      // 「作者可改自己的回報」組合出漏洞)。這裡上面已驗過代理身分、日誌也剛存成功,
+      // 改用 service role 併,只限同一案件、還在待整合的回報(跟主任能做的一樣)。
+      const mergeClient = (isProxyFiller ? createServiceClient() : supabase) as SupabaseClient;
+      let mergeQuery = mergeClient
         .from("field_reports")
         .update({
           status: "merged",
@@ -551,8 +596,9 @@ export async function saveLogAction(payload: SaveLogPayload) {
           merged_at: new Date().toISOString(),
         })
         .in("id", idsToMerge)
-        .eq("status", "pending")
-        .select("id");
+        .eq("status", "pending");
+      if (isProxyFiller) mergeQuery = mergeQuery.eq("case_id", payload.caseId);
+      const { data: updRows, error: mergeErr } = await mergeQuery.select("id");
       if (mergeErr) {
         return {
           ok: true,
@@ -587,14 +633,46 @@ export async function deleteLogAction(formData: FormData) {
   const supabase = await createClient();
   const actor = await tryGetActor();
   if (!actor) return;
-  if (actor.role !== "site_supervisor" && actor.role !== "owner") return;
-  // 只能刪自己的草稿
-  await supabase
+  // 代理人(現場人員)也能刪自己的代理草稿;RLS + trigger 另外守「只能刪自己的草稿」
+  if (
+    actor.role !== "site_supervisor" &&
+    actor.role !== "owner" &&
+    actor.role !== "field_assistant"
+  ) {
+    return;
+  }
+  // 先記下併進這份草稿的現場回報:刪掉後 FK 會把 merged_into_log_id 清成 null、狀態卻還是 merged,
+  // 那幾筆回報就從所有「待整合」清單消失(舊 bug;代理結束後代理人刪草稿更容易碰到)
+  const { data: mergedRows } = await supabase
+    .from("field_reports")
+    .select("id")
+    .eq("merged_into_log_id", logId)
+    .eq("status", "merged");
+  // 只能刪自己的草稿(看 rowcount — 沒刪到就不動回報)
+  const { data: deleted } = await supabase
     .from("daily_logs")
     .delete()
     .eq("id", logId)
     .eq("supervisor_id", actor.id)
-    .eq("status", "draft");
+    .eq("status", "draft")
+    .select("id");
+  const reportIds = (mergedRows ?? []).map((r) => r.id as string);
+  if (deleted && deleted.length > 0 && reportIds.length > 0) {
+    // 退回「待整合」。用 service role:代理人沒有改別人回報的權限;上面已確定刪的是自己的草稿,
+    // 而且只動「已經變成孤兒」的那幾筆(期間被別人重新整合的不碰)
+    await createServiceClient()
+      .from("field_reports")
+      .update({
+        status: "pending",
+        merged_into_log_id: null,
+        merged_by: null,
+        merged_at: null,
+      })
+      .in("id", reportIds)
+      .eq("status", "merged")
+      .is("merged_into_log_id", null);
+    revalidatePath("/field-reports");
+  }
   revalidatePath("/logs");
   redirect("/logs");
 }

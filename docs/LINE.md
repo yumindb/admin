@@ -54,8 +54,9 @@ server actions(簽核/請假/回報成功後)
 1. **已綁定 LINE**(line_bindings.line_user_id 非空)
 2. **總開關開啟**(notifications_enabled;本人可在 /account 暫停)
 3. **分類開關**(migration-2.28,`notification_prefs` jsonb,白名單制):
-   - 通知拆 5 類:日誌待簽核 / 日誌結果 / 請假待簽核 / 請假結果 / 現場回報
-     (事件 → 分類對照見 `lib/notifications/prefs.ts` 的 `EVENT_CATEGORY`)
+   - 通知拆 6 類:日誌待簽核 / 日誌結果 / 請假待簽核 / 請假結果 / 現場回報 / 請假代理
+     (事件 → 分類對照見 `lib/notifications/prefs.ts` 的 `EVENT_CATEGORY`;
+     請假代理 = `leave_proxy_assigned` / `leave_proxy_ended`,2026-09-27 加)
    - 由老闆 / 辦公室助理在 **/staff →「通知」按鈕** 幫每個人設定;
      可在對方還沒綁定前先設,綁定後生效
    - 沒設定過的人走角色預設矩陣(`ROLE_DEFAULT_PREFS`,2026-07-18 二修):
@@ -67,10 +68,13 @@ server actions(簽核/請假/回報成功後)
      | 請假待簽核 | ✓ | ✓ | — | — |
      | 請假結果 | — | ✓ | — | — |
      | 現場回報 | — | ✓ | — | — |
+     | 請假代理 | ✓ | ✓ | ✓ | ✓ |
 
-     主任 / 現場人員一律預設全關(白名單制);設定視窗的「套用建議值」
-     會帶入 `ROLE_RECOMMENDED_PREFS`(主任=日誌結果+請假待簽核+請假結果;
-     現場人員=請假結果)
+     主任 / 現場人員除了「請假代理」一律預設全關(白名單制)。請假代理例外預設開:
+     只發給被指定的那一個人、一個月沒幾則,又是一定要知道的事(不知道就沒人送日誌)。
+     設定視窗的「套用建議值」會帶入 `ROLE_RECOMMENDED_PREFS`
+     (主任=日誌結果+請假待簽核+請假結果+請假代理;現場人員=日誌結果+請假結果+請假代理
+     — 現場人員代理時會送日誌,被退回要知道)
    - /account 綁定卡會顯示本人目前會收到哪些分類(唯讀);
      /staff 名單有「LINE 已綁定/未綁定」欄位
 

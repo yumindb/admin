@@ -4,7 +4,7 @@ import type { UserRole } from "@/lib/types";
  * 通知偏好(分類開關)— 純函式模組,client / server 都可 import,有測試。
  *
  * 規則(2026-07 業主需求):
- *   - 通知拆成 5 個分類,由老闆 / 辦公室助理在 /staff 幫每個人設定
+ *   - 通知拆成 6 個分類(2026-09 加「請假代理」),由老闆 / 辦公室助理在 /staff 幫每個人設定
  *   - 沒設定過的人走「角色預設」:
  *       owner / office_staff   → 全開(他們是簽核主力)
  *       site_supervisor / field_assistant → 全關(被設定可通知才收得到)
@@ -41,6 +41,11 @@ export const NOTIFICATION_CATEGORIES = [
     label: "現場回報",
     description: "有人新增現場回報時通知",
   },
+  {
+    key: "leave_proxy",
+    label: "請假代理",
+    description: "被主任指定為請假代理人、或代理取消時通知",
+  },
 ] as const;
 
 export type NotificationCategory =
@@ -63,6 +68,8 @@ export const EVENT_CATEGORY: Record<string, NotificationCategory> = {
   leave_advanced: "leaves_to_review",
   leave_approved: "leave_results",
   leave_rejected: "leave_results",
+  leave_proxy_assigned: "leave_proxy",
+  leave_proxy_ended: "leave_proxy",
   field_report_created: "field_reports",
 };
 
@@ -75,6 +82,8 @@ export type NotificationPrefs = Partial<Record<NotificationCategory, boolean>>;
  *   - 助理:日誌待審核、請假待簽核、自己的請假結果、現場回報。
  *     「日誌結果」助理不寫日誌 → 關
  *   - 主任 / 現場人員:全關(白名單制,管理端開了才收得到)
+ *   - 例外「請假代理」(2026-09):各角色預設開 — 只發給被指定的那一個人、一個月沒幾則,
+ *     又是一定要知道的事(不知道自己被指定,那幾天的日誌就沒人送)
  */
 export const ROLE_DEFAULT_PREFS: Record<
   UserRole,
@@ -86,6 +95,7 @@ export const ROLE_DEFAULT_PREFS: Record<
     leaves_to_review: true,
     leave_results: false,
     field_reports: false,
+    leave_proxy: true,
   },
   office_staff: {
     logs_to_review: true,
@@ -93,6 +103,7 @@ export const ROLE_DEFAULT_PREFS: Record<
     leaves_to_review: true,
     leave_results: true,
     field_reports: true,
+    leave_proxy: true,
   },
   // 審閱人(2026-09):加簽跟流程無關,不推播待簽;只收自己請假的結果
   reviewer: {
@@ -101,6 +112,7 @@ export const ROLE_DEFAULT_PREFS: Record<
     leaves_to_review: false,
     leave_results: true,
     field_reports: false,
+    leave_proxy: true,
   },
   site_supervisor: {
     logs_to_review: false,
@@ -108,6 +120,7 @@ export const ROLE_DEFAULT_PREFS: Record<
     leaves_to_review: false,
     leave_results: false,
     field_reports: false,
+    leave_proxy: true,
   },
   field_assistant: {
     logs_to_review: false,
@@ -115,6 +128,7 @@ export const ROLE_DEFAULT_PREFS: Record<
     leaves_to_review: false,
     leave_results: false,
     field_reports: false,
+    leave_proxy: true,
   },
 };
 
@@ -137,13 +151,16 @@ export const ROLE_RECOMMENDED_PREFS: Record<
     leaves_to_review: true,
     leave_results: true,
     field_reports: false,
+    leave_proxy: true,
   },
+  // 現場人員被指定為代理人時要代送日誌 → 日誌結果(被退回要改)也建議開
   field_assistant: {
     logs_to_review: false,
-    log_results: false,
+    log_results: true,
     leaves_to_review: false,
     leave_results: true,
     field_reports: false,
+    leave_proxy: true,
   },
 };
 

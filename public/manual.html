@@ -401,6 +401,7 @@
         <li><a href="#f-clock">GPS 打卡</a></li>
         <li><a href="#f-report">現場回報（拍照）</a></li>
         <li><a href="#c-leave">請假</a></li>
+        <li><a href="#c-leave-proxy">主任請假時代送日誌</a></li>
         <li><a href="#f-mycases">我的案場</a></li>
       </ul>
     </div>
@@ -413,6 +414,7 @@
         <li><a href="#f-clock">GPS 打卡</a></li>
         <li><a href="#f-report">現場回報</a></li>
         <li><a href="#c-leave">請假／簽核假單</a></li>
+        <li><a href="#c-leave-proxy">請假時指定代理人</a></li>
       </ul>
     </div>
     <div class="map-col">
@@ -449,6 +451,7 @@
     <a href="#s-copy"><b>今天做的跟昨天差不多</b> → 複製日誌</a>
     <a href="#s-reject"><b>我的日誌被退回了</b> → 看原因改重送</a>
     <a href="#c-leave"><b>我要請假</b> → 手機就能送</a>
+    <a href="#c-leave-proxy"><b>主任請假，日誌誰送</b> → 指定代理人</a>
     <a href="#o-import"><b>我要把標單放進系統</b> → 匯入</a>
     <a href="#o-money"><b>現場追加了工作</b> → 記一筆未簽約</a>
     <a href="#b-approve"><b>我要簽核日誌</b> → 待核定</a>
@@ -822,6 +825,16 @@
     <figcaption>你只要送出，系統會自己一關一關往上送，不用打電話追。</figcaption>
   </figure>
   <p>輪到你簽別人的假時，「請假」字樣旁會出現紅色數字。</p>
+
+  <h3 id="c-leave-proxy"><span class="role-dot"></span>主任請假：指定代理人幫你送日誌<button class="speak" type="button">🔈 朗讀</button></h3>
+  <p><b>工地主任</b>請假時，可以指定一位<b>現場人員</b>當代理人。請假那幾天，工地的施工日誌由代理人寫、簽名送出，一樣走辦公室審核 → 核定。</p>
+  <ol class="bigsteps">
+    <li>主任填新請假時，最下面「<b>代理人（選填）</b>」選一位現場人員 → 送出。<span class="then">送出就生效，不用等假單核准。</span></li>
+    <li>代理人會收到消息；請假那幾天，他的「打卡」「回報」頁最上面會出現「<b>寫施工日誌</b>」按鈕（手機底部也多一個「日誌」）。</li>
+    <li>代理人照平常方式填日誌、簽名送出。日期只能選請假那幾天；請假結束後 3 天內還能補寫。</li>
+  </ol>
+  <div class="tip"><b>要換人或取消：</b><span>主任本人（或辦公室、老闆）打開那張假單，在「代理人」區塊改掉按儲存就好，新舊代理人都會收到消息。假單被取消或退回，代理也自動結束。</span></div>
+  <div class="tip"><b>看得出是誰寫的：</b><span>代理寫的日誌會標「代理 陳主任」，簽核頁和 PDF 上的填表人是「王小明（代理 陳主任）」。</span></div>
 
   <h3 id="c-line"><span class="role-dot"></span>把通知接到 LINE（綁定）<button class="speak" type="button">🔈 朗讀</button></h3>
   <p>綁定一次，之後有日誌等你簽、日誌被退回、請假有結果，LINE 會直接跳出來，不用一直開系統看。</p>

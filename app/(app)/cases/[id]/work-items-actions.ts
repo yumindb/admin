@@ -5,6 +5,9 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { wrapDbError } from "@/lib/db/wrap-error";
+import { todayLocalDate } from "@/lib/daily-log";
+import { splitDelegations } from "@/lib/leave-proxy";
+import { loadMyDelegations } from "@/lib/logs/proxy";
 import type { QuoteStatus } from "@/lib/types";
 
 /**
@@ -346,6 +349,8 @@ export type CreateExtraUnsignedResult =
  * 任三種角色(site_supervisor / office_staff / owner)都可呼叫:
  *  - 工地主任在 /logs/new 填單時 + 點「新增臨時項」,流程內帶入 case_id + kind
  *  - 辦公室助理 / 老闆在 /cases/[id] 案件總覽,直接點「新增合約外/未簽約」
+ * 另外:主任請假時的代理人(現場人員)在代理期間填日誌,可以新增「未簽約」
+ * (migration-2.43 的 work_items_proxy_insert_unsigned;合約外不開)。
  *
  * 回傳新工項的 id,讓呼叫端可以立刻把它放進日誌的 work_items picker。
  */
@@ -353,7 +358,12 @@ export async function createExtraOrUnsignedAction(
   formData: FormData,
 ): Promise<CreateExtraUnsignedResult> {
   try {
-    await requireRole(["site_supervisor", "office_staff", "owner"]);
+    const actor = await requireRole([
+      "site_supervisor",
+      "office_staff",
+      "owner",
+      "field_assistant",
+    ]);
 
     const parsed = CreateExtraUnsignedSchema.safeParse({
       case_id: String(formData.get("case_id") ?? ""),
@@ -370,6 +380,20 @@ export async function createExtraOrUnsignedAction(
     }
     const data = parsed.data;
 
+    // 代理人:只能新增未簽約,而且要正在代理(請假第一天 ~ 最後一天 + 寬限)
+    if (actor.role === "field_assistant") {
+      if (data.kind !== "unsigned") {
+        return { ok: false, error: "代理人只能新增未簽約項目" };
+      }
+      const { active } = splitDelegations(
+        await loadMyDelegations(actor.id),
+        todayLocalDate(),
+      );
+      if (active.length === 0) {
+        return { ok: false, error: "你目前沒有代理任務，不能新增工項" };
+      }
+    }
+
     const { sortPath, depth } = await computeSortPath(data.case_id, null);
 
     const totalPrice =
@@ -380,9 +404,6 @@ export async function createExtraOrUnsignedAction(
       data.unit_price !== null ? "quoted" : "pending";
 
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
 
     const { data: inserted, error } = await supabase
       .from("case_work_items")
@@ -401,7 +422,9 @@ export async function createExtraOrUnsignedAction(
         brand_note: data.brand_note,
         modified_by_user: true,
         quote_status: quoteStatus,
-        created_by: user?.id ?? null,
+        // 用 requireRole 驗過的身分(代理人的 RLS 要求 created_by = 本人);
+        // 以前另外 getUser() 多打一趟 Auth server,暫時失敗時會變成權限錯誤
+        created_by: actor.id,
       })
       .select("id")
       .single();

@@ -34,7 +34,7 @@
 
 | role | 主要裝置 | 首頁 | 做什麼 |
 |---|---|---|---|
-| `field_assistant` 現場人員 | 手機 | /field-reports | 現場回報、打卡、請假 |
+| `field_assistant` 現場人員 | 手機 | /field-reports | 現場回報、打卡、請假；主任請假時被指定為**代理人**就能代寫、送出施工日誌 |
 | `site_supervisor` 工地主任 | 手機 | /logs | 施工日誌、打卡、現場回報、請假、簽現場人員的假單 |
 | `office_staff` 辦公室助理 | 桌機 | /dashboard | 開案、標單匯入、審核、報表、帳號管理、追加合約 |
 | `reviewer` 審閱人（2026-09） | 桌機+手機 | /approvals | **加簽**辦公室審核通過的日誌（跟流程無關、簽名不進 PDF）；日誌／案件唯讀；請假直接給 owner 簽 |
@@ -102,6 +102,22 @@ draft →[主任填表+簽名 fill]→ submitted+audit
     編輯軌跡用 `lib/log-diff.ts` 把 snapshot 算成人看得懂的前後對照（原文小字）。
 - 卡住的日誌：owner / office_staff 可在逾時後「強制處理」（有 audit trail，含 DELETE trigger）。
 - 請假（`/leaves`）另有獨立簽核鏈，依申請人 role 自動往上送。
+- **請假代理人**（2026-09-27，migration-2.43；Phil：「主任請假就沒人送日誌」）：
+  工地主任請假時可指定一位**現場人員**當代理人（`leave_requests.proxy_id`，選填，送出後本人／助理／老闆可改）。
+  - **假單送出就生效**（簽核中或已核准都算，不等核准）；退回 / 取消 → 代理失效。
+  - 代理人只能填**請假期間那幾天**（台北日期）的日誌；新建只能在請假第一天 ~ 最後一天 + 3 天（補寫），
+    已經建的草稿 / 退件之後照樣能改好重送（只看日期）。
+  - 代理日誌的 `supervisor_id` = 代理人本人（他填、他簽、退回也是他改），`proxy_for` = 請假的主任；
+    畫面、通知、PDF 顯示「王小明（代理 陳主任）」，PDF 表頭「工地主任」寫請假主任並註明代理填寫。
+  - 代理人能做：填 / 暫存 / 簽名送出、併現場回報、新增未簽約臨時項、改退件重送、刪自己的草稿。
+    不能做：送出後自己改（DB trigger 也擋）、複製日誌、下載 PDF。請假主任看得到代理日誌（唯讀）並收站內消息。
+    併現場回報**不開 RLS**（開了會跟「作者可改自己的回報」組合成漏洞），由 `saveLogAction` 驗完代理身分後用 service role 做。
+  - 代理權限從假單來，所以 2.43 同時加了**請假單守門 trigger**（`guard_leave_request_write`）：送出後內容不能改、
+    狀態只能照簽核流程走、申請人不能自己核准 — 改請假流程時要一起看這個 trigger。
+  - 現場人員平常沒有日誌入口；代理期間打卡／回報頁最上面出現「寫施工日誌」卡，導覽列多「代理日誌」。
+  - 規則寫兩處、要一起改：`lib/leave-proxy.ts`（程式）與 DB 的 `is_log_proxy()` / `has_proxy_duty()`（RLS）。
+  - 名字一律用 `lib/logs/proxy.ts` 的 `loadProfileNames()`（service role）— **主任 / 現場人員讀不到別人的
+    profiles（RLS）**，embed `profiles!…(full_name)` 在他們那邊是空的（請假頁申請人「—」就是這樣來的，同批修掉）。
 
 ## 功能地圖（route → 用途）
 
@@ -112,7 +128,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 | `/approvals` | role-aware 待辦（同 URL：助理看 audit、核定人看 approve、審閱人看「加簽」清單） |
 | `/field-reports` | 現場回報（field_assistant 為主；離線 IndexedDB 佇列） |
 | `/attendance` | GPS 上下班打卡（軟性 geofence、離線前景排隊） |
-| `/leaves` | 請假申請 + 簽核 |
+| `/leaves` | 請假申請 + 簽核；工地主任可指定代理人（現場人員）代送施工日誌 |
 | `/messages` | 消息中心（簽核意見 / 退回原因 / 撤回核定；header 鈴鐺紅點進來）|
 | `/dashboard` | owner / office_staff 紅黃綠健康卡片 |
 | `/my-cases` | field_assistant / supervisor 的個人案件視角 |
@@ -152,7 +168,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
   daily-photos, signatures, daily-log-pdfs — 全部 private + signed URL）
 - **資料庫層的防線（migration-2.38）**：一般使用者只能改自己 profiles 的姓名／電話；
   `current_user_role()` 對停用帳號回 null；`trg_daily_logs_guard` 只准 owner 把日誌變成 approved、
-  主任不能改／刪已核定的日誌。**改簽核流程時要一起看這個 trigger**，不然合法流程會被擋。
+  主任不能改／刪已核定的日誌（2.43 起請假代理人〔現場人員〕同一套規則）。**改簽核流程時要一起看這個 trigger**，不然合法流程會被擋。
   新帳號的 profile 由 trigger 建成「停用的現場人員」，/staff 再用 service role 設角色並啟用。
   健檢結果與還沒擋的項目見 [`docs/SECURITY.md`](SECURITY.md)。
 - **RLS 是正式 role-based**（migration-2.10 起），不是 POC 全開版。改 policy 前先讀

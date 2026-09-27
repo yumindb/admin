@@ -14,6 +14,9 @@ import { emailToUsername } from "@/lib/auth/username";
 import { countUnreadMessages } from "@/lib/notifications/messages";
 import { STAGE_FOR_ROLE } from "@/lib/approvals/stages";
 import { isSystemAdmin } from "@/lib/monitor/access";
+import { todayLocalDate } from "@/lib/daily-log";
+import { splitDelegations } from "@/lib/leave-proxy";
+import { loadMyDelegations } from "@/lib/logs/proxy";
 
 const ROLE_LABEL: Record<string, string> = {
   office_staff: "辦公室助理",
@@ -62,13 +65,24 @@ export default async function AppLayout({
           .neq("applicant_id", actor.id)
       : null;
 
-  const [approvalsRes, leavesRes, unreadMessages] = await Promise.all([
+  // 請假代理人(現場人員,migration-2.43):代理期間(含補寫寬限)導覽列多一個「代理日誌」。
+  // loadMyDelegations 包了 cache(),頁面上的代理卡片同一個 request 不會再查一次;
+  // 只有現場人員會查,migration 沒跑時回空陣列。
+  const proxyActivePromise =
+    actor.role === "field_assistant"
+      ? loadMyDelegations(actor.id).then(
+          (list) => splitDelegations(list, todayLocalDate()).active.length > 0,
+        )
+      : Promise.resolve(false);
+
+  const [approvalsRes, leavesRes, unreadMessages, proxyActive] = await Promise.all([
     approvalsCountPromise,
     leavesCountPromise,
     // 站內消息未讀數(2026-08:簽核意見要在 App 裡看得到)。
     // partial index (profile_id) where read_at is null,查詢很輕;
     // migration-2.33 還沒跑時回 0,不會讓整個 layout 掛掉。
     countUnreadMessages(supabase, actor.id),
+    proxyActivePromise,
   ]);
   const approvalsBadge = approvalsRes?.count ?? 0;
   const leavesBadge = leavesRes?.count ?? 0;
@@ -77,6 +91,7 @@ export default async function AppLayout({
     actor.role,
     approvalsBadge,
     leavesBadge,
+    proxyActive,
   );
   // 系統監控只給 SYSTEM_ADMIN_USERNAMES 名單上的人(顧問),其他人完全看不到入口
   if (isSystemAdmin(actor)) {
@@ -225,6 +240,8 @@ function navByRole(
   role: string | undefined,
   approvalsBadge: number,
   leavesBadge: number,
+  /** 現場人員正在當請假代理人(要能進日誌) */
+  proxyActive = false,
 ): {
   desktopNav: DesktopLink[];
   mobileTabs: BottomTab[];
@@ -309,9 +326,11 @@ function navByRole(
         ],
       };
     case "field_assistant":
+      // 2026-09:主任請假指定的代理人,代理期間多一個「代理日誌」(平常沒有日誌入口)
       return {
         desktopNav: [
           { href: "/attendance", label: "打卡" },
+          ...(proxyActive ? [{ href: "/logs", label: "代理日誌" }] : []),
           { href: "/my-cases", label: "我的案場" },
           { href: "/field-reports", label: "我的回報" },
           { href: "/field-reports/new", label: "新增回報" },
@@ -319,6 +338,9 @@ function navByRole(
         ],
         mobileTabs: [
           { href: "/attendance", label: "打卡", icon: "clock" },
+          ...(proxyActive
+            ? [{ href: "/logs", label: "日誌", icon: "file" } as const]
+            : []),
           { href: "/my-cases", label: "案場", icon: "folder" },
           { href: "/field-reports", label: "回報", icon: "list" },
           { href: "/field-reports/new", label: "新增", icon: "plus" },

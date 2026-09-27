@@ -7,6 +7,10 @@ import { tryGetActor } from "@/lib/auth/require-role";
 import { formatTW } from "@/lib/datetime";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { NextStepHint } from "@/components/next-step-hint";
+import { ProxyDutyCard } from "@/components/proxy-duty-card";
+import { todayLocalDate } from "@/lib/daily-log";
+import { splitDelegations } from "@/lib/leave-proxy";
+import { loadMyDelegations } from "@/lib/logs/proxy";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -160,10 +164,13 @@ export default async function FieldReportsPage({
     const fp = r.photos?.[0]?.path;
     if (fp) firstPhotoPaths.push(fp);
   }
-  const firstPhotoSigned = await getSignedUrls(
-    "daily-photos",
-    firstPhotoPaths
-  );
+  // 請假代理人(現場人員的首頁就是這裡)— 代理任務放最上面(layout 已查過,cache 命中)
+  const [firstPhotoSigned, myDelegations] = await Promise.all([
+    getSignedUrls("daily-photos", firstPhotoPaths),
+    isFieldAssistant ? loadMyDelegations(user.id) : Promise.resolve([]),
+  ]);
+  const today = todayLocalDate();
+  const proxyDuty = splitDelegations(myDelegations, today);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -189,6 +196,15 @@ export default async function FieldReportsPage({
           </Link>
         )}
       </div>
+
+      {isFieldAssistant && (
+        <ProxyDutyCard
+          active={proxyDuty.active}
+          upcoming={proxyDuty.upcoming}
+          today={today}
+          className="mb-6"
+        />
+      )}
 
       {/* 離線佇列:列表頁也要能補送 + 看得到排隊中/失敗的回報 */}
       {canCreate && <PendingReportsCard />}

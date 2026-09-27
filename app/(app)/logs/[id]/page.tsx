@@ -34,6 +34,8 @@ import { buildRevisionDiffs } from "@/lib/log-diff";
 import { findUnreadForRelated } from "@/lib/notifications/messages";
 import { RevisionDiffRows } from "@/components/revision-diff";
 import { RevokeApprovalButton } from "./revoke-approval-button";
+import { formatProxyFiller } from "@/lib/leave-proxy";
+import { findDelegation, loadProfileNames } from "@/lib/logs/proxy";
 import {
   fetchWorkItemAncestry,
   groupWorkItemsByAncestor,
@@ -105,12 +107,11 @@ export default async function LogDetailPage({
 }) {
   const { id } = await params;
 
-  // 角色守則:field_assistant 一律不能看 log 詳細頁;
-  //   site_supervisor 只能看自己 supervisor_id 的 log;
+  // 角色守則:field_assistant 只能看自己代理寫的 log(主任請假時的代理人,migration-2.43);
+  //   site_supervisor 只能看自己 supervisor_id 的 log,或別人替他代理寫的;
   //   office_staff / owner 都能看。
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
-  if (actor.role === "field_assistant") redirect("/");
 
   const supabase = await createClient();
 
@@ -131,7 +132,14 @@ export default async function LogDetailPage({
     } | null;
   };
 
-  if (actor.role === "site_supervisor" && l.supervisor_id !== actor.id) {
+  if (actor.role === "field_assistant" && l.supervisor_id !== actor.id) {
+    redirect("/");
+  }
+  if (
+    actor.role === "site_supervisor" &&
+    l.supervisor_id !== actor.id &&
+    l.proxy_for !== actor.id
+  ) {
     redirect("/");
   }
 
@@ -139,20 +147,34 @@ export default async function LogDetailPage({
   const profile = { role: actor.role };
   const isOwnerOfLog = l.supervisor_id === actor.id;
   const role = actor.role;
+  const proxyForId = l.proxy_for ?? null;
+
+  // 代理人改自己的草稿 / 退件:假單還有效、日期還在請假期間內才行
+  // (假單被取消 / 退回 → 代理結束,資料庫也會擋)
+  const proxyCanStillEdit =
+    role === "field_assistant" &&
+    isOwnerOfLog &&
+    !!proxyForId &&
+    (l.status === "draft" || l.status === "rejected")
+      ? !!(await findDelegation(actor.id, proxyForId, l.log_date))
+      : false;
 
   // 編輯權限:
   //   - draft → 只 supervisor 本人(原規則,走主流程編輯)
   //   - rejected → supervisor 本人(主流程,重新送出);office_staff/owner(silent edit)
   //   - submitted → supervisor 本人 / office_staff / owner(silent edit)
   //   - approved → 一律不可
+  //   代理人(現場人員)→ 只有自己的 draft / rejected,而且代理還有效(classic 流程)
   const canEdit =
-    l.status === "draft"
-      ? isOwnerOfLog && role === "site_supervisor"
-      : l.status === "rejected" || l.status === "submitted"
-        ? (role === "site_supervisor" && isOwnerOfLog) ||
-          role === "office_staff" ||
-          role === "owner"
-        : false;
+    role === "field_assistant"
+      ? proxyCanStillEdit
+      : l.status === "draft"
+        ? isOwnerOfLog && role === "site_supervisor"
+        : l.status === "rejected" || l.status === "submitted"
+          ? (role === "site_supervisor" && isOwnerOfLog) ||
+            role === "office_staff" ||
+            role === "owner"
+          : false;
 
   // 這三筆彼此無關,平行撈 — 序列跑等於白等兩趟 round trip。
   //   1. 表報編號需要該案件當日序號 — 算 created_at <= 自己的同日同案 row 數
@@ -162,7 +184,7 @@ export default async function LogDetailPage({
   //   3. 簽核歷程
   //   4. 這份日誌有沒有「我還沒讀」的簽核意見消息 — 有就在頁首標出來,
   //      並在回應送出後標成已讀(人已經看到了,鈴鐺的紅點不用再留著)
-  const [dayCountRes, revisionRes, approvalsRes, unreadMessages] = await Promise.all([
+  const [dayCountRes, revisionRes, approvalsRes, unreadMessages, proxyNames] = await Promise.all([
     supabase
       .from("daily_logs")
       .select("id", { count: "exact", head: true })
@@ -182,7 +204,17 @@ export default async function LogDetailPage({
       .eq("log_id", id)
       .order("created_at", { ascending: true }),
     findUnreadForRelated(supabase, actor.id, id),
+    // 代理日誌:填表人 + 請假主任的名字(主任 / 現場人員讀不到別人的 profile,另外查)
+    proxyForId
+      ? loadProfileNames([l.supervisor_id, proxyForId])
+      : Promise.resolve(new Map<string, string>()),
   ]);
+  const proxyFillerLabel = proxyForId
+    ? formatProxyFiller(
+        (l.supervisor_id ? proxyNames.get(l.supervisor_id) : null) ?? "代理人",
+        proxyNames.get(proxyForId) ?? "主任",
+      )
+    : null;
   const daySeq = dayCountRes.count ?? 1;
   const revisionRows = revisionRes.data;
   const approvals = approvalsRes.data;
@@ -362,6 +394,14 @@ export default async function LogDetailPage({
                 {formatNoWorkLabel(l.manpower)}
               </span>
             )}
+            {proxyFillerLabel && (
+              <span
+                className="inline-block rounded-full border border-[#B8C4D0] bg-[#EEF2F6] px-2.5 py-0.5 text-xs text-[#3A5670]"
+                title="主任請假時，由代理人填寫、簽名送出"
+              >
+                代理填寫：{proxyFillerLabel}
+              </span>
+            )}
             {editedByOffice && (
               <a
                 href="#edit-trail"
@@ -408,7 +448,10 @@ export default async function LogDetailPage({
               <Link href={`/logs/${id}/edit`}>編輯</Link>
             </Button>
           )}
-          {canEdit && l.status === "draft" && isOwnerOfLog && (
+          {/* 代理人的草稿:代理結束(假單取消 / 退回)後不能再改,但要刪得掉 */}
+          {l.status === "draft" &&
+            isOwnerOfLog &&
+            (canEdit || role === "field_assistant") && (
             <form action={deleteLogAction}>
               <input type="hidden" name="logId" value={id} />
               <button
@@ -447,7 +490,8 @@ export default async function LogDetailPage({
               </Link>
             </Button>
           )}
-          {l.status === "approved" && (
+          {/* PDF 下載限主任 / 辦公室 / 審閱人 / 老闆(pdf-actions 的 PDF_VIEWERS);代理人看不到按鈕 */}
+          {l.status === "approved" && role !== "field_assistant" && (
             <PdfDownloadButton
               logId={id}
               hasPdf={!!l.pdf_path}
@@ -516,7 +560,7 @@ export default async function LogDetailPage({
       )}
 
       {/* 下一步提示 — 依日誌狀態給不同訊息 */}
-      {l.status === "draft" && isOwnerOfLog && (
+      {l.status === "draft" && isOwnerOfLog && canEdit && (
         <div className="mb-6">
           <NextStepHint tone="warning" title="尚未送出">
             這份還是草稿，老闆不會收到。確認內容後請按右上「編輯」→ 表單底「送出核定」。
@@ -553,6 +597,20 @@ export default async function LogDetailPage({
           </div>
         );
       })()}
+      {/* 代理人:假單被取消 / 退回,代理結束 — 這份自己不能再改了 */}
+      {role === "field_assistant" &&
+        isOwnerOfLog &&
+        (l.status === "draft" || l.status === "rejected") &&
+        !proxyCanStillEdit && (
+          <div className="mb-6">
+            <NextStepHint tone="warning" title="代理已結束">
+              主任的請假已取消或退回（或這天不在請假期間內），代理也跟著結束，這份日誌你不能再改了。
+              {l.status === "draft"
+                ? "用不到的草稿可以按右上「刪除草稿」刪掉。"
+                : "需要處理請聯絡辦公室。"}
+            </NextStepHint>
+          </div>
+        )}
       {l.status === "rejected" && canEdit && (
         <div className="mb-6">
           <NextStepHint tone="warning" title="已被退回">
@@ -813,7 +871,9 @@ export default async function LogDetailPage({
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-[#E0DCD6] bg-card px-3 py-2 text-sm"
               >
                 <span className="font-medium text-primary">
-                  {STAGE_LABEL[a.stage] ?? a.stage}
+                  {a.stage === "fill" && proxyFillerLabel
+                    ? "填表（代理人）"
+                    : STAGE_LABEL[a.stage] ?? a.stage}
                 </span>
                 <span
                   className={`rounded-full border px-2 py-0.5 text-xs ${

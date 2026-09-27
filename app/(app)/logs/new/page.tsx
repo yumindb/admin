@@ -12,23 +12,49 @@ import { parseWeather, todayLocalDate } from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
 import type { DailyLog, DailyLogWorkItem } from "@/lib/types";
 import { emailToUsername } from "@/lib/auth/username";
+import { NextStepHint } from "@/components/next-step-hint";
+import {
+  addDaysToDate,
+  formatDateWindow,
+  formatProxyFiller,
+  splitDelegations,
+  type ProxyDelegation,
+} from "@/lib/leave-proxy";
+import { loadMyDelegations } from "@/lib/logs/proxy";
 
 export default async function NewLogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ case?: string; from?: string }>;
+  searchParams: Promise<{ case?: string; from?: string; leave?: string }>;
 }) {
-  const { case: presetCaseId, from: fromLogId } = await searchParams;
+  const sp = await searchParams;
+  const presetCaseId = sp.case;
   const supabase = await createClient();
   // layout 已載過(cache 命中)
   const actor = await tryGetActor();
   if (!actor) redirect("/login");
-  if (actor.role !== "site_supervisor" && actor.role !== "owner") {
+
+  // 請假代理人(migration-2.43):現場人員只有在代理期間能進來,替請假的主任填。
+  // 同時有好幾段代理(兩位主任、或同一位主任請了兩次假)時用 ?leave=<假單 id> 切換,
+  // 預設最早開始的那段 — 不能用主任 id 選,同一位主任的第二張假單會被第一張蓋掉
+  let proxy: ProxyDelegation | null = null;
+  let otherProxies: ProxyDelegation[] = [];
+  if (actor.role === "field_assistant") {
+    const { active } = splitDelegations(
+      await loadMyDelegations(actor.id),
+      todayLocalDate(),
+    );
+    if (active.length === 0) redirect("/logs");
+    proxy = active.find((d) => d.leaveId === sp.leave) ?? active[0];
+    otherProxies = active.filter((d) => d !== proxy);
+  } else if (actor.role !== "site_supervisor" && actor.role !== "owner") {
     redirect("/logs");
   }
+  // 「複製日誌」只給主任 / 老闆 — 代理人一律從空白開始
+  const fromLogId = proxy ? undefined : sp.from;
 
   // 案件清單只帶選單需要的欄位 — 工項與累計等選定案件後才撈(見 lib/logs/case-form-data.ts)
-  const [casesRes, srcRes] = await Promise.all([
+  const [casesRes, srcRes, proxyRecentRes] = await Promise.all([
     supabase
       .from("cases")
       .select("id, name, code, company, location, expected_end")
@@ -38,10 +64,31 @@ export default async function NewLogPage({
     fromLogId
       ? supabase.from("daily_logs").select("*").eq("id", fromLogId).maybeSingle()
       : Promise.resolve({ data: null }),
+    // 代理人:請假主任最近 60 天寫過的案場排前面(多半就是這幾天要代寫的工地)
+    proxy
+      ? supabase
+          .from("daily_logs")
+          .select("case_id")
+          .eq("supervisor_id", proxy.supervisorId)
+          .gte("log_date", addDaysToDate(todayLocalDate(), -60))
+          .order("log_date", { ascending: false })
+          .limit(200)
+      : Promise.resolve({ data: null }),
   ]);
 
-  const cases = casesRes.data ?? [];
+  let cases = casesRes.data ?? [];
   const src = srcRes.data as DailyLog | null;
+  if (proxy && proxyRecentRes.data) {
+    const rank = new Map<string, number>();
+    for (const r of proxyRecentRes.data as { case_id: string }[]) {
+      if (!rank.has(r.case_id)) rank.set(r.case_id, rank.size);
+    }
+    // 穩定排序:主任最近的案場依「最近寫過」在前,其他維持原本順序
+    cases = [...cases].sort(
+      (a, b) =>
+        (rank.get(a.id as string) ?? Infinity) - (rank.get(b.id as string) ?? Infinity),
+    );
+  }
 
   // 一開始就選中的案件:網址帶的 ?case=,或複製來源日誌的案件
   const initialCaseId =
@@ -120,6 +167,9 @@ export default async function NewLogPage({
     };
   }
 
+  const myName =
+    actor.fullName ?? emailToUsername(actor.email ?? undefined) ?? "未命名使用者";
+
   return (
     <div className="mx-auto max-w-4xl">
       <nav className="mb-3 text-sm text-muted-foreground">
@@ -133,6 +183,33 @@ export default async function NewLogPage({
         {prefilledFrom ? "複製日誌" : "新日誌"}
       </h1>
 
+      {proxy && (
+        <div className="mb-7">
+          <NextStepHint tone="info" title={`代理 ${proxy.supervisorName} 填寫`}>
+            {proxy.supervisorName} 請假（{formatDateWindow(proxy)}），指定你當代理人。
+            這份日誌會以「{formatProxyFiller(myName, proxy.supervisorName)}」簽名送出，
+            一樣送辦公室審核、核定人核定。日期只能選請假那幾天。
+            {otherProxies.length > 0 && (
+              <span className="mt-2 block">
+                你也在代理：
+                {otherProxies.map((d, i) => (
+                  <span key={d.leaveId}>
+                    {i > 0 && "、"}
+                    <Link
+                      href={`/logs/new?leave=${d.leaveId}`}
+                      className="font-medium underline underline-offset-2"
+                    >
+                      {d.supervisorName}（{formatDateWindow(d)}）
+                    </Link>
+                  </span>
+                ))}
+                ，點名字切換。
+              </span>
+            )}
+          </NextStepHint>
+        </div>
+      )}
+
       {prefilledFrom && (
         <div className="mb-7 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-sm text-[#92400E] md:px-4 md:py-3">
           從 {formatDateTW(prefilledFrom.sourceLogDate)} 的日誌複製。
@@ -140,15 +217,29 @@ export default async function NewLogPage({
           照片、備註、簽名不會帶過來，日期已帶今天。
         </div>
       )}
-      {!prefilledFrom && <div className="mb-7" />}
+      {!prefilledFrom && !proxy && <div className="mb-7" />}
 
       <NewLogForm
+        // 切換代理的假單時整個表單重來(草稿依假單分開存)
+        key={proxy?.leaveId ?? "self"}
         cases={caseOptions}
         presetCaseId={presetCaseId}
-        currentUserName={actor.fullName ?? emailToUsername(actor.email ?? undefined) ?? "未命名使用者"}
+        currentUserName={
+          proxy ? formatProxyFiller(myName, proxy.supervisorName) : myName
+        }
         caseData={caseData}
         initial={cloneInitial}
         skipDraftRestore={!!prefilledFrom}
+        proxy={
+          proxy
+            ? {
+                leaveId: proxy.leaveId,
+                supervisorId: proxy.supervisorId,
+                startDate: proxy.startDate,
+                endDate: proxy.endDate,
+              }
+            : undefined
+        }
       />
     </div>
   );

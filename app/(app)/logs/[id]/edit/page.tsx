@@ -14,6 +14,8 @@ import { parseWeather, normalizeLogPhotos } from "@/lib/daily-log";
 import { formatTW, formatDateTW } from "@/lib/datetime";
 import { getSignedUrls } from "@/lib/supabase/storage";
 import { emailToUsername } from "@/lib/auth/username";
+import { formatProxyFiller, type ProxyDelegation } from "@/lib/leave-proxy";
+import { findDelegation, loadProfileNames } from "@/lib/logs/proxy";
 
 export default async function EditLogPage({
   params,
@@ -32,19 +34,34 @@ export default async function EditLogPage({
   if (!logRes.data) notFound();
   const l = logRes.data as DailyLog;
 
-  // 編輯權限分三條:
+  // 編輯權限分四條:
   //   1. supervisor 本人 + draft/rejected → 「主流程編輯」(會重新送出 + 簽名)
   //   2. supervisor 本人 + submitted     → 「送出後編輯」(silent, audit-only)
   //   3. office_staff / owner + submitted/rejected → 「送出後編輯」
   //      (rejected 存檔即重新送審,見 saveLogAction 的 post_edit 分支)
+  //   4. 請假代理人(現場人員)本人 + draft/rejected + 代理還有效 → 「主流程編輯」
+  //      (送出後的 silent 編輯不開放 — 要改請辦公室退回)
   // approved 一律不可編輯。
   if (l.status === "approved") redirect(`/logs/${id}`);
 
   const role = actor.role;
   const isSelf = l.supervisor_id === actor.id;
 
+  // 代理人:日期要還在請假期間內、假單沒被取消 / 退回(migration-2.43)
+  let proxy: ProxyDelegation | null = null;
+  if (
+    role === "field_assistant" &&
+    isSelf &&
+    l.proxy_for &&
+    (l.status === "draft" || l.status === "rejected")
+  ) {
+    proxy = await findDelegation(actor.id, l.proxy_for, l.log_date);
+  }
+
   let editMode: "classic" | "post-submission";
   if (role === "site_supervisor" && isSelf && (l.status === "draft" || l.status === "rejected")) {
+    editMode = "classic";
+  } else if (proxy) {
     editMode = "classic";
   } else if (
     (role === "site_supervisor" && isSelf && l.status === "submitted") ||
@@ -138,6 +155,8 @@ export default async function EditLogPage({
     approverName: string;
   } | null = null;
   const rejRow = ((rejRes.data ?? []) as RejectionRow[])[0];
+  // 退回人的名字:主任 / 代理人讀不到別人的 profile(RLS),embed 會是空的 → 另外查
+  const names = await loadProfileNames([rejRow?.approver_id]);
   if (rejRow) {
     const approver = Array.isArray(rejRow.approver)
       ? rejRow.approver[0]
@@ -145,7 +164,10 @@ export default async function EditLogPage({
     latestRejection = {
       comment: rejRow.comment ?? "（沒有填寫原因）",
       at: rejRow.created_at,
-      approverName: approver?.full_name ?? "審核人",
+      approverName:
+        (rejRow.approver_id ? names.get(rejRow.approver_id) : null) ??
+        approver?.full_name ??
+        "審核人",
     };
   }
 
@@ -166,6 +188,9 @@ export default async function EditLogPage({
       ? { original_path: photoSignedMap.get(p.original_path) ?? p.original_path }
       : {}),
   }));
+
+  const myName =
+    actor.fullName ?? emailToUsername(actor.email ?? undefined) ?? "未命名使用者";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -206,7 +231,21 @@ export default async function EditLogPage({
         editMode={editMode}
         logStatus={l.status as "draft" | "rejected" | "submitted"}
         cases={caseOptions}
-        currentUserName={actor.fullName ?? emailToUsername(actor.email ?? undefined) ?? "未命名使用者"}
+        currentUserName={
+          proxy
+            ? formatProxyFiller(myName, proxy.supervisorName)
+            : myName
+        }
+        proxy={
+          proxy
+            ? {
+                leaveId: proxy.leaveId,
+                supervisorId: proxy.supervisorId,
+                startDate: proxy.startDate,
+                endDate: proxy.endDate,
+              }
+            : undefined
+        }
         logId={id}
         currentDaySeq={currentDaySeq}
         caseData={caseData}

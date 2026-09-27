@@ -37,9 +37,15 @@ function formatLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function LeaveRequestForm() {
+export function LeaveRequestForm({
+  proxyCandidates,
+}: {
+  /** 工地主任才有:可以指定為代理人的現場人員(沒給 = 不顯示代理人欄) */
+  proxyCandidates?: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [leaveType, setLeaveType] = useState<LeaveType>("personal");
+  const [proxyId, setProxyId] = useState("");
   const [startAt, setStartAt] = useState(defaultStart());
   const [endAt, setEndAt] = useState(defaultEnd());
   const [reason, setReason] = useState("");
@@ -70,6 +76,7 @@ export function LeaveRequestForm() {
     fd.set("start_at", startAt);
     fd.set("end_at", endAt);
     fd.set("reason", reason);
+    fd.set("proxy_id", proxyId);
     startTransition(async () => {
       const res = await submitLeaveAction(fd);
       if (!res.ok) {
@@ -200,6 +207,35 @@ export function LeaveRequestForm() {
           className="block w-full resize-y rounded-md border border-[#E0DCD6] bg-white px-3 py-2.5 text-base leading-relaxed outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
         />
       </div>
+
+      {/* 代理人(工地主任請假才有)— 請假那幾天由現場人員代寫、簽名送出施工日誌 */}
+      {proxyCandidates && proxyCandidates.length > 0 && (
+        <div>
+          <label
+            htmlFor="leave-proxy"
+            className="mb-2 block text-sm font-medium text-foreground"
+          >
+            代理人（選填）
+          </label>
+          <select
+            id="leave-proxy"
+            value={proxyId}
+            onChange={(e) => setProxyId(e.target.value)}
+            className="block h-12 w-full rounded-md border border-[#E0DCD6] bg-white px-3 text-base outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          >
+            <option value="">不指定</option>
+            {proxyCandidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            請假那幾天工地的施工日誌，由代理人幫你寫、簽名送出（一樣走辦公室審核）。
+            送出假單就生效，不用等核准；送出後也還能改。
+          </p>
+        </div>
+      )}
 
       {error && (
         <p className="rounded-md border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">

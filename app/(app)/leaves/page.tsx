@@ -12,6 +12,7 @@ import {
   ROLE_LABEL,
   canApplyLeave,
 } from "@/lib/leave";
+import { loadProfileNames } from "@/lib/logs/proxy";
 import type { LeaveRequest, LeaveStatus, UserRole } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -26,26 +27,32 @@ export default async function LeavesPage() {
 
   const supabase = await createClient();
 
-  // 我送出的(任何角色都可看自己的;owner 通常沒有,空陣列就好)
-  const { data: mineRaw } = await supabase
-    .from("leave_requests")
-    .select("*, applicant:profiles!applicant_id(full_name)")
-    .eq("applicant_id", me.id)
-    .order("submitted_at", { ascending: false })
-    .limit(100);
-
-  // 待我簽核 — 對應我的 role 在 current_step;排除自己送的
-  const { data: pendingRaw } = await supabase
-    .from("leave_requests")
-    .select("*, applicant:profiles!applicant_id(full_name)")
-    .eq("status", "pending")
-    .eq("current_step", me.role)
-    .neq("applicant_id", me.id)
-    .order("submitted_at", { ascending: true })
-    .limit(100);
+  const [{ data: mineRaw }, { data: pendingRaw }] = await Promise.all([
+    // 我送出的(任何角色都可看自己的;owner 通常沒有,空陣列就好)
+    supabase
+      .from("leave_requests")
+      .select("*, applicant:profiles!applicant_id(full_name)")
+      .eq("applicant_id", me.id)
+      .order("submitted_at", { ascending: false })
+      .limit(100),
+    // 待我簽核 — 對應我的 role 在 current_step;排除自己送的
+    supabase
+      .from("leave_requests")
+      .select("*, applicant:profiles!applicant_id(full_name)")
+      .eq("status", "pending")
+      .eq("current_step", me.role)
+      .neq("applicant_id", me.id)
+      .order("submitted_at", { ascending: true })
+      .limit(100),
+  ]);
 
   const mine = (mineRaw ?? []) as Row[];
   const pending = (pendingRaw ?? []) as Row[];
+
+  // 名字另外查:主任讀不到別人的 profile(RLS)— 以前主任簽工人的假單,申請人一欄是「—」
+  const names = await loadProfileNames(
+    [...mine, ...pending].flatMap((r) => [r.applicant_id, r.proxy_id]),
+  );
 
   const canCreate = canApplyLeave(me.role);
 
@@ -94,7 +101,7 @@ export default async function LeavesPage() {
           <ul className="space-y-3">
             {pending.map((r) => (
               <li key={r.id}>
-                <RequestCard row={r} highlight />
+                <RequestCard row={r} names={names} highlight />
               </li>
             ))}
           </ul>
@@ -119,7 +126,7 @@ export default async function LeavesPage() {
             <ul className="space-y-3">
               {mine.map((r) => (
                 <li key={r.id}>
-                  <RequestCard row={r} />
+                  <RequestCard row={r} names={names} />
                 </li>
               ))}
             </ul>
@@ -130,7 +137,15 @@ export default async function LeavesPage() {
   );
 }
 
-function RequestCard({ row: r, highlight }: { row: Row; highlight?: boolean }) {
+function RequestCard({
+  row: r,
+  names,
+  highlight,
+}: {
+  row: Row;
+  names: Map<string, string>;
+  highlight?: boolean;
+}) {
   const status = r.status as LeaveStatus;
   const cls = LEAVE_STATUS_CLS[status];
   const dateRange = `${formatTW(r.start_at, {
@@ -164,7 +179,7 @@ function RequestCard({ row: r, highlight }: { row: Row; highlight?: boolean }) {
               {r.total_hours} 小時
             </span>
             <span className="text-sm text-muted-foreground">
-              · {r.applicant?.full_name ?? "—"}
+              · {names.get(r.applicant_id) ?? r.applicant?.full_name ?? "—"}
               {" · "}
               {ROLE_LABEL[r.applicant_role as UserRole]}
             </span>
@@ -184,8 +199,11 @@ function RequestCard({ row: r, highlight }: { row: Row; highlight?: boolean }) {
           {LEAVE_STATUS_LABEL[status]}
         </span>
       </div>
-      {stepLabel && (
-        <div className="mt-2 text-xs text-muted-foreground">{stepLabel}</div>
+      {(stepLabel || r.proxy_id) && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {stepLabel && <span>{stepLabel}</span>}
+          {r.proxy_id && <span>代理人：{names.get(r.proxy_id) ?? "—"}</span>}
+        </div>
       )}
     </Link>
   );

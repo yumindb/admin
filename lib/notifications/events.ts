@@ -6,6 +6,7 @@ import {
   truncateBody,
 } from "@/lib/notifications/messages";
 import { LEAVE_TYPE_LABEL } from "@/lib/leave";
+import { formatDateWindow, formatProxyFiller, leaveDateRange } from "@/lib/leave-proxy";
 import type { ApprovalStage, LeaveType, UserRole } from "@/lib/types";
 
 /**
@@ -18,6 +19,7 @@ import type { ApprovalStage, LeaveType, UserRole } from "@/lib/types";
  *   核定通過            → 該份日誌的主任
  *   退回(含強制退回)  → 該份日誌的主任
  *   請假送出 / 推進     → 下一關角色;核准 / 退回 → 申請人
+ *   請假代理人指定 / 取消 → 代理人本人(migration-2.43)
  *   現場回報            → office_staff(排除回報人自己)
  *
  * 額度提醒:官方帳號免費方案每月只有 200 則推播。批簽走彙總通知
@@ -61,26 +63,39 @@ function truncate(text: string | null, max: number): string {
 
 async function loadLogContext(logId: string) {
   const supabase = createServiceClient();
+  // select("*"):要順便拿 proxy_for(migration-2.43)— 寫死欄名的話,migration 沒跑時
+  // 整個查詢失敗,所有日誌通知都會默默不發
   const { data: log } = await supabase
     .from("daily_logs")
-    .select("id, log_date, supervisor_id, case_id")
+    .select("*")
     .eq("id", logId)
     .maybeSingle();
   if (!log) return null;
-  const [{ data: caseRow }, { data: supervisor }] = await Promise.all([
+  const proxyForId = (log.proxy_for as string | null | undefined) ?? null;
+  const [{ data: caseRow }, { data: people }] = await Promise.all([
     supabase.from("cases").select("name").eq("id", log.case_id).maybeSingle(),
     supabase
       .from("profiles")
-      .select("full_name")
-      .eq("id", log.supervisor_id)
-      .maybeSingle(),
+      .select("id, full_name")
+      .in("id", [log.supervisor_id as string, ...(proxyForId ? [proxyForId] : [])]),
   ]);
+  const nameOf = (id: string | null) =>
+    (people ?? []).find((p) => p.id === id)?.full_name as string | undefined;
+  const fillerName = nameOf(log.supervisor_id as string) ?? "主任";
   return {
     logDate: log.log_date as string | null,
     supervisorId: log.supervisor_id as string,
+    /** 代理填寫時 = 請假的主任(站內消息也要讓他知道);本人填 = null */
+    proxyForId,
     caseName: (caseRow?.name as string | undefined) ?? "未知案件",
-    supervisorName: (supervisor?.full_name as string | undefined) ?? "主任",
+    /** 填表人;代理日誌顯示「王小明（代理 陳主任）」 */
+    supervisorName: formatProxyFiller(fillerName, proxyForId ? nameOf(proxyForId) ?? "主任" : null),
   };
+}
+
+/** 通知卡片上的填表人那一行:本人填寫「主任:X」,代理填寫「填表:X（代理 Y）」 */
+function fillerLine(ctx: { proxyForId: string | null; supervisorName: string }): string {
+  return ctx.proxyForId ? `填表:${ctx.supervisorName}` : `主任:${ctx.supervisorName}`;
 }
 
 // ============================================================
@@ -101,7 +116,7 @@ export async function notifyLogSubmitted(logId: string): Promise<void> {
       lines: [
         `案件:${ctx.caseName}`,
         `日期:${fmtDate(ctx.logDate)}`,
-        `主任:${ctx.supervisorName}`,
+        fillerLine(ctx),
       ],
       tone: "amber",
       buttonLabel: "去審核",
@@ -129,7 +144,7 @@ export async function notifyLogResubmitted(logId: string): Promise<void> {
       lines: [
         `案件:${ctx.caseName}`,
         `日期:${fmtDate(ctx.logDate)}`,
-        `主任:${ctx.supervisorName}`,
+        fillerLine(ctx),
       ],
       tone: "amber",
       buttonLabel: "去重新審核",
@@ -152,7 +167,7 @@ export async function notifyLogAwaitingApproval(logId: string): Promise<void> {
       lines: [
         `案件:${ctx.caseName}`,
         `日期:${fmtDate(ctx.logDate)}`,
-        `主任:${ctx.supervisorName}`,
+        fillerLine(ctx),
       ],
       tone: "amber",
       buttonLabel: "去核定",
@@ -243,7 +258,7 @@ function logTrailLink(logId: string): string {
 }
 
 /**
- * 一份日誌的「相關人」— 主任 + 這份日誌前面關卡經手過的簽核人。
+ * 一份日誌的「相關人」— 主任(代理日誌再加上請假的主任)+ 這份日誌前面關卡經手過的簽核人。
  *
  * 為什麼不是只有主任:老闆在核定關留的意見,前面審過的助理也該知道
  * (業主說的「底下的人」不只主任)。經手人從 log_approvals 撈,
@@ -251,14 +266,16 @@ function logTrailLink(logId: string): string {
  */
 async function loadLogStakeholders(
   logId: string,
-  supervisorId: string,
+  ctx: { supervisorId: string; proxyForId: string | null },
 ): Promise<string[]> {
   const supabase = createServiceClient();
   const { data } = await supabase
     .from("log_approvals")
     .select("approver_id")
     .eq("log_id", logId);
-  const ids = new Set<string>([supervisorId]);
+  // 代理日誌:填表的代理人 + 請假的主任都算(主任回來要知道自己工地的日誌被說了什麼)
+  const ids = new Set<string>([ctx.supervisorId]);
+  if (ctx.proxyForId) ids.add(ctx.proxyForId);
   for (const row of (data ?? []) as { approver_id: string | null }[]) {
     if (row.approver_id) ids.add(row.approver_id);
   }
@@ -291,7 +308,7 @@ export async function messageLogComment(
   const ctx = await loadLogContext(logId);
   if (!ctx) return;
   const [stakeholders, actorName] = await Promise.all([
-    loadLogStakeholders(logId, ctx.supervisorId),
+    loadLogStakeholders(logId, ctx),
     loadActorName(actorId),
   ]);
   await createAppMessages({
@@ -315,7 +332,7 @@ export async function messageLogRejected(
   const ctx = await loadLogContext(logId);
   if (!ctx) return;
   const [stakeholders, actorName] = await Promise.all([
-    loadLogStakeholders(logId, ctx.supervisorId),
+    loadLogStakeholders(logId, ctx),
     loadActorName(actorId),
   ]);
   await createAppMessages({
@@ -350,7 +367,7 @@ export async function messageLogEdited(
   const ctx = await loadLogContext(logId);
   if (!ctx) return;
   const [stakeholders, editorName] = await Promise.all([
-    loadLogStakeholders(logId, ctx.supervisorId),
+    loadLogStakeholders(logId, ctx),
     loadActorName(editorId),
   ]);
   const changedText =
@@ -383,7 +400,7 @@ export async function messageLogRevoked(
   const ctx = await loadLogContext(logId);
   if (!ctx) return;
   const [stakeholders, actorName] = await Promise.all([
-    loadLogStakeholders(logId, ctx.supervisorId),
+    loadLogStakeholders(logId, ctx),
     loadActorName(actorId),
   ]);
   await createAppMessages({
@@ -459,11 +476,10 @@ export async function notifyLogsBatchApproved(logIds: string[]): Promise<void> {
 
 async function loadLeaveContext(requestId: string) {
   const supabase = createServiceClient();
+  // select("*"):順便拿 proxy_id(migration-2.43;寫死欄名的話 migration 沒跑時請假通知全停)
   const { data: req } = await supabase
     .from("leave_requests")
-    .select(
-      "id, applicant_id, leave_type, start_at, end_at, total_hours, current_step",
-    )
+    .select("*")
     .eq("id", requestId)
     .maybeSingle();
   if (!req) return null;
@@ -480,6 +496,11 @@ async function loadLeaveContext(requestId: string) {
     period: `${fmtTaipei(req.start_at as string)} — ${fmtTaipei(req.end_at as string)}`,
     hours: String(req.total_hours),
     currentStep: (req.current_step as UserRole | null) ?? null,
+    proxyId: (req.proxy_id as string | null | undefined) ?? null,
+    /** 代理人看的期間只到日期(9/28–9/30)— 代理的單位是「哪幾天的日誌」 */
+    proxyWindow: formatDateWindow(
+      leaveDateRange(req.start_at as string, req.end_at as string),
+    ),
   };
 }
 
@@ -556,6 +577,119 @@ export async function notifyLeaveResolved(
       tone: approved ? "green" : "red",
       buttonLabel: "查看請假",
       buttonPath: "/leaves",
+    }),
+  });
+}
+
+// ============================================================
+// 請假代理人(migration-2.43)
+// ============================================================
+//
+// 代理從「送出假單」就生效(不等核准),所以指定當下就通知代理人。
+// 現場人員多半沒綁 LINE → 站內消息一定發(打卡頁上方也會出現「寫施工日誌」卡片);
+// LINE 走 leave_proxy 分類,各角色預設開(很少發、又是一定要知道的事)。
+// 兩條都不去重(dedupe: false):「指定 → 換人 → 再指定」每一則都是真的狀態變化,
+// 被去重吞掉的話對方最後看到的會跟實際狀態相反。
+
+export type LeaveProxyEndReason = "cancelled" | "rejected" | "changed" | "removed";
+
+const PROXY_END_TEXT: Record<LeaveProxyEndReason, string> = {
+  cancelled: "主任取消了這張假單，不用再代寫施工日誌了。",
+  rejected: "這張假單被退回，不用再代寫施工日誌了。",
+  changed: "代理人改成其他同事了，不用再代寫施工日誌。",
+  removed: "代理人的指定已取消，不用再代寫施工日誌。",
+};
+
+/** 被指定為代理人 → 站內消息給代理人 */
+export async function messageLeaveProxyAssigned(
+  requestId: string,
+  actorId: string,
+): Promise<void> {
+  const ctx = await loadLeaveContext(requestId);
+  if (!ctx?.proxyId) return;
+  await createAppMessages({
+    eventType: "leave_proxy_assigned",
+    profileIds: [ctx.proxyId],
+    actorId,
+    relatedId: requestId,
+    dedupe: false,
+    title: `${ctx.applicantName} 請假 ${ctx.proxyWindow}，指定你當代理人`,
+    body:
+      "請假那幾天工地的施工日誌麻煩你代寫：打卡頁或回報頁上方按「寫施工日誌」，" +
+      "填完簽名送出，一樣會送辦公室審核。假單還在簽核中也可以先寫。",
+    link: "/logs",
+  });
+}
+
+/** 被指定為代理人 → LINE 給代理人(有綁定且分類開著才收得到) */
+export async function notifyLeaveProxyAssigned(requestId: string): Promise<void> {
+  const ctx = await loadLeaveContext(requestId);
+  if (!ctx?.proxyId) return;
+  await sendNotification({
+    eventType: "leave_proxy_assigned",
+    relatedId: requestId,
+    dedupe: false,
+    recipients: { profileIds: [ctx.proxyId] },
+    altText: "你被指定為請假代理人",
+    message: noticeFlex({
+      title: "你被指定為請假代理人",
+      lines: [
+        `主任:${ctx.applicantName}`,
+        `日期:${ctx.proxyWindow}`,
+        "請假期間的施工日誌麻煩你代寫送出",
+      ],
+      tone: "amber",
+      buttonLabel: "寫施工日誌",
+      buttonPath: "/logs",
+    }),
+  });
+}
+
+/** 代理取消(假單取消 / 退回、代理人換人或拿掉)→ 站內消息給原代理人 */
+export async function messageLeaveProxyEnded(
+  requestId: string,
+  proxyId: string,
+  reason: LeaveProxyEndReason,
+  actorId: string,
+): Promise<void> {
+  const ctx = await loadLeaveContext(requestId);
+  if (!ctx) return;
+  await createAppMessages({
+    eventType: "leave_proxy_ended",
+    profileIds: [proxyId],
+    actorId,
+    relatedId: requestId,
+    dedupe: false,
+    title: `${ctx.applicantName}（${ctx.proxyWindow}）的請假代理已取消`,
+    body: PROXY_END_TEXT[reason],
+    link: "/logs",
+  });
+}
+
+/** 代理取消 → LINE 給原代理人 */
+export async function notifyLeaveProxyEnded(
+  requestId: string,
+  proxyId: string,
+  reason: LeaveProxyEndReason,
+): Promise<void> {
+  const ctx = await loadLeaveContext(requestId);
+  if (!ctx) return;
+  await sendNotification({
+    eventType: "leave_proxy_ended",
+    relatedId: requestId,
+    dedupe: false,
+    recipients: { profileIds: [proxyId] },
+    altText: "請假代理已取消",
+    message: noticeFlex({
+      title: "請假代理已取消",
+      lines: [
+        `主任:${ctx.applicantName}`,
+        `日期:${ctx.proxyWindow}`,
+        PROXY_END_TEXT[reason],
+      ],
+      tone: "green",
+      buttonLabel: "查看",
+      buttonPath: "/logs",
     }),
   });
 }

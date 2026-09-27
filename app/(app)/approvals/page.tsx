@@ -9,6 +9,7 @@ import { NextStepHint } from "@/components/next-step-hint";
 import { BatchApprovalsList } from "./batch-actions";
 import { EndorseList } from "./endorse-list";
 import type { ApprovalStage, DailyLog, UserRole } from "@/lib/types";
+import { labelProxyFillers } from "@/lib/logs/proxy";
 
 type LogRow = DailyLog & {
   cases: { name: string; code: string | null } | null;
@@ -60,7 +61,8 @@ export default async function ApprovalsPage() {
       .order("log_date", { ascending: false })
       .order("submitted_at", { ascending: false })
       .limit(100);
-    const candidates = (data ?? []) as LogRow[];
+    // 代理日誌的填表人顯示「王小明（代理 陳主任）」(migration-2.43)
+    const candidates = await labelProxyFillers((data ?? []) as LogRow[]);
     const endorsed = await findEndorsedLogIds(
       supabase,
       actor.id,
@@ -88,7 +90,8 @@ export default async function ApprovalsPage() {
       ? getSignedUrl("signatures", `${actor.id}/stamp.png`, 6 * 60 * 60)
       : Promise.resolve(null),
   ]);
-  const list = (pendingRes.data ?? []) as LogRow[];
+  // 代理日誌的填表人顯示「王小明（代理 陳主任）」(migration-2.43)
+  const list = await labelProxyFillers((pendingRes.data ?? []) as LogRow[]);
   // 「經助理修改」— 核定前值得知道這份被辦公室動過(業主 2026-08 要求)
   const officeEditedIds: string[] = [];
   if (list.length > 0) {

@@ -143,6 +143,9 @@ export type DailyLog = {
   submit_accuracy_m: number | null;
   submit_distance_m: number | null;
   submit_within_geofence: boolean | null;
+  /** migration-2.43:代理填寫 — 這份是 supervisor_id(代理人)替哪位請假的主任填的;
+   *  null = 本人填。migration 沒跑時欄位不存在(undefined),一律當本人填 */
+  proxy_for?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -362,6 +365,8 @@ export type LeaveRequest = {
   submitted_at: string;
   resolved_at: string | null;
   cancelled_at: string | null;
+  /** migration-2.43:代理人(工地主任請假期間代送施工日誌的現場人員);null = 沒指定 */
+  proxy_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -398,7 +403,9 @@ export type AppMessageEvent =
   | "log_comment" // 簽核通過但有留意見
   | "log_rejected" // 退回(含強制退回)
   | "log_revoked" // 撤回核定
-  | "log_edited"; // 送出後被修改(含退回改完重送)
+  | "log_edited" // 送出後被修改(含退回改完重送)
+  | "leave_proxy_assigned" // 被指定為請假代理人(migration-2.43)
+  | "leave_proxy_ended"; // 請假代理取消(假單取消 / 退回、換人)
 
 export type AppMessage = {
   id: string;

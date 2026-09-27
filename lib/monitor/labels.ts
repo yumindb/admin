@@ -99,6 +99,7 @@ export const ACTION_LABELS: Record<string, string> = {
   approveLeaveAction: "核准請假",
   rejectLeaveAction: "退回請假",
   cancelLeaveAction: "取消請假",
+  updateLeaveProxyAction: "更換請假代理人",
   // 案件 / 工項 / 合約
   createCaseAction: "新增案件",
   updateCaseAction: "修改案件資料",

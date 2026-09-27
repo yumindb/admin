@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { NextStepHint } from "@/components/next-step-hint";
 import { ROLE_LABEL, canApplyLeave, getApprovalChain } from "@/lib/leave";
+import { canDesignateProxy } from "@/lib/leave-proxy";
+import { isProxyFeatureReady, loadProxyCandidates } from "@/lib/logs/proxy";
 import { LeaveRequestForm } from "./leave-request-form";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,17 @@ export default async function NewLeavePage() {
     redirect("/leaves");
   }
   const chain = getApprovalChain(me.role);
+
+  // 代理人(migration-2.43):只有工地主任請假要選 — 請假那幾天由現場人員代送施工日誌。
+  // migration 還沒跑就不顯示這一欄(選了也存不進去)
+  let proxyCandidates: { id: string; name: string }[] | undefined;
+  if (canDesignateProxy(me.role)) {
+    const [ready, candidates] = await Promise.all([
+      isProxyFeatureReady(),
+      loadProxyCandidates(),
+    ]);
+    if (ready) proxyCandidates = candidates;
+  }
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -48,7 +61,7 @@ export default async function NewLeavePage() {
         </NextStepHint>
       </div>
 
-      <LeaveRequestForm />
+      <LeaveRequestForm proxyCandidates={proxyCandidates} />
     </div>
   );
 }

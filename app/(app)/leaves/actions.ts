@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireRole, getActor } from "@/lib/auth/require-role";
 import {
   canActOnLeave,
@@ -12,6 +12,8 @@ import {
   hoursBetween,
   nextStep,
 } from "@/lib/leave";
+import { canBeProxy, canDesignateProxy, isLeaveOver } from "@/lib/leave-proxy";
+import { isProxyFeatureReady } from "@/lib/logs/proxy";
 import type { LeaveType, UserRole } from "@/lib/types";
 
 const LEAVE_TYPES = [
@@ -30,7 +32,54 @@ const SubmitSchema = z.object({
   start_at: z.string().min(1, "請選請假起始時間"),
   end_at: z.string().min(1, "請選請假結束時間"),
   reason: z.string().trim().min(2, "請填請假事由（至少 2 個字）").max(500),
+  // 代理人(migration-2.43,選填):工地主任請假期間代送施工日誌的現場人員
+  proxy_id: z.union([z.literal(""), z.string().uuid("代理人選擇有誤")]),
 });
+
+/**
+ * 代理人要是「在職的現場人員」、不能是自己。
+ * 用 service role 查 — 主任讀不到別人的 profile(RLS)。回 null = 合格。
+ */
+async function validateProxy(proxyId: string, applicantId: string): Promise<string | null> {
+  if (proxyId === applicantId) return "代理人不能選自己";
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("role, is_active")
+    .eq("id", proxyId)
+    .maybeSingle();
+  if (!data || !data.is_active || !canBeProxy(data.role as UserRole)) {
+    return "代理人要選在職的現場人員";
+  }
+  return null;
+}
+
+/** 代理人被換掉 / 取消時,通知原本的代理人(站內消息 + LINE,不阻塞) */
+function announceProxyEnded(
+  requestId: string,
+  proxyId: string,
+  reason: "cancelled" | "rejected" | "changed" | "removed",
+  actorId: string,
+) {
+  after(async () => {
+    const events = await import("@/lib/notifications/events");
+    await Promise.all([
+      events.messageLeaveProxyEnded(requestId, proxyId, reason, actorId),
+      events.notifyLeaveProxyEnded(requestId, proxyId, reason),
+    ]);
+  });
+}
+
+/** 被指定為代理人 → 通知代理人本人(站內消息 + LINE,不阻塞) */
+function announceProxyAssigned(requestId: string, actorId: string) {
+  after(async () => {
+    const events = await import("@/lib/notifications/events");
+    await Promise.all([
+      events.messageLeaveProxyAssigned(requestId, actorId),
+      events.notifyLeaveProxyAssigned(requestId),
+    ]);
+  });
+}
 
 export type SubmitResult =
   | { ok: true; requestId: string }
@@ -57,6 +106,7 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
     start_at: String(formData.get("start_at") ?? ""),
     end_at: String(formData.get("end_at") ?? ""),
     reason: String(formData.get("reason") ?? ""),
+    proxy_id: String(formData.get("proxy_id") ?? ""),
   };
   const parsed = SubmitSchema.safeParse(raw);
   if (!parsed.success) {
@@ -66,6 +116,17 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
     };
   }
   const { leave_type, start_at, end_at, reason } = parsed.data;
+  const proxyId = parsed.data.proxy_id || null;
+  if (proxyId) {
+    if (!canDesignateProxy(me.role)) {
+      return { ok: false, error: "只有工地主任請假可以指定代理人" };
+    }
+    if (!(await isProxyFeatureReady())) {
+      return { ok: false, error: "代理人功能還沒啟用，請先不選代理人送出" };
+    }
+    const proxyErr = await validateProxy(proxyId, me.id);
+    if (proxyErr) return { ok: false, error: proxyErr };
+  }
 
   // 把 datetime-local 字串(沒帶時區)當台北時間轉成 UTC ISO
   const startISO = localInputToISO(start_at);
@@ -77,27 +138,33 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
   if (total <= 0) {
     return { ok: false, error: "結束時間必須晚於起始時間" };
   }
-  if (total > 24 * 30) {
+  // 用原始時間差比,不用四捨五入後的時數 — 資料庫的請假單守門(migration-2.43)也是這樣算,
+  // 不然 30 天又幾分鐘會這裡放行、資料庫擋下
+  if (new Date(endISO).getTime() - new Date(startISO).getTime() > 30 * 24 * 60 * 60 * 1000) {
     return { ok: false, error: "單次請假最多 30 天，請拆成多筆送出" };
   }
 
   const chain = getApprovalChain(me.role);
   const supabase = await createClient();
 
+  const insertRow: Record<string, unknown> = {
+    applicant_id: me.id,
+    applicant_role: me.role,
+    leave_type,
+    start_at: startISO,
+    end_at: endISO,
+    total_hours: total,
+    reason,
+    status: "pending",
+    current_step: chain[0],
+    approval_chain: chain,
+  };
+  // 沒選代理人就不帶這個 key — migration-2.43 還沒跑時一般請假照常送得出去
+  if (proxyId) insertRow.proxy_id = proxyId;
+
   const { data, error } = await supabase
     .from("leave_requests")
-    .insert({
-      applicant_id: me.id,
-      applicant_role: me.role,
-      leave_type,
-      start_at: startISO,
-      end_at: endISO,
-      total_hours: total,
-      reason,
-      status: "pending",
-      current_step: chain[0],
-      approval_chain: chain,
-    })
+    .insert(insertRow)
     .select("id")
     .single();
 
@@ -111,6 +178,8 @@ export async function submitLeaveAction(formData: FormData): Promise<SubmitResul
     const { notifyLeaveSubmitted } = await import("@/lib/notifications/events");
     await notifyLeaveSubmitted(newRequestId);
   });
+  // 代理從送出就生效(不等核准)— 馬上讓代理人知道
+  if (proxyId) announceProxyAssigned(newRequestId, me.id);
 
   revalidatePath("/leaves");
   return { ok: true, requestId: data.id as string };
@@ -225,9 +294,10 @@ export async function rejectLeaveAction(input: {
   const me = await requireRole(["site_supervisor", "office_staff", "owner"]);
   const supabase = await createClient();
 
+  // select("*"):順便拿 proxy_id(migration-2.43 沒跑時沒有這欄,不能寫死欄名)
   const { data: req, error: readErr } = await supabase
     .from("leave_requests")
-    .select("id, applicant_id, status, current_step, approval_chain")
+    .select("*")
     .eq("id", parsed.data.requestId)
     .maybeSingle();
   if (readErr || !req) {
@@ -277,6 +347,11 @@ export async function rejectLeaveAction(input: {
     const { notifyLeaveResolved } = await import("@/lib/notifications/events");
     await notifyLeaveResolved(requestId, "rejected", rejectComment);
   });
+  // 假單退回 → 代理跟著失效,告訴代理人不用再代寫
+  const rejectedProxyId = (req.proxy_id as string | null | undefined) ?? null;
+  if (rejectedProxyId) {
+    announceProxyEnded(requestId, rejectedProxyId, "rejected", me.id);
+  }
 
   revalidatePath("/leaves");
   revalidatePath(`/leaves/${req.id}`);
@@ -292,9 +367,10 @@ export async function cancelLeaveAction(input: {
   const me = await getActor();
   const supabase = await createClient();
 
+  // select("*"):順便拿 proxy_id(migration-2.43 沒跑時沒有這欄,不能寫死欄名)
   const { data: req, error: readErr } = await supabase
     .from("leave_requests")
-    .select("id, applicant_id, status")
+    .select("*")
     .eq("id", input.requestId)
     .maybeSingle();
   if (readErr || !req) {
@@ -319,8 +395,93 @@ export async function cancelLeaveAction(input: {
     return { ok: false, error: "取消失敗：" + updErr.message };
   }
 
+  const cancelledProxyId = (req.proxy_id as string | null | undefined) ?? null;
+  if (cancelledProxyId) {
+    announceProxyEnded(req.id as string, cancelledProxyId, "cancelled", me.id);
+  }
+
   revalidatePath("/leaves");
   revalidatePath(`/leaves/${req.id}`);
+  return { ok: true };
+}
+
+const ProxySchema = z.object({
+  requestId: z.string().uuid(),
+  proxyId: z.string().uuid().nullable(),
+});
+
+/**
+ * 更換 / 取消代理人(migration-2.43)。
+ * - 誰能改:申請人本人(工地主任),或辦公室助理 / 老闆(主任臨時聯絡不上時幫忙指定)
+ * - 什麼時候能改:假單還有效(簽核中 / 已核准)而且請假還沒結束
+ * 原代理人收到「代理已取消」,新代理人收到「被指定」。
+ */
+export async function updateLeaveProxyAction(input: {
+  requestId: string;
+  proxyId: string | null;
+}): Promise<ActionResult> {
+  const parsed = ProxySchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "代理人選擇有誤" };
+  }
+  const me = await requireRole(["site_supervisor", "office_staff", "owner"]);
+  const supabase = await createClient();
+
+  const { data: req, error: readErr } = await supabase
+    .from("leave_requests")
+    .select("*")
+    .eq("id", parsed.data.requestId)
+    .maybeSingle();
+  if (readErr || !req) {
+    return { ok: false, error: "找不到請假" };
+  }
+  if (!("proxy_id" in req) || !(await isProxyFeatureReady())) {
+    return { ok: false, error: "代理人功能還沒啟用（資料庫尚未更新），請聯絡系統管理員" };
+  }
+  const isApplicant = req.applicant_id === me.id;
+  if (!isApplicant && me.role !== "office_staff" && me.role !== "owner") {
+    return { ok: false, error: "只有請假的主任本人或辦公室可以改代理人" };
+  }
+  if (!canDesignateProxy(req.applicant_role as UserRole)) {
+    return { ok: false, error: "只有工地主任的請假可以指定代理人" };
+  }
+  if (req.status !== "pending" && req.status !== "approved") {
+    return { ok: false, error: "這張假單已退回或取消，不能再改代理人" };
+  }
+  if (isLeaveOver(req.end_at as string)) {
+    return { ok: false, error: "請假已經結束，不能再改代理人" };
+  }
+
+  const nextProxy = parsed.data.proxyId;
+  const prevProxy = (req.proxy_id as string | null) ?? null;
+  if (nextProxy === prevProxy) return { ok: true };
+  if (nextProxy) {
+    const proxyErr = await validateProxy(nextProxy, req.applicant_id as string);
+    if (proxyErr) return { ok: false, error: proxyErr };
+  }
+
+  // 條件式更新:讀完到寫入之間被退回 / 取消就不寫(看 rowcount — RLS 擋下也是 0 筆、沒有 error)
+  const { data: updRows, error: updErr } = await supabase
+    .from("leave_requests")
+    .update({ proxy_id: nextProxy })
+    .eq("id", req.id)
+    .in("status", ["pending", "approved"])
+    .select("id");
+  if (updErr) {
+    return { ok: false, error: "更新代理人失敗：" + updErr.message };
+  }
+  if (!updRows || updRows.length === 0) {
+    return { ok: false, error: "假單狀態剛被變更，請重新整理後再試" };
+  }
+
+  const requestId = req.id as string;
+  if (prevProxy) {
+    announceProxyEnded(requestId, prevProxy, nextProxy ? "changed" : "removed", me.id);
+  }
+  if (nextProxy) announceProxyAssigned(requestId, me.id);
+
+  revalidatePath("/leaves");
+  revalidatePath(`/leaves/${requestId}`);
   return { ok: true };
 }
 

@@ -145,8 +145,12 @@ export async function generatePdfForLog(logId: string): Promise<
     .eq("log_id", logId)
     .order("created_at", { ascending: true });
   const approvals = (approvalRows ?? []) as LogApproval[];
+  // 代理日誌(migration-2.43):請假主任的名字跟簽核人一起查
+  const proxyForId = log.proxy_for ?? null;
   const approverIds = Array.from(
-    new Set(approvals.map((a) => a.approver_id).filter(Boolean))
+    new Set(
+      [...approvals.map((a) => a.approver_id), proxyForId].filter(Boolean),
+    )
   ) as string[];
   const { data: approverProfiles } = approverIds.length
     ? await supabase.from("profiles").select("id, full_name").in("id", approverIds)
@@ -202,6 +206,7 @@ export async function generatePdfForLog(logId: string): Promise<
     },
     daySeq: dayCount ?? 1,
     supervisorName: log.profiles?.full_name ?? "—",
+    proxyForName: proxyForId ? profileMap.get(proxyForId) ?? "—" : null,
     workItemGroups: workItemGroupsForPdf,
     extraItems: log.extra_items ?? [],
     unsignedItems: log.unsigned_items ?? [],

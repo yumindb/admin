@@ -52,6 +52,11 @@ import {
   NO_WORK_REASONS,
   subcontractorKey,
 } from "@/lib/daily-log";
+import {
+  defaultProxyLogDate,
+  formatDateWindow,
+  windowCoversDate,
+} from "@/lib/leave-proxy";
 import { formatTW } from "@/lib/datetime";
 import type {
   DailyLogExtraItem,
@@ -124,10 +129,22 @@ export function NewLogForm({
   caseData,
   currentDaySeq,
   skipDraftRestore = false,
+  proxy,
 }: {
   cases: CaseOption[];
   presetCaseId?: string;
   currentUserName: string;
+  /**
+   * 請假代理人模式(migration-2.43):現場人員替請假的主任填。
+   * 日期只能選請假期間;送出時帶 proxyFor;本機草稿依主任分開存。
+   */
+  proxy?: {
+    /** 哪一張假單(本機草稿依這個分開存) */
+    leaveId: string;
+    supervisorId: string;
+    startDate: string;
+    endDate: string;
+  };
   /** "classic" = 草稿/退回的工地主任流程(會重新送出 + 簽名);
    *  "post-submission" = 已送出後的 silent edit(audit-only,不重啟簽核也不重簽) */
   editMode?: "classic" | "post-submission";
@@ -181,7 +198,14 @@ export function NewLogForm({
   // v3:合約外/未簽約 從 jsonb editor → picker(case_work_items),舊草稿不相容捨棄
   // 「複製日誌」場景:傳 skipDraftRestore,直接不讀 / 不寫 localStorage,
   //   讓 server 端傳的 initial 完全當主。
-  const draftKey = logId || skipDraftRestore ? null : "yumin-newlog-draft-v3";
+  // 代理人的草稿依「哪一張假單」分開存 — 同時有好幾段代理時不會互相蓋掉,
+  // 也不會把上一段代理的草稿(日期不在這次請假期間)帶進來。
+  const draftKey =
+    logId || skipDraftRestore
+      ? null
+      : proxy
+        ? `yumin-newlog-draft-v3-proxy-${proxy.leaveId}`
+        : "yumin-newlog-draft-v3";
 
   const [caseId, setCaseId] = useState(initial?.caseId ?? presetCaseId ?? "");
   // logDate 也不能用 new Date() 當初值(server/client 跨午夜 UTC 會不同),
@@ -324,7 +348,14 @@ export function NewLogForm({
     const draft = readStoredDraft(draftKey);
     if (draft) {
       if (draft.caseId !== undefined) setCaseId(draft.caseId);
-      if (draft.logDate !== undefined) setLogDate(draft.logDate);
+      if (draft.logDate !== undefined) {
+        // 代理人:草稿的日期跑出請假期間(舊草稿)就改回預設日期
+        setLogDate(
+          proxy && !windowCoversDate(proxy, draft.logDate)
+            ? defaultProxyLogDate(proxy, todayLocalDate())
+            : draft.logDate,
+        );
+      }
       if (draft.weather !== undefined) setWeather(draft.weather);
       if (draft.noWork !== undefined) setNoWork(draft.noWork);
       if (draft.noWorkReason !== undefined) setNoWorkReason(draft.noWorkReason);
@@ -406,8 +437,11 @@ export function NewLogForm({
           });
       }
     } else if (!initial?.logDate) {
-      // 沒草稿、也沒帶初始值 → logDate 設為今天(台灣時區,不能用 toISOString 的 UTC 日期)
-      setLogDate(todayLocalDate());
+      // 沒草稿、也沒帶初始值 → logDate 設為今天(台灣時區,不能用 toISOString 的 UTC 日期);
+      // 代理人:今天在請假期間內就用今天,請假已過(寬限期補填)就用最後一天
+      setLogDate(
+        proxy ? defaultProxyLogDate(proxy, todayLocalDate()) : todayLocalDate(),
+      );
     }
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1058,6 +1092,12 @@ export function NewLogForm({
       toast.error("請選擇案件");
       return;
     }
+    if (proxy && !windowCoversDate(proxy, logDate)) {
+      toast.error(
+        `代理人只能填主任請假那幾天（${formatDateWindow(proxy)}）的日誌，請改日期`,
+      );
+      return;
+    }
     const totalPicked =
       picked.length + pickedExtra.length + pickedUnsigned.length;
     if (intent === "submit" && totalPicked === 0 && !noWork) {
@@ -1166,6 +1206,7 @@ export function NewLogForm({
         fillSignatureUrl: signatureUrl,
         mergedReportIds,
         submitLocation,
+        proxyFor: proxy?.supervisorId ?? null,
       });
       if (!res.ok) {
         toast.error(res.error ?? "儲存失敗");
@@ -1439,8 +1480,15 @@ export function NewLogForm({
               type="date"
               value={logDate}
               onChange={(e) => setLogDate(e.target.value)}
+              min={proxy?.startDate}
+              max={proxy?.endDate}
               className="h-12"
             />
+            {proxy && (
+              <p className="text-sm text-muted-foreground">
+                代理期間：{formatDateWindow(proxy)}（只能填這幾天）
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>天氣（上午 / 下午）</Label>

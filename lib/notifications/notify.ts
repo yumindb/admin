@@ -48,6 +48,8 @@ export type NotifyInput = {
   recipients: NotifyRecipients;
   altText: string;
   message: LineMessage;
+  /** 預設 true(十分鐘內同 profile + event + related 只送一次);請假代理人指定 / 取消要關掉 */
+  dedupe?: boolean;
 };
 
 /**
@@ -115,26 +117,27 @@ export async function sendNotification(input: NotifyInput): Promise<void> {
     });
     if (bindings.length === 0) return;
 
-    // 3. 去重(十分鐘內同 profile + event + related 已送過就跳過)
-    const cutoff = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
-    let dedupeQuery = supabase
-      .from("notification_queue")
-      .select("profile_id")
-      .eq("event_type", input.eventType)
-      .in("status", ["pending", "sent"])
-      .gt("created_at", cutoff)
-      .in(
-        "profile_id",
-        bindings.map((b) => b.profile_id as string),
-      );
-    dedupeQuery =
-      input.relatedId === null
-        ? dedupeQuery.is("related_id", null)
-        : dedupeQuery.eq("related_id", input.relatedId);
-    const { data: recent } = await dedupeQuery;
-    const alreadyNotified = new Set(
-      (recent ?? []).map((r) => r.profile_id as string),
-    );
+    // 3. 去重(十分鐘內同 profile + event + related 已送過就跳過;dedupe: false 的事件不去重)
+    const alreadyNotified = new Set<string>();
+    if (input.dedupe !== false) {
+      const cutoff = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
+      let dedupeQuery = supabase
+        .from("notification_queue")
+        .select("profile_id")
+        .eq("event_type", input.eventType)
+        .in("status", ["pending", "sent"])
+        .gt("created_at", cutoff)
+        .in(
+          "profile_id",
+          bindings.map((b) => b.profile_id as string),
+        );
+      dedupeQuery =
+        input.relatedId === null
+          ? dedupeQuery.is("related_id", null)
+          : dedupeQuery.eq("related_id", input.relatedId);
+      const { data: recent } = await dedupeQuery;
+      for (const r of recent ?? []) alreadyNotified.add(r.profile_id as string);
+    }
 
     const targets = bindings.filter(
       (b) => !alreadyNotified.has(b.profile_id as string),

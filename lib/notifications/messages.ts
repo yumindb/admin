@@ -46,6 +46,12 @@ export type CreateMessagesInput = {
   relatedId?: string | null;
   /** 留言者(不會收到自己的消息) */
   actorId?: string | null;
+  /**
+   * 預設 true:同 related + event + 收件人一分鐘內只發一則(防重複點送出)。
+   * 請假代理人指定 / 取消要關掉 — 一分鐘內「指定 → 換人 → 再指定」每一則都是真的狀態變化,
+   * 被吞掉的話對方最後看到的消息會跟實際狀態相反。
+   */
+  dedupe?: boolean;
 };
 
 /** 表不存在(migration 還沒跑)— PostgREST 回 PGRST205,pg 回 42P01 */
@@ -107,7 +113,7 @@ export async function createAppMessages(
     // 去重:同 related + event + 收件人,一分鐘內已發過就跳過
     // (重複點送出、批簽重跑都會走到這裡)
     let recipients = active;
-    if (input.relatedId) {
+    if (input.relatedId && input.dedupe !== false) {
       const cutoff = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
       const { data: recent, error: dupErr } = await supabase
         .from("app_messages")

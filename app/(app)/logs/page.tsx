@@ -10,8 +10,12 @@ import {
   formatWeatherSummary,
   isBackfilledLog,
   isNoWorkLog,
+  todayLocalDate,
 } from "@/lib/daily-log";
 import { formatDateTW } from "@/lib/datetime";
+import { splitDelegations } from "@/lib/leave-proxy";
+import { loadMyDelegations, loadProfileNames } from "@/lib/logs/proxy";
+import { ProxyDutyCard } from "@/components/proxy-duty-card";
 import type { DailyLog, LogStatus } from "@/lib/types";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -81,13 +85,26 @@ export default async function LogsPage({
   const role = actor.role;
   const isSupervisor = role === "site_supervisor";
   const isOfficeStaff = role === "office_staff";
-  const canCreateLog = isSupervisor || role === "owner";
+  // 現場人員:只有主任請假時「代理」寫的日誌(migration-2.43)— 只看自己的,
+  // 代理期間(含補寫寬限)才能開新日誌
+  const isProxyRole = role === "field_assistant";
+  const today = todayLocalDate();
+  const proxyDuty = isProxyRole
+    ? splitDelegations(await loadMyDelegations(actor.id), today)
+    : null;
+  const canCreateLog =
+    isSupervisor || role === "owner" || (proxyDuty?.active.length ?? 0) > 0;
+  // 複製日誌只給主任 / 老闆(代理人一律從空白開始,日期也限請假期間)
+  const canCopyLog = isSupervisor || role === "owner";
 
   // 預設 scope = "all":工地主任視角反映「要找上週同事的灌漿日誌複製」也常見,
   // mine 仍然 1 click 可切。原本 supervisor 預設 mine 但反而讓人找不到歷史日誌。
   const defaultScope: Scope = "all";
-  const scope: Scope =
-    sp.scope === "all" || sp.scope === "mine" ? (sp.scope as Scope) : defaultScope;
+  const scope: Scope = isProxyRole
+    ? "mine"
+    : sp.scope === "all" || sp.scope === "mine"
+      ? (sp.scope as Scope)
+      : defaultScope;
 
   // 案件 filter 在時自動切 'all'(進案件查歷史是顯式行為,該給全期)
   const rangeKey: RangeKey = caseFilterId ? "all" : rangeFromParam(sp.range);
@@ -118,32 +135,39 @@ export default async function LogsPage({
 
   // 「經助理修改」標籤:一次查完本頁所有日誌被辦公室助理改過的紀錄,
   // 避免每列各發一次查詢。日誌沒有時直接跳過(.in 空陣列會多打一趟)。
+  // 「代理」標籤的主任姓名同理:本頁有代理日誌才查(平常一筆都沒有,不多打)。
   const editedByOffice = new Set<string>();
-  if (list.length > 0) {
-    const { data: officeEdits } = await supabase
-      .from("daily_log_revisions")
-      .select("log_id")
-      .eq("editor_role", "office_staff")
-      .in(
-        "log_id",
-        list.map((l) => l.id),
-      );
-    for (const r of (officeEdits ?? []) as { log_id: string }[]) {
-      editedByOffice.add(r.log_id);
-    }
+  const proxyForIds = list.map((l) => l.proxy_for).filter((x): x is string => !!x);
+  const [officeEditsRes, proxyNames] = await Promise.all([
+    list.length > 0
+      ? supabase
+          .from("daily_log_revisions")
+          .select("log_id")
+          .eq("editor_role", "office_staff")
+          .in(
+            "log_id",
+            list.map((l) => l.id),
+          )
+      : Promise.resolve({ data: [] }),
+    loadProfileNames(proxyForIds),
+  ]);
+  for (const r of (officeEditsRes.data ?? []) as { log_id: string }[]) {
+    editedByOffice.add(r.log_id);
   }
 
   const groups = groupByCase(list);
   const filteredCaseName =
     caseFilterId && groups.length > 0 ? groups[0].caseName : null;
 
-  const subtitle = isOfficeStaff
-    ? scope === "mine"
-      ? "您個人送出的日誌"
-      : "辦公室助理可查看全部日誌與簽核狀態"
-    : scope === "mine"
-      ? "您個人送出的日誌，依案件分組"
-      : "全公司日誌，依案件分組";
+  const subtitle = isProxyRole
+    ? "你代理請假主任寫的施工日誌，依案件分組"
+    : isOfficeStaff
+      ? scope === "mine"
+        ? "您個人送出的日誌"
+        : "辦公室助理可查看全部日誌與簽核狀態"
+      : scope === "mine"
+        ? "您個人送出的日誌，依案件分組"
+        : "全公司日誌，依案件分組";
 
   function tabHref(next: Scope): string {
     const params = new URLSearchParams();
@@ -182,7 +206,18 @@ export default async function LogsPage({
         )}
       </div>
 
-      {/* 切換：所有日誌 / 我的日誌 */}
+      {proxyDuty && (
+        <ProxyDutyCard
+          active={proxyDuty.active}
+          upcoming={proxyDuty.upcoming}
+          today={today}
+          showLogsLink={false}
+          className="mb-5"
+        />
+      )}
+
+      {/* 切換：所有日誌 / 我的日誌(現場人員只有自己的代理日誌,不用切) */}
+      {!isProxyRole && (
       <div
         role="tablist"
         aria-label="日誌範圍"
@@ -199,6 +234,7 @@ export default async function LogsPage({
           label="我的日誌"
         />
       </div>
+      )}
 
       {/* 日期範圍 quick pills — 案件 filter 在時隱藏(已切全期) */}
       {!caseFilterId && (
@@ -251,7 +287,7 @@ export default async function LogsPage({
       )}
 
       {!list.length ? (
-        <Empty scope={scope} canCreateLog={canCreateLog} />
+        <Empty scope={scope} canCreateLog={canCreateLog} isProxyRole={isProxyRole} />
       ) : (
         <div className="space-y-3 md:space-y-4">
           {groups.map((g, gi) => {
@@ -305,7 +341,7 @@ export default async function LogsPage({
                           </span>
                         ))}
                     </div>
-                    {g.counts.approved > 0 && (
+                    {g.counts.approved > 0 && !isProxyRole && (
                       <BulkPdfDownloadButton
                         logIds={g.logs
                           .filter((l) => l.status === "approved")
@@ -357,6 +393,14 @@ export default async function LogsPage({
                                     經助理修改
                                   </span>
                                 )}
+                                {l.proxy_for && (
+                                  <span
+                                    className="rounded-full border border-[#B8C4D0] bg-[#EEF2F6] px-1.5 py-0 text-[10px] text-[#3A5670]"
+                                    title="主任請假時，由代理人填寫送出"
+                                  >
+                                    代理 {proxyNames.get(l.proxy_for) ?? "主任"}
+                                  </span>
+                                )}
                                 {l.weather && (
                                   <span className="text-[11px] text-muted-foreground md:text-xs">
                                     {formatWeatherSummary(l.weather)}
@@ -388,7 +432,7 @@ export default async function LogsPage({
                               </span>
                             </div>
                           </Link>
-                          {canCreateLog && (
+                          {canCopyLog && (
                             <Link
                               href={`/logs/new?from=${l.id}`}
                               aria-label={`複製 ${formatDateTW(l.log_date)} 的日誌為新日誌`}
@@ -517,21 +561,30 @@ function ChevronDown() {
 function Empty({
   scope,
   canCreateLog,
+  isProxyRole = false,
 }: {
   scope: Scope;
   canCreateLog: boolean;
+  /** 現場人員(請假代理人)看到的空狀態 */
+  isProxyRole?: boolean;
 }) {
   const isMine = scope === "mine";
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E0DCD6] bg-card px-6 py-16 text-center md:py-20">
       <div className="mb-3 text-5xl text-[#E0DCD6]">📋</div>
       <p className="mb-1.5 text-base text-foreground">
-        {isMine ? "您還沒送出任何日誌" : "目前還沒有任何日誌"}
+        {isProxyRole
+          ? "你還沒有代理寫過日誌"
+          : isMine
+            ? "您還沒送出任何日誌"
+            : "目前還沒有任何日誌"}
       </p>
       <p className="mb-6 text-sm text-muted-foreground">
-        {isMine
-          ? "選一個案件開新日誌，填工項數量、加照片、送出給老闆核定"
-          : "工地主任送出日誌後會出現在這裡"}
+        {isProxyRole
+          ? "工地主任請假時指定你當代理人，就能在這裡替他寫施工日誌、簽名送出"
+          : isMine
+            ? "選一個案件開新日誌，填工項數量、加照片、送出給老闆核定"
+            : "工地主任送出日誌後會出現在這裡"}
       </p>
       {canCreateLog && (
         <Button
