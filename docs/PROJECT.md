@@ -173,6 +173,12 @@ draft →[主任填表+簽名 fill]→ submitted+audit
   健檢結果與還沒擋的項目見 [`docs/SECURITY.md`](SECURITY.md)。
 - **RLS 是正式 role-based**（migration-2.10 起），不是 POC 全開版。改 policy 前先讀
   MIGRATIONS.md 2.10 / 2.14 / 2.15 / 2.18 的收緊歷史。
+- **profiles 的 RLS 只讓主任 / 現場人員讀自己那一列**（`profiles_self_read`：本人 + office_staff / owner / reviewer）。
+  他們開得到的頁面要顯示別人時，embed `profiles!…(full_name)` 會是 null、`from("profiles")` 只撈得到自己：
+  名字用 `lib/logs/proxy.ts` 的 `loadProfileNames()`，要列名冊（排班表人員列、出勤報表人員篩選）用
+  `lib/staff-directory.ts` 的 `loadStaffDirectory()`。兩個都是 service role、只回最少欄位，**頁面先做完角色檢查再呼叫**；
+  embed 留著當備援。**不要放寬 policy** — RLS 整列放行，profiles 還有電話、薪資權限旗標。
+  2026-09-27 全站掃過一輪（decisions.md 同日「別人的名字是空的」節）。
 - **`daily_logs.manpower` 是 jsonb**：出工（`today_total`）、點工（`day_labor` +
   `day_labor_note`，臨時人力只請款不簽約，**與出工分開累計**）、外包工別、機具都在裡面，
   加欄位不用 migration。

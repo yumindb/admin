@@ -239,7 +239,14 @@ export default async function LogDetailPage({
       ),
     ]),
   ];
-  const ancestry = await fetchWorkItemAncestry(supabase, workItemIds);
+  const [ancestry, editorNames] = await Promise.all([
+    fetchWorkItemAncestry(supabase, workItemIds),
+    // 編輯軌跡的編輯人:主任 / 代理人讀不到別人的 profile(RLS),embed 在他們那邊是空的
+    // → 以前助理改過的地方,主任看到的編輯人是「已離職 / 未命名」
+    loadProfileNames(
+      ((revisionRows ?? []) as { editor_id: string | null }[]).map((r) => r.editor_id),
+    ),
+  ]);
   const wiMap = new Map<string, WorkItemRow>();
   for (const [id, n] of ancestry) {
     wiMap.set(id, { id, name: n.name, unit: n.unit, tender_code: n.tender_code });
@@ -278,7 +285,10 @@ export default async function LogDetailPage({
     const editor = Array.isArray(r.editor) ? r.editor[0] : r.editor;
     return {
       id: r.id,
-      editorName: editor?.full_name ?? "（已離職 / 未命名）",
+      editorName:
+        (r.editor_id ? editorNames.get(r.editor_id) : null) ??
+        editor?.full_name ??
+        "（已離職 / 未命名）",
       editorRole: r.editor_role,
       editedAt: r.edited_at,
       logStatusAtEdit: r.log_status_at_edit,

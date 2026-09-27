@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { todayLocalDate } from "@/lib/daily-log";
+import { loadProfileNames } from "@/lib/logs/proxy";
+import { loadStaffDirectory } from "@/lib/staff-directory";
 import { AttendanceReportClient, type CaseOpt, type UserOpt, type EventRow } from "./client";
 
 export const dynamic = "force-dynamic";
@@ -48,27 +50,28 @@ export default async function AttendanceReportPage({
 
   const supabase = await createClient();
 
-  // 同步撈 cases + profiles 給 filter dropdown
-  const [{ data: caseRows }, { data: profRows }] = await Promise.all([
+  // 同步撈 cases + 人員給 filter dropdown。
+  // 人員與下面的打卡人名字走 service role(上面已擋掉現場人員):打卡紀錄全員可讀,
+  // 但主任讀不到別人的 profile(RLS)— 以前主任看到的名字全是「—」、人員篩選只有自己。
+  const [{ data: caseRows }, staffList] = await Promise.all([
     supabase
       .from("cases")
       .select("id, code, name")
       .order("created_at", { ascending: false })
       .limit(500),
-    supabase
-      .from("profiles")
-      .select("id, full_name, role")
-      .in("role", ["site_supervisor", "field_assistant", "owner", "office_staff"])
-      .order("full_name", { ascending: true }),
+    loadStaffDirectory({
+      roles: ["site_supervisor", "field_assistant", "owner", "office_staff"],
+      activeOnly: false,
+    }),
   ]);
 
   const cases: CaseOpt[] = (caseRows ?? []).map((c) => ({
     id: c.id as string,
     label: (c.code ? `${c.code}｜` : "") + (c.name as string),
   }));
-  const users: UserOpt[] = (profRows ?? []).map((p) => ({
-    id: p.id as string,
-    label: `${p.full_name as string}（${ROLE_LABEL[p.role as string] ?? p.role}）`,
+  const users: UserOpt[] = staffList.map((p) => ({
+    id: p.id,
+    label: `${p.name}（${ROLE_LABEL[p.role] ?? p.role}）`,
   }));
 
   // 撈當前 filter 下的事件(server-side render)
@@ -95,17 +98,12 @@ export default async function AttendanceReportPage({
         .filter((id): id is string => !!id),
     ),
   );
-  const [{ data: profilesForEvts }, { data: casesForEvts }] = await Promise.all([
-    userIds.length > 0
-      ? supabase.from("profiles").select("id, full_name").in("id", userIds)
-      : Promise.resolve({ data: [] }),
+  const [userNameById, { data: casesForEvts }] = await Promise.all([
+    loadProfileNames(userIds),
     caseIds.length > 0
       ? supabase.from("cases").select("id, code, name").in("id", caseIds)
       : Promise.resolve({ data: [] }),
   ]);
-  const userNameById = new Map<string, string>();
-  for (const p of profilesForEvts ?? [])
-    userNameById.set(p.id as string, (p.full_name as string) ?? "未命名");
   const caseLabelById = new Map<string, string>();
   for (const c of casesForEvts ?? []) {
     const code = c.code as string | null;

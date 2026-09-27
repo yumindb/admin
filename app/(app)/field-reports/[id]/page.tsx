@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { NextStepHint } from "@/components/next-step-hint";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { getSignedUrls } from "@/lib/supabase/storage";
+import { loadProfileNames } from "@/lib/logs/proxy";
 import { NewReportForm, type CaseOption } from "../new-report-form";
 import { deleteFieldReportAction } from "../actions";
 // migration-2.16:office_staff/owner 處理回報的工具(下載照片、封存、刪除)
@@ -63,13 +64,20 @@ export default async function FieldReportDetailPage({
 
   // Storage 已轉 private — 對 r.photos 一次 sign(5 min)
   const reportPhotos = r.photos ?? [];
-  const photoSignedMap = await getSignedUrls(
-    "daily-photos",
-    reportPhotos.map((p) => p.path),
-    // 1h:照片牆有 lazy/分批載入,使用者看頁面超過 5 分鐘再展開,
-    // 縮圖才請求 — 5 分鐘效期會 400 破圖
-    3600,
-  );
+  const [photoSignedMap, authorNames] = await Promise.all([
+    getSignedUrls(
+      "daily-photos",
+      reportPhotos.map((p) => p.path),
+      // 1h:照片牆有 lazy/分批載入,使用者看頁面超過 5 分鐘再展開,
+      // 縮圖才請求 — 5 分鐘效期會 400 破圖
+      3600,
+    ),
+    // 回報人名字另外查:主任讀不到別人的 profile(RLS),embed 在他那邊是空的。
+    // 自己的回報 embed 讀得到,不用多查
+    isAuthor ? Promise.resolve(new Map<string, string>()) : loadProfileNames([r.author_id]),
+  ]);
+  const authorName =
+    (r.author_id ? authorNames.get(r.author_id) : null) ?? r.author?.full_name ?? null;
   const signedPhotos = reportPhotos.map((p) => ({
     ...p,
     path: photoSignedMap.get(p.path) ?? p.path,
@@ -141,7 +149,7 @@ export default async function FieldReportDetailPage({
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
             <span>{r.cases?.code ?? "未編號"}</span>
             <span>{formatTW(r.created_at)}</span>
-            {r.author?.full_name && <span>{r.author.full_name}</span>}
+            {authorName && <span>{authorName}</span>}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

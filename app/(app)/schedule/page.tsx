@@ -13,8 +13,9 @@ import {
   type ShiftTemplate,
 } from "@/lib/payroll/schedule";
 import type { Holiday } from "@/lib/payroll/holidays";
+import { loadStaffDirectory } from "@/lib/staff-directory";
 import { NextStepHint } from "@/components/next-step-hint";
-import { ScheduleGrid, type CaseOpt, type StaffOpt } from "./schedule-grid";
+import { ScheduleGrid, type CaseOpt } from "./schedule-grid";
 
 export const dynamic = "force-dynamic";
 
@@ -37,14 +38,13 @@ export default async function SchedulePage({ searchParams }: { searchParams: Sea
   const dates = weekDates(weekStart);
 
   const supabase = await createClient();
-  const [staffRes, tplRes, entryRes, caseRes, holidayRes, dayOffRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, role, company")
-      .eq("is_active", true)
-      .neq("role", "reviewer")
-      .order("role")
-      .order("full_name"),
+  const [staff, tplRes, entryRes, caseRes, holidayRes, dayOffRes] = await Promise.all([
+    // 人員列走 service role(上面已擋掉其他角色):主任讀不到別人的 profile(RLS),
+    // 用一般 client 撈,主任的唯讀班表只剩自己一列。班表 / 排休本身主任讀得到全部。
+    loadStaffDirectory({
+      roles: ["site_supervisor", "field_assistant", "office_staff", "owner"],
+      activeOnly: true,
+    }),
     supabase
       .from("shift_templates")
       .select("id, name, short_name, start_time, end_time, break_minutes, company, sort_order, is_active")
@@ -82,12 +82,6 @@ export default async function SchedulePage({ searchParams }: { searchParams: Sea
 
   const tableMissing = !!tplRes.error || !!entryRes.error;
 
-  const staff: StaffOpt[] = (staffRes.data ?? []).map((p) => ({
-    id: p.id as string,
-    name: p.full_name as string,
-    role: p.role as string,
-    company: (p.company as string | null) ?? null,
-  }));
   const templates: ShiftTemplate[] = (tplRes.data ?? []).map((t) => ({
     id: t.id as string,
     name: t.name as string,

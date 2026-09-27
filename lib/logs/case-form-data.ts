@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { getSignedUrls } from "@/lib/supabase/storage";
+import { loadProfileNames } from "@/lib/logs/proxy";
 import { computeWorkItemAggregates } from "@/lib/work-item-aggregates";
 import {
   computeManpowerByCase,
@@ -116,7 +117,7 @@ export async function loadCaseFormData(
     supabase
       .from("field_reports")
       .select(
-        "id, case_id, note, photos, created_at, author:profiles!author_id(full_name)",
+        "id, case_id, author_id, note, photos, created_at, author:profiles!author_id(full_name)",
       )
       .eq("case_id", caseId)
       .eq("status", "pending")
@@ -207,33 +208,46 @@ export async function loadCaseFormData(
   // ---- 待整合的現場回報 ----
   type ReportRowWithAuthor = Pick<
     FieldReport,
-    "id" | "case_id" | "note" | "photos" | "created_at"
+    "id" | "case_id" | "author_id" | "note" | "photos" | "created_at"
   > & {
     author: { full_name: string | null } | { full_name: string | null }[] | null;
   };
+  const reportRows = (reportsRes.data ?? []) as unknown as ReportRowWithAuthor[];
+
+  // Storage 已轉 private → signed URL。original_path(標註前原圖)一起簽:
+  // 合併後若要重新標註,annotator 要載得出原圖。
+  // 回報人名字同時另外查:主任 / 代理人讀不到別人的 profile(RLS),
+  // embed 在他們那邊是空的 → 以前每一筆都顯示「未命名」
+  const allPhotos = reportRows.flatMap((r) => r.photos ?? []);
+  const [signed, authorNames] = await Promise.all([
+    allPhotos.length > 0
+      ? getSignedUrls(
+          "daily-photos",
+          allPhotos.flatMap((p) =>
+            p.original_path ? [p.path, p.original_path] : [p.path],
+          ),
+        )
+      : Promise.resolve(new Map<string, string>()),
+    loadProfileNames(reportRows.map((r) => r.author_id)),
+  ]);
+
   const pendingReports: PendingReport[] = [];
-  for (const row of (reportsRes.data ?? []) as unknown as ReportRowWithAuthor[]) {
+  for (const row of reportRows) {
     const author = Array.isArray(row.author) ? row.author[0] : row.author;
     pendingReports.push({
       id: row.id,
       caseId: row.case_id,
       note: row.note ?? "",
       photos: row.photos ?? [],
-      authorName: author?.full_name ?? "未命名",
+      authorName:
+        (row.author_id ? authorNames.get(row.author_id) : null) ??
+        author?.full_name ??
+        "未命名",
       createdAt: row.created_at,
     });
   }
 
-  // Storage 已轉 private → signed URL。original_path(標註前原圖)一起簽:
-  // 合併後若要重新標註,annotator 要載得出原圖。
-  const allPhotos = pendingReports.flatMap((r) => r.photos);
   if (allPhotos.length > 0) {
-    const signed = await getSignedUrls(
-      "daily-photos",
-      allPhotos.flatMap((p) =>
-        p.original_path ? [p.path, p.original_path] : [p.path],
-      ),
-    );
     for (const r of pendingReports) {
       r.photos = r.photos.map((p) => ({
         ...p,

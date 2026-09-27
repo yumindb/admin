@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/db/fetch-all";
 import { formatTW, formatDateTW } from "@/lib/datetime";
@@ -39,6 +39,7 @@ import {
 } from "@/components/extra-contracts-section";
 import { normalizeLogPhotos } from "@/lib/daily-log";
 import { extractStoragePath, getSignedUrls } from "@/lib/supabase/storage";
+import { loadProfileNames } from "@/lib/logs/proxy";
 import type {
   Case,
   CaseWorkItem,
@@ -133,7 +134,7 @@ export default async function CaseDetailPage({
     supabase
       .from("log_approvals")
       .select(
-        "id, log_id, stage, decision, comment, created_at, approver:profiles!approver_id(full_name), daily_logs!inner(case_id, log_date)",
+        "id, log_id, stage, approver_id, decision, comment, created_at, approver:profiles!approver_id(full_name), daily_logs!inner(case_id, log_date)",
       )
       .eq("daily_logs.case_id", id)
       .order("created_at", { ascending: false })
@@ -141,7 +142,7 @@ export default async function CaseDetailPage({
     // 大事記:現場回報
     supabase
       .from("field_reports")
-      .select("id, note, status, created_at, author:profiles!author_id(full_name)")
+      .select("id, author_id, note, status, created_at, author:profiles!author_id(full_name)")
       .eq("case_id", id)
       .order("created_at", { ascending: false })
       .limit(30),
@@ -160,20 +161,18 @@ export default async function CaseDetailPage({
   if (caseErr || !caseRow) notFound();
   const c = caseRow as Case;
 
-  // 打卡時間軸:撈出現過的 user 名字
-  const attendanceUserIds = Array.from(
-    new Set(((attendanceRows ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)),
-  );
-  const attendanceUserMap = new Map<string, string>();
-  if (attendanceUserIds.length > 0) {
-    const { data: profs } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", attendanceUserIds);
-    for (const p of profs ?? []) {
-      attendanceUserMap.set(p.id as string, (p.full_name as string) ?? "未命名");
-    }
-  }
+  // 下面的名字走 service role — 先確認是登入中、沒被停用的帳號(layout 已查過,cache 命中)
+  const actor = await tryGetActor();
+  if (!actor) redirect("/login");
+
+  // 打卡時間軸 + 大事記的簽核人 / 回報人名字,一次另外查(service role):
+  // 主任讀不到別人的 profile(RLS)— 以前主任看打卡時間軸除了自己全是「未命名」,
+  // 大事記的簽核人、回報人也是空的
+  const names = await loadProfileNames([
+    ...((attendanceRows ?? []) as Array<{ user_id: string }>).map((r) => r.user_id),
+    ...((approvalRows ?? []) as Array<{ approver_id: string | null }>).map((a) => a.approver_id),
+    ...((reportRows ?? []) as Array<{ author_id: string | null }>).map((r) => r.author_id),
+  ]);
   const timelineEvents: TimelineEvent[] = (attendanceRows ?? []).map((r) => {
     const row = r as {
       id: string;
@@ -190,7 +189,7 @@ export default async function CaseDetailPage({
     return {
       id: row.id,
       event_type: row.event_type,
-      user_name: attendanceUserMap.get(row.user_id) ?? "未命名",
+      user_name: names.get(row.user_id) ?? "未命名",
       case_label: null,
       lat: row.lat,
       lng: row.lng,
@@ -201,7 +200,6 @@ export default async function CaseDetailPage({
       created_at: row.created_at,
     };
   });
-  const actor = await tryGetActor();
   const canEditWorkItems =
     actor?.role === "office_staff" || actor?.role === "owner";
   const items = (workItems ?? []) as CaseWorkItem[];
@@ -308,6 +306,7 @@ export default async function CaseDetailPage({
     id: string;
     log_id: string;
     stage: "fill" | "review" | "audit" | "approve";
+    approver_id: string | null;
     decision: "approved" | "rejected";
     comment: string | null;
     created_at: string;
@@ -316,6 +315,7 @@ export default async function CaseDetailPage({
   };
   type ReportEventRow = {
     id: string;
+    author_id: string | null;
     note: string | null;
     status: string;
     created_at: string;
@@ -332,7 +332,8 @@ export default async function CaseDetailPage({
   const timeline: CaseTimelineEvent[] = [];
 
   for (const a of (approvalRows ?? []) as unknown as ApprovalEventRow[]) {
-    const who = one(a.approver)?.full_name ?? "";
+    const who =
+      (a.approver_id ? names.get(a.approver_id) : null) ?? one(a.approver)?.full_name ?? "";
     const logDate = one(a.daily_logs)?.log_date;
     const dateLabel = logDate ? `${formatDateTW(logDate)} 的日誌` : "日誌";
     if (a.decision === "approved") {
@@ -393,12 +394,14 @@ export default async function CaseDetailPage({
 
   for (const r of (reportRows ?? []) as unknown as ReportEventRow[]) {
     const note = (r.note ?? "").trim();
+    const author =
+      (r.author_id ? names.get(r.author_id) : null) ?? one(r.author)?.full_name ?? "現場人員";
     timeline.push({
       id: `fr-${r.id}`,
       at: r.created_at,
       badge: "回報",
       tone: "default",
-      label: `${one(r.author)?.full_name ?? "現場人員"} 新增現場回報`,
+      label: `${author} 新增現場回報`,
       detail: note ? (note.length > 30 ? note.slice(0, 30) + "…" : note) : null,
       href: `/field-reports/${r.id}`,
     });

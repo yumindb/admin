@@ -10,7 +10,7 @@ import { NextStepHint } from "@/components/next-step-hint";
 import { ProxyDutyCard } from "@/components/proxy-duty-card";
 import { todayLocalDate } from "@/lib/daily-log";
 import { splitDelegations } from "@/lib/leave-proxy";
-import { loadMyDelegations } from "@/lib/logs/proxy";
+import { loadMyDelegations, loadProfileNames } from "@/lib/logs/proxy";
 import type { FieldReport, FieldReportStatus, UserRole } from "@/lib/types";
 
 const STATUS: Record<FieldReportStatus, { label: string; cls: string }> = {
@@ -165,9 +165,14 @@ export default async function FieldReportsPage({
     if (fp) firstPhotoPaths.push(fp);
   }
   // 請假代理人(現場人員的首頁就是這裡)— 代理任務放最上面(layout 已查過,cache 命中)
-  const [firstPhotoSigned, myDelegations] = await Promise.all([
+  // 回報人名字另外查:主任讀不到別人的 profile(RLS),embed 在他那邊是空的,
+  // 卡片上的回報人就整個不見。現場人員只看自己的、卡片不顯示回報人,不用查。
+  const [firstPhotoSigned, myDelegations, authorNames] = await Promise.all([
     getSignedUrls("daily-photos", firstPhotoPaths),
     isFieldAssistant ? loadMyDelegations(user.id) : Promise.resolve([]),
+    isFieldAssistant
+      ? Promise.resolve(new Map<string, string>())
+      : loadProfileNames(list.map((r) => r.author_id)),
   ]);
   const today = todayLocalDate();
   const proxyDuty = splitDelegations(myDelegations, today);
@@ -355,6 +360,7 @@ export default async function FieldReportsPage({
                       <ReportCard
                         report={r}
                         showAuthor
+                        authorNames={authorNames}
                         hideCaseName
                         firstPhotoSigned={firstPhotoSigned}
                       />
@@ -392,16 +398,22 @@ export default async function FieldReportsPage({
 function ReportCard({
   report: r,
   showAuthor,
+  authorNames,
   hideCaseName = false,
   firstPhotoSigned,
 }: {
   report: ReportRow;
   showAuthor: boolean;
+  /** service role 查的回報人名字(主任讀不到別人的 profile,embed 是空的) */
+  authorNames?: Map<string, string>;
   /** 分組視圖中,案場名已在 sticky header 顯示,卡片內不重複 */
   hideCaseName?: boolean;
   firstPhotoSigned: Map<string, string>;
 }) {
   const s = STATUS[r.status];
+  const authorName = showAuthor
+    ? ((r.author_id ? authorNames?.get(r.author_id) : null) ?? r.author?.full_name ?? null)
+    : null;
   const photoCount = r.photos?.length ?? 0;
   const firstPhotoOriginal = r.photos?.[0]?.path ?? null;
   const firstPhoto = firstPhotoOriginal
@@ -430,7 +442,7 @@ function ReportCard({
           )}
           <div className={hideCaseName ? "text-sm text-muted-foreground" : "mt-0.5 text-sm text-muted-foreground"}>
             {ts}
-            {showAuthor && r.author?.full_name && ` · ${r.author.full_name}`}
+            {authorName && ` · ${authorName}`}
           </div>
         </div>
         <span
