@@ -11,6 +11,7 @@ import {
   MapPin,
   Activity,
   Gauge,
+  Clock3,
 } from "lucide-react";
 import { tryGetActor } from "@/lib/auth/require-role";
 import { isSystemAdmin } from "@/lib/monitor/access";
@@ -77,6 +78,12 @@ export default async function ReportsHomePage() {
         />
         {(actor.role === "office_staff" || actor.role === "owner") && (
           <>
+            <ReportCard
+              href="/reports/work-hours"
+              title="工時對帳"
+              description="打卡配對成工時,對排班算正常 / 加班 / 假日時數與遲到缺勤;漏卡列在最上面,月結前先對這張"
+              icon={<Clock3 className="size-6" strokeWidth={1.75} />}
+            />
             <ReportCard
               href="/reports/logins"
               title="登入紀錄"

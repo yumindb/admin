@@ -51,6 +51,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   "/payroll/holidays": "假日行事曆",
   "/schedule": "排班表",
   "/schedule/templates": "班別範本",
+  "/reports/work-hours": "工時對帳",
 };
 
 /** server action export 名稱 → 中文。名稱來自 Next 的 server-reference manifest(exportedName)。 */
@@ -144,6 +145,7 @@ export const ACTION_LABELS: Record<string, string> = {
   fillWeekScheduleAction: "快速排班(整週)",
   copyWeekScheduleAction: "複製上週班表",
   toggleDayOffAction: "標／取消排休",
+  exportWorkHoursXlsxAction: "下載工時對帳 Excel",
 };
 
 /**

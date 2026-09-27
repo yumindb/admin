@@ -4,6 +4,7 @@ import {
   Banknote,
   CalendarDays,
   CalendarRange,
+  Clock3,
   Settings2,
   Users,
 } from "lucide-react";
@@ -134,9 +135,15 @@ export default async function PayrollHomePage() {
           icon={<CalendarRange className="size-6" strokeWidth={1.75} />}
         />
         <EntryCard
+          href="/reports/work-hours"
+          title="工時對帳"
+          description="打卡配對成工作段,扣休息、對排班,拆成正常 / 分段加班 / 假日時數;漏卡與缺勤列在最上面,月結前先對這張"
+          icon={<Clock3 className="size-6" strokeWidth={1.75} />}
+        />
+        <EntryCard
           href="/payroll"
-          title="工時對帳・月結・薪資單"
-          description="下一階段:打卡配對成工時、分段加班、每月產生薪資快照與 Excel、員工查自己的薪資單"
+          title="月結・薪資單"
+          description="下一階段:每月把工時乘上薪制產生薪資快照、季獎金、Excel;員工查自己的薪資單"
           icon={<Banknote className="size-6" strokeWidth={1.75} />}
           comingSoon
         />

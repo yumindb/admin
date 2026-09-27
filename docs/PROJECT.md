@@ -120,6 +120,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 | `/staff` | 帳號管理（office_staff / owner）；有薪資權限的人多一顆「薪制」按鈕（月薪／日薪＋生效日），老闆編輯助理時可勾「可處理薪資」 |
 | `/payroll` `/payroll/settings` `/payroll/holidays` | 薪資（2026-09 Phase A，office_staff / owner）：規則設定、假日行事曆、人員薪制總覽。見下方「人事／薪資」節 |
 | `/schedule` `/schedule/templates` | 排班（Phase B）：週曆格子（點格子排、快速排班、複製上週）、班別範本。office_staff / owner 編輯，site_supervisor 唯讀；工人在 `/attendance` 看「本週班表」卡 |
+| `/reports/work-hours` | 工時對帳（Phase C，office_staff / owner）：打卡配對成工作段 → 正常／分段加班／假日時數、遲到早退缺勤、請假時數、異常清單（連到補登）、Excel。只有時數沒金額 |
 | `/account` | 個人設定（改密碼、LINE 通知綁定） |
 | `/api/cron/*` | Vercel cron 入口（見下方「排程」節） |
 | `/api/line/webhook` | LINE 官方帳號 webhook（綁定碼、解除綁定；詳見 [`docs/LINE.md`](LINE.md)） |
@@ -296,7 +297,7 @@ draft →[主任填表+簽名 fill]→ submitted+audit
 |---|---|---|
 | A | 薪制檔案、假日行事曆、規則設定、權限（migration-2.40） | ✅ 2026-09-26 程式完成 |
 | B | 排班：`shift_templates` + `schedule_entries`（migration-2.41）、`/schedule` 週曆、打卡頁「本週班表」卡 | ✅ 2026-09-26 程式完成 |
-| C | 工時配對引擎（`attendance_events` → 工作段、分段加班、異常清單）＋出勤工時報表 | 未做 |
+| C | 工時配對引擎（`lib/payroll/work-hours.ts`）＋ `/reports/work-hours` 對帳報表＋ Excel；無 migration | ✅ 2026-09-27 程式完成 |
 | D | 月結：`payroll_runs` + `payroll_items` 快照、季獎金、xlsx、員工看自己的薪資單 `/my-pay` | 未做 |
 | E | 遲到扣款實際啟用、餐飲多班別 | 未做 |
 
@@ -334,6 +335,17 @@ draft →[主任填表+簽名 fill]→ submitted+audit
   員工在 `/attendance` 的「排休」迷你月曆點日期標／取消；只能標未來、還沒排班的日子（已排班要休走請假）；
   每月上限、截止日、至少提前幾天在 `payroll.day_off` 設定（預設都不限）。排班格子上顯示「休」，
   硬要排會再問一次；快速排班自動跳過排休日。2026-09-26 Evelyn 拍板：不用核准、裕民也開。
+
+**工時對帳引擎**（`lib/payroll/work-hours.ts`，純函式、17 個測試；資料層 `work-hours-data.ts`）：
+- 配對：`attendance_events` 依時間序 clock_in → clock_out；連兩個上班卡＝前一段「沒下班卡」、沒開著的下班卡＝「沒上班卡」、
+  相隔 > 18 小時＝兩邊都漏卡。**配不起來不猜**，列異常連到既有補登。工作段歸屬「上班那天」（台灣日界），跨午夜晚班不會被切。
+- 每天：扣休息（有排班照班別休息分鐘總和；沒排班用「單段超過 N 小時扣 M 分」）；日型別＝有排班一律平日，
+  否則 `dayTypeFor`；平日超過每日正常工時的部分依 `weekday_tiers` 分段（超出分段沿用最後倍率）、休息日全部進
+  `rest_day_tiers`、例假日／國定假日整天 × `holiday_multiplier`；加班分鐘先依 `ot_unit_minutes` 無條件捨去。
+- 遲到＝第一筆上班卡晚於排定上班＋寬限（超過就從排定時間起算全部分鐘）；早退＝最後下班早於排定下班；
+  缺勤＝有排班、沒打卡、沒有核准的假。請假時數＝核准假單與該日的重疊小時，上限每日正常工時。
+- 月彙總：排班天／出勤天／各倍率時數／加班合計對照每月上限（只標記）／遲到次數與分鐘／缺勤／各假別時數／異常。
+- **只算時數 × 倍率，不算錢**；月結（Phase D）才乘時薪。
 
 **桌機導覽列**（2026-09-26 改版，`components/desktop-nav.tsx`）：項目到 11–12 個後一排放不下。
 每個連結分三種：primary 永遠直接放；`group`（人事 ▾ = 人員管理／排班／薪資）一律下拉；
