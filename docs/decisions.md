@@ -1681,3 +1681,25 @@ embed 出來的名字全是 null（這些表本身都是 read-all，只有名字
 - 以後新頁面只要主任 / 現場人員進得去、又要顯示別人的名字，一律照這個做（PROJECT.md「資料庫」節）。
 - 順手看到、這次沒動：出勤報表的「下載 Excel」主任按得到，但 `exportAttendanceXlsx` 只給助理 / 老闆（會直接丟錯）；
   消息頁「等你簽核」不會列出主任要簽的現場人員假單（導覽列的請假 badge 有算）。
+
+## 2026-09-27 — 備份加入登入帳號（加密）＋ storage 設定、PDF 字型
+
+原本的每日備份只有 `public` schema 與三個 bucket。Supabase 整個出事（專案被刪、帳號遺失）時，
+26 個登入帳號救不回來，而每張表都用帳號 UUID 關聯；storage 的 bucket 設定與存取規則、PDF 字型也都不在備份裡。
+
+### 做了什麼
+
+- `backup.yml` 新增兩步，**排在資料庫與照片上傳之後**（失敗不會擋掉主備份，但照樣紅燈、寄 🚨 信）：
+  - 登入帳號：`pg_dump --data-only` 的 `auth.users` + `auth.identities`（跟 08 月搬東京同一招，已實戰過）
+    → gzip → OpenSSL CMS 加密（RSA-OAEP + AES-256）→ `r2:…/auth/`，保留 90 天。
+  - storage bootstrap：每晚從正式站照現況產生 bucket 設定 + `storage.objects` 規則的 SQL（冪等、不敏感、不加密）。
+- storage 鏡像加上 `fonts`（4 檔 ~50MB，repo 裡沒有這些字型檔）。
+- `docs/BACKUP.md` 的還原步驟整段重寫：原本的 `psql < dump` 在新專案一定失敗（沒有帳號、schema 語句衝突）。
+
+### 為什麼這樣定
+
+- **要加密**：帳號備份含密碼雜湊，最短密碼只有 6 碼，外洩就能離線暴力破解；每天一份、放 90 天。
+- **用公鑰加密、私鑰不放 GitHub**：workflow 只需要公開的憑證（直接寫在 yml 裡），不用新增任何 GitHub secret；
+  runner 上解不開是設計。私鑰在 `D:\Evelyn\_secrets\`，**要另留一份給裕民**，遺失的話只剩「同 UUID 重建帳號 + 全員重設密碼」這條退路。
+- **選 OpenSSL CMS 不用 age**：OpenSSL 在 GitHub runner、Git Bash、Mac 都現成，還原時不用另外裝工具。
+- **storage 設定每晚從現況產生，不靠 migration 檔**：`fonts` bucket 是手動建的、規則散在好幾支 migration，照檔案重播拼不回現況。

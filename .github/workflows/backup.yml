@@ -95,7 +95,8 @@ jobs:
 
       - name: Mirror Storage buckets
         run: |
-          for bucket in daily-photos signatures daily-log-pdfs; do
+          # fonts:PDF 用的 Noto Sans CJK 子集,repo 裡沒有這幾個檔 — 不備份的話換專案 PDF 就產不出來(4 檔 ~50MB)
+          for bucket in daily-photos signatures daily-log-pdfs fonts; do
             mkdir -p "out/storage/$bucket"
             echo "::group::Mirror $bucket"
             rclone copy "supabase:$bucket" "out/storage/$bucket" \
@@ -112,7 +113,7 @@ jobs:
             "date": "${{ steps.ts.outputs.date }}",
             "workflow_run": "${{ github.run_id }}",
             "trigger": "${{ github.event_name }}",
-            "buckets": ["daily-photos", "signatures", "daily-log-pdfs"],
+            "buckets": ["daily-photos", "signatures", "daily-log-pdfs", "fonts"],
             "schema": "public"
           }
           EOF
@@ -133,12 +134,133 @@ jobs:
           rclone sync out/storage r2:${R2_BUCKET}/storage-latest \
             --transfers=8 --checkers=16 --fast-list --stats=30s
 
+      # 登入帳號(auth.users / auth.identities)。放在資料庫與照片都上傳「之後」:
+      # 這步失敗不會擋掉主備份,但整個 run 會變紅、照樣寄 🚨 信。
+      # 內含密碼雜湊 → 用下面的公鑰憑證加密(CMS:RSA-OAEP + AES-256)才上傳。
+      # 解密用的私鑰不在 GitHub(Evelyn 的 D:\Evelyn\_secrets\yumin-backup-auth-key.pem),
+      # 所以這裡加密、這裡解不開是設計如此。還原步驟與換金鑰見 docs/BACKUP.md。
+      - name: Dump + encrypt login accounts (auth)
+        id: auth
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
+          # 公鑰憑證(公開資訊,放 repo 沒關係)— SHA-256 指紋 36:07:D9:C4:…:AA:CF:F9:43
+          AUTH_BACKUP_CERT: |
+            -----BEGIN CERTIFICATE-----
+            MIIFZzCCA0+gAwIBAgIUG6lRpXhKRQGOZmc5cJhFbNADh7IwDQYJKoZIhvcNAQEL
+            BQAwQjEVMBMGA1UECgwMWXUgTWluIEFkbWluMSkwJwYDVQQDDCB5dW1pbi1hZG1p
+            biBsb2dpbi1hY2NvdW50IGJhY2t1cDAgFw0yNjA5MjcwNTE2NDNaGA8yMTI2MDkw
+            MzA1MTY0M1owQjEVMBMGA1UECgwMWXUgTWluIEFkbWluMSkwJwYDVQQDDCB5dW1p
+            bi1hZG1pbiBsb2dpbi1hY2NvdW50IGJhY2t1cDCCAiIwDQYJKoZIhvcNAQEBBQAD
+            ggIPADCCAgoCggIBAMxXM40BF4otz0NGJuumN3aJM/3lHR37ZcJsy6Ld5k32GT4S
+            ZreIqpWOkR136fdVv2JVEVXlmPcU63Egzm1QIy5M4gH9rFklEdp7HcK+bNyZER0k
+            kE+13dB8M0hayJA0Ux8lk/jYqb+dIJ6XtGDEBnZpDpILtOsp/ZGv0X1TDh0LRg51
+            5K3+DBzt2qIMJll0n2fEunmhx6/DZu5tZppjAoU5uhTr8SW+Bh+iDCplnkQ18xMG
+            ty+BVSV5Eed6OH3SCJj+T0wKieIQQkrsVQ6TNFo+8fIQ24oDyLo6uMkpqSeIDAX4
+            1GjOmu5kyM+Fvh3oqIuRR8OLBgU43KPO0UTfrAI8zGZh7lmuORPWXyJJynVz1soE
+            J4IGWJWioCzijDBTz9GMeDev7yaeL/yKqg7PpZLwbk3d5rx/YtrE3DAqFgiMa+tx
+            EbNVduF0XyCssixlTvb87Tv/TEtpVt/XEyy0SqPSVMNToh1/Mm+gJMQ7EPgq7nh7
+            ajl3DXEbuwD5ZW6X/mUkUJDtW02eHz8YnF+czmhBV4zD4bZJMUWSX55nO+8s+L3X
+            RGm+PRxjn0RN0D2H/FI5xrjZpCuBnpbO+g5ZtpJUj/3kFSQ2OjQS5jlHbj2RHzVG
+            slfk5u/TNkKMM8bLJ+ygwzBfBGjfuYAyDOIXuxnPhhfqVr9HVoRbex7XdQsDAgMB
+            AAGjUzBRMB0GA1UdDgQWBBR2YlLBLuvWJK/nZp9zkQkUHrAJVDAfBgNVHSMEGDAW
+            gBR2YlLBLuvWJK/nZp9zkQkUHrAJVDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
+            DQEBCwUAA4ICAQC/TVXBJVWsCiI5hEOBlyeNKroL9ul+tkI5Mc6vK42Fynh0od3A
+            fFx1wOhMJnH5regWzoFlTSJTXaCCCvSOsk32GBj6kn2eFZdN+KgmXi3cm588k+8y
+            WTvbcbTfbiPN0v7a50iUucI6rdK1fU3TCEhJbnn5WQZ9ge6u45P2FjL/6COSqYBL
+            4aedB/vcWlAFrEsSZDGsEkLItZk9b80T8IsWOBxMU8i2PdmishQ6qKNrgRT/gP4m
+            wnTMPm8AS+XrKOeOT33HXOfaY2EhAEKHNddnfN+hTEqArEnMaeMZBuE+eZ6RoOOD
+            r88TxsniJui0aKkLDhi4k+9NFEPerXH82KEdGn1Ya29gzbx5cbOsjycJd/Onxvn4
+            KW6MhweN+DKaFsJu/7j4qMI+a+FOWWie1ywGOqTywX5po5EkJg7ZxaGqJttyO5kI
+            CtUe0+6Q6rsgzPSUsWnvZ6ttbf1x1XRi8gXn6meseVOKdj1bNg9YLYd9ld23bVlp
+            0f+ugyes0tpsYYmDQ7/eE1I4/GmkWi2R6FPi8bi5OoujYz4hdSUNVnwK78j283a8
+            nsJ0ITXvuHydCMfryYeJ1l5k2w2Lo9KR+WxD2cRdSCox7arcLOF9v3bpTTeF8OLb
+            EkFHJmWE2nMTufnDjTK/crV0kCZib1BJn+eWRsaqLAhVSvaXnCNag/w11g==
+            -----END CERTIFICATE-----
+        run: |
+          set -euo pipefail
+          umask 077
+          CERT="$RUNNER_TEMP/auth-backup-cert.pem"
+          PLAIN="$RUNNER_TEMP/auth.sql"
+          AUTH_FILE="auth_${{ steps.ts.outputs.ts }}.sql.gz.cms"
+          printf '%s' "$AUTH_BACKUP_CERT" > "$CERT"
+          # 跟 2026-08 搬東京同一招(migrate-to-tokyo.yml):只要 users / identities 的資料;
+          # sessions / refresh_tokens 不需要(還原後大家重新登入就好)。
+          # users 在前(identities 的 FK 指向 users),還原時照檔案順序灌即可。
+          pg_dump "$SUPABASE_DB_URL" --data-only --table=auth.users      >  "$PLAIN"
+          pg_dump "$SUPABASE_DB_URL" --data-only --table=auth.identities >> "$PLAIN"
+          gzip -9 "$PLAIN"
+          openssl cms -encrypt -binary -aes-256-cbc \
+            -recip "$CERT" -keyopt rsa_padding_mode:oaep \
+            -in "$PLAIN.gz" -outform DER -out "out/$AUTH_FILE"
+          rm -f "$PLAIN.gz"
+          # 自我檢查:確認是 RSA-OAEP 加密的 CMS 檔(只 grep — repo 是公開的,內容不能印到 log)。
+          # 先寫檔再 grep:直接 `| grep -q` 會在 pipefail 下誤判失敗(grep 提早結束 → openssl SIGPIPE)
+          openssl cms -cmsout -print -noout -inform DER -in "out/$AUTH_FILE" > "$RUNNER_TEMP/cms.txt"
+          grep -qi 'oaep' "$RUNNER_TEMP/cms.txt" || {
+            echo "::error::加密後的帳號備份格式不對"; exit 1; }
+          rm -f "$RUNNER_TEMP/cms.txt"
+          USERS=$(psql "$SUPABASE_DB_URL" -Atc "select count(*) from auth.users")
+          IDENTITIES=$(psql "$SUPABASE_DB_URL" -Atc "select count(*) from auth.identities")
+          rclone copy "out/$AUTH_FILE" "r2:${R2_BUCKET}/auth/" --stats=30s
+          echo "file=$AUTH_FILE" >> "$GITHUB_OUTPUT"
+          echo "users=$USERS" >> "$GITHUB_OUTPUT"
+          echo "identities=$IDENTITIES" >> "$GITHUB_OUTPUT"
+          echo "Encrypted login-account dump: $(stat -c%s "out/$AUTH_FILE") bytes (users=$USERS, identities=$IDENTITIES)"
+
+      # Storage 的 bucket 設定與 storage.objects 的存取規則不在 public dump 裡,
+      # migration 檔也拼不回來(fonts bucket 是手動建的、規則散在好幾支 migration)
+      # → 每晚從正式站照現況產生一份可直接執行的 SQL。內容不敏感,不加密。
+      - name: Export storage bootstrap (buckets + policies)
+        id: storage_bootstrap
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
+        run: |
+          set -euo pipefail
+          SB_FILE="storage_bootstrap_${{ steps.ts.outputs.ts }}.sql"
+          cat > "$RUNNER_TEMP/storage_bootstrap_gen.sql" <<'SQL'
+          select string_agg(stmt, E'\n' order by ord, name) from (
+            select 1 as ord, id::text as name, format(
+              'insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values (%L, %L, %L, %s, %s) on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;',
+              id, name, public,
+              coalesce(file_size_limit::text, 'null'),
+              coalesce(quote_literal(allowed_mime_types::text) || '::text[]', 'null')) as stmt
+            from storage.buckets
+            union all
+            select 2, policyname::text, format(
+              E'drop policy if exists %I on storage.objects;\ncreate policy %I on storage.objects as %s for %s to %s%s%s;',
+              policyname, policyname, permissive, cmd,
+              (select string_agg(case when r = 'public' then 'public' else quote_ident(r) end, ', ') from unnest(roles) r),
+              case when qual is not null then E'\n  using (' || qual || ')' else '' end,
+              case when with_check is not null then E'\n  with check (' || with_check || ')' else '' end)
+            from pg_policies where schemaname = 'storage' and tablename = 'objects'
+          ) s;
+          SQL
+          {
+            echo "-- Storage buckets + storage.objects policies,產生於 ${{ steps.ts.outputs.ts }}(台北)。"
+            echo "-- 還原到新專案時在 SQL editor / psql 執行(冪等),步驟見 docs/BACKUP.md。"
+            echo "begin;"
+            psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -f "$RUNNER_TEMP/storage_bootstrap_gen.sql"
+            echo "commit;"
+          } > "out/$SB_FILE"
+          grep -q 'insert into storage.buckets' "out/$SB_FILE" || {
+            echo "::error::storage bootstrap 是空的"; exit 1; }
+          rclone copy "out/$SB_FILE" "r2:${R2_BUCKET}/db/" --stats=30s
+          echo "file=$SB_FILE" >> "$GITHUB_OUTPUT"
+          echo "Storage bootstrap: $(grep -c '^insert into storage.buckets' "out/$SB_FILE") buckets, $(grep -c '^create policy' "out/$SB_FILE") policies"
+
       - name: Prune DB dumps older than 90 days
         env:
           R2_BUCKET: ${{ vars.R2_BUCKET || 'yumin-admin-backup' }}
         run: |
           rclone delete r2:${R2_BUCKET}/db/ \
-            --min-age 90d --include 'db_*.sql.gz' --include 'manifest_*.json'
+            --min-age 90d --include 'db_*.sql.gz' --include 'manifest_*.json' \
+            --include 'storage_bootstrap_*.sql'
+          rclone delete r2:${R2_BUCKET}/auth/ \
+            --min-age 90d --include 'auth_*.sql.gz.cms'
 
       - name: Summary
         env:
@@ -147,6 +269,8 @@ jobs:
           echo "## Backup Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Timestamp**: ${{ steps.ts.outputs.ts }}" >> $GITHUB_STEP_SUMMARY
           echo "- **DB dump**: \`db/db_${{ steps.ts.outputs.ts }}.sql.gz\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Login accounts** (encrypted): \`auth/${{ steps.auth.outputs.file }}\` — users ${{ steps.auth.outputs.users }}, identities ${{ steps.auth.outputs.identities }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Storage bootstrap**: \`db/${{ steps.storage_bootstrap.outputs.file }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Storage mirror**: \`storage-latest/\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### R2 bucket usage" >> $GITHUB_STEP_SUMMARY
@@ -176,7 +300,8 @@ jobs:
             👉 點此查看詳細錯誤訊息：
             https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            意義：昨晚的「資料庫 + 工程照片 + 簽名 + PDF」沒有成功備份到 Cloudflare。
+            意義：昨晚的「資料庫 + 登入帳號 + 工程照片 + 簽名 + PDF」有一部分沒有成功備份到 Cloudflare
+            （登入帳號排在最後一步；只有它失敗時，資料庫與照片其實已經備份好了）。
             行動：請立即點上方連結查看是哪一步失敗，修好之後手動重跑備份（Actions → Daily Backup to R2 → Run workflow）。
 
             ——
@@ -202,6 +327,7 @@ jobs:
         run: |
           set -o pipefail
           LATEST_DB=$(rclone lsf "r2:${R2_BUCKET}/db/" --include 'db_*.sql.gz' | sort | tail -1)
+          LATEST_AUTH=$(rclone lsf "r2:${R2_BUCKET}/auth/" --include 'auth_*.sql.gz.cms' | sort | tail -1 || true)
           DB_COUNT=$(rclone lsf "r2:${R2_BUCKET}/db/" --include 'db_*.sql.gz' | wc -l)
           SIZE_LINE=$(rclone size "r2:${R2_BUCKET}" | grep -i 'Total size' || echo 'Total size: unknown')
           # Count how many of the last 7 days have a backup present
@@ -213,6 +339,7 @@ jobs:
             fi
           done
           echo "latest_db=$LATEST_DB" >> "$GITHUB_OUTPUT"
+          echo "latest_auth=${LATEST_AUTH:-（找不到，請檢查）}" >> "$GITHUB_OUTPUT"
           echo "db_count=$DB_COUNT" >> "$GITHUB_OUTPUT"
           echo "size_line=$SIZE_LINE" >> "$GITHUB_OUTPUT"
           echo "last7_present=$LAST7_PRESENT" >> "$GITHUB_OUTPUT"
@@ -241,6 +368,7 @@ jobs:
 
             ── 最新備份檔案 ──
             ${{ steps.weekly_stats.outputs.latest_db }}
+            登入帳號（加密）：${{ steps.weekly_stats.outputs.latest_auth }}
 
             ── R2 雲端儲存空間 ──
             ${{ steps.weekly_stats.outputs.size_line }}

@@ -208,7 +208,9 @@ draft →[主任填表+簽名 fill]→ submitted+audit
   資料留存清理（audit/log 表 retention，`lib/retention.ts`）與 LINE 通知重試/佇列清理
   （`lib/notifications/notify.ts`）都掛在 `recheck-stuck-pdfs` route 內執行。
 - **每日備份**：GitHub Actions `backup.yml`（02:00 台北）→ DB pg_dump + Storage → Cloudflare R2；
-  失敗寄 email、每週寄 heartbeat。細節見 [`docs/BACKUP.md`](BACKUP.md)。
+  失敗寄 email、每週寄 heartbeat。2026-09-27 起也備份**登入帳號**（`auth.users` / `identities`，含密碼雜湊 →
+  加密後才上傳，解密私鑰只在 `D:\Evelyn\_secrets\yumin-backup-auth-key.pem`，要另留一份給裕民）、
+  storage 設定與規則、PDF 字型。還原步驟（新專案整套重建）與換金鑰見 [`docs/BACKUP.md`](BACKUP.md)。
 
 ## 系統監控（2026-09-26）
 
