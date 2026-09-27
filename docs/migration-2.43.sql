@@ -45,6 +45,9 @@
 --       不符預期會 raise exception 整份 rollback)。冪等,可重跑。
 -- 還原:migration-2.43-rollback.sql(拿掉新 policy / function / trigger、日誌守門還原成 2.38 版、
 --       代理人設定先備份再清空;欄位保留)。
+--
+-- ✅ 執行狀態:**production(ref sgeuznnfasrgxlsqzxpc)已於 2026-09-27 執行完畢**
+--    (Supabase MCP apply_migration,Evelyn 授權;先乾跑 + 46 項角色模擬全過再套)。
 -- ==========================================================================
 
 begin;
