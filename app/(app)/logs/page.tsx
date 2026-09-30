@@ -16,6 +16,8 @@ import { formatDateTW } from "@/lib/datetime";
 import { splitDelegations } from "@/lib/leave-proxy";
 import { loadMyDelegations, loadProfileNames } from "@/lib/logs/proxy";
 import { ProxyDutyCard } from "@/components/proxy-duty-card";
+import { RejectedLogsCard } from "@/components/rejected-logs-card";
+import { loadMyRejectedLogs } from "@/lib/logs/rejected";
 import type { DailyLog, LogStatus } from "@/lib/types";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -138,7 +140,7 @@ export default async function LogsPage({
   // 「代理」標籤的主任姓名同理:本頁有代理日誌才查(平常一筆都沒有,不多打)。
   const editedByOffice = new Set<string>();
   const proxyForIds = list.map((l) => l.proxy_for).filter((x): x is string => !!x);
-  const [officeEditsRes, proxyNames] = await Promise.all([
+  const [officeEditsRes, proxyNames, myRejected] = await Promise.all([
     list.length > 0
       ? supabase
           .from("daily_log_revisions")
@@ -150,6 +152,10 @@ export default async function LogsPage({
           )
       : Promise.resolve({ data: [] }),
     loadProfileNames(proxyForIds),
+    // 退件提示只給會填日誌的人(主任 / 代理人);不受上面的期間與 scope 篩選影響
+    isSupervisor || isProxyRole
+      ? loadMyRejectedLogs(supabase, actor.id)
+      : Promise.resolve({ logs: [], total: 0 }),
   ]);
   for (const r of (officeEditsRes.data ?? []) as { log_id: string }[]) {
     editedByOffice.add(r.log_id);
@@ -205,6 +211,12 @@ export default async function LogsPage({
           </Link>
         )}
       </div>
+
+      <RejectedLogsCard
+        logs={myRejected.logs}
+        total={myRejected.total}
+        className="mb-5"
+      />
 
       {proxyDuty && (
         <ProxyDutyCard
@@ -291,7 +303,9 @@ export default async function LogsPage({
       ) : (
         <div className="space-y-3 md:space-y-4">
           {groups.map((g, gi) => {
-            const hasActionable = g.counts.draft + g.counts.submitted > 0;
+            // 退件也算待處理 — 以前沒算,退件多的舊案件會被收起來看不到
+            const hasActionable =
+              g.counts.draft + g.counts.submitted + g.counts.rejected > 0;
             // 工地主任視角:approved 案件不該被收起來(常需要複製昨天日誌)。
             // 規則:有 actionable / 是第一組 / 該案最後一筆 ≤7 天內 → 展開。
             const daysSinceLatest = g.latestDate
