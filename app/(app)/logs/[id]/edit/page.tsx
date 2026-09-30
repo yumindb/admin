@@ -16,6 +16,7 @@ import { getSignedUrls } from "@/lib/supabase/storage";
 import { emailToUsername } from "@/lib/auth/username";
 import { formatProxyFiller, type ProxyDelegation } from "@/lib/leave-proxy";
 import { findDelegation, loadProfileNames } from "@/lib/logs/proxy";
+import { isMeaningfulReason } from "@/lib/logs/rejected";
 
 export default async function EditLogPage({
   params,
@@ -89,7 +90,8 @@ export default async function EditLogPage({
       .eq("case_id", l.case_id)
       .eq("log_date", l.log_date)
       .lte("created_at", l.created_at),
-    // 已退回 → 撈最新一筆退回紀錄(含 approver 名稱)給頂部 banner
+    // 已退回 → 撈退回紀錄(新 → 舊,含 approver 名稱)給頂部 banner;
+    // 撈多筆是為了跳過只打「.」的那種退回,改顯示前一次真的有寫原因的
     l.status === "rejected"
       ? supabase
           .from("log_approvals")
@@ -99,7 +101,7 @@ export default async function EditLogPage({
           .eq("log_id", id)
           .eq("decision", "rejected")
           .order("created_at", { ascending: false })
-          .limit(1)
+          .limit(10)
       : Promise.resolve({ data: null }),
   ]);
 
@@ -154,7 +156,9 @@ export default async function EditLogPage({
     at: string;
     approverName: string;
   } | null = null;
-  const rejRow = ((rejRes.data ?? []) as RejectionRow[])[0];
+  const rejRows = (rejRes.data ?? []) as RejectionRow[];
+  const rejRow =
+    rejRows.find((r) => isMeaningfulReason(r.comment)) ?? rejRows[0];
   // 退回人的名字:主任 / 代理人讀不到別人的 profile(RLS),embed 會是空的 → 另外查
   const names = await loadProfileNames([rejRow?.approver_id]);
   if (rejRow) {
